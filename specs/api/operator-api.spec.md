@@ -423,7 +423,7 @@ fields are read from the Lead's meta on each request, so they follow the pause a
 
 `GET /pods/<p>` (`200`): the object `docket pod show --json` prints (`cli-json-shapes.spec.md`:
 `pod`, `blueprint`, `members`, `settings`, `approvalMode`, `pipeline` with its `steps`, `network`,
-`configSource`, `configDigest`, `drift`) plus the five keys below, where `profile` here is the
+`needs`, `delivers`, `methods`, `configSource`, `configDigest`, `drift`) plus the five keys below, where `profile` here is the
 verdict object (a row of `GET /pods` carries the profile name as a string):
 
 ```json
@@ -440,6 +440,16 @@ verdict object (a row of `GET /pods` carries the profile name as a string):
 `profile.violations` is empty unless the effective profile is `lights-out`, `pipelineSource` says
 where the effective pipeline comes from, `workspaceKind` is the value its `GET /pods` row carries,
 and `repoConfigDir` is `""` for a pod with no codebase.
+
+The pod's contract is three keys of the same object, so a client can fit a profile to a team before
+it posts a task. `delivers` is what a task hands back (`["branch"]`, `["report"]`, plus `"records"`
+when the pod declares record sets). `methods` is every pipeline a task may name in `pipeline`, each
+`{name, source, missingRoles, default}`, resolved by the function the claim uses so the list and the
+claim cannot disagree; `missingRoles` names the roles of its steps the pod's roster cannot fill (a
+task naming that method is refused at claim), `default` marks the method whose file is the pod's
+bound pipeline, and a file that does not load carries an `error` string. `needs` is each need the
+pod's applied recipes recorded as `{kind, name, fix, satisfied}`, recomputed on every call. A client
+probes for the three with the `podContract` feature.
 Each entry of `members` also carries `capabilities`, what its role can reach after the role's and the
 pod's denials, computed by `registry_for_role` over the tools docket declares (the built-ins and the
 pod's record tools):

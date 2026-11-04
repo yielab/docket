@@ -6,6 +6,7 @@ specs/data/cli-json-shapes.spec.md, "`docket pod show --json`".
 
 from __future__ import annotations
 
+import hashlib
 import sys
 from collections import Counter
 from pathlib import Path
@@ -40,6 +41,7 @@ from docket.teams import model_selection as _models
 from docket.teams import network_posture as _network_posture
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
+from docket.teams import records as _records
 from docket.teams import role_composer as _role_composer
 from docket.teams import roles as _archetypes
 from docket.teams import settings as _settings
@@ -430,6 +432,8 @@ def pod_report(project: str) -> dict[str, Any]:
         "network": _network_report(project),
         "fetchDomains": list(settings.fetch_domains),
         "needs": [line.wire() for line in _pod_needs(project, settings)],
+        "delivers": _delivers(project),
+        "methods": _methods(project, settings),
         **_work_dir_fields(project),
         **record,
     }
@@ -439,6 +443,42 @@ def _pod_needs(project: str, settings: _pod_settings.PodSettings) -> tuple[_need
     """The pod's recorded needs, computed as the pod is now; a recorded name this build does not
     know is left out."""
     return _needs.readiness(project, tuple(n for n in settings.needs if n in _needs.NEEDS))
+
+
+def _delivers(project: str) -> list[str]:
+    """What a task on *project* hands back: a branch or a report, then its records."""
+    kind = _pod_settings.workspace_kind(project)
+    delivers = ["report" if kind == WorkspaceKind.workdir else "branch"]
+    if _records.pod_record_sets(project)[0]:
+        delivers.append("records")
+    return delivers
+
+
+def _methods(project: str, settings: _pod_settings.PodSettings) -> list[dict[str, Any]]:
+    """The pipelines a task may name, one per name from the file a claim resolves it to."""
+    roster = _pod.pod_full_roster(project)
+    registry = _archetypes.load_registry(project)
+    methods: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for name, path, source in _steps.task_pipeline_files(project):
+        if name in seen:
+            continue
+        seen.add(name)
+        method: dict[str, Any] = {"name": name, "source": source, "missingRoles": []}
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            methods.append({**method, "error": str(exc), "default": False})
+            continue
+        loaded = _pipeline.load_pipeline(text, roles=registry.names())
+        if loaded.spec is None:
+            method["error"] = "; ".join(loaded.errors)
+        else:
+            plan = _orch.resolve_plan(loaded.spec, roster, registry=registry)
+            method["missingRoles"] = list(_steps.unstaffed_steps(plan))
+        method["default"] = hashlib.sha256(text.encode("utf-8")).hexdigest() == settings.pipeline
+        methods.append(method)
+    return methods
 
 
 def _blueprint(project: str) -> str:

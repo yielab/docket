@@ -133,19 +133,27 @@ def effective_pipeline(project: str, spec: _pipeline.PipelineSpec | None) -> _pi
     return builtin.model_copy(update={"steps": new_steps}) if changed else builtin
 
 
-def _task_pipeline_file(project: str, name: str) -> tuple[Path, str] | None:
-    """The file and source label *name* resolves to: the first of ``Home.scopes("pipelines")``
-    (the pod overlay, then the operator's ``config/pipelines``) holding it, then a recipe (the
-    operator's before the shipped ones) holding a ``pipeline.yaml``."""
+def task_pipeline_files(project: str) -> list[tuple[str, Path, str]]:
+    """Every ``(name, file, source label)`` a task may name, nearest scope first (the pod overlay,
+    the operator's ``config/pipelines``, then the recipes with a ``pipeline.yaml``). A name in
+    several scopes is listed once per scope; the first entry is the one a claim runs."""
+    found: list[tuple[str, Path, str]] = []
     labels = ("pod", "operator", "shipped")
     for label, directory in zip(labels, current_home().scopes("pipelines", project), strict=False):
-        for suffix in (".yaml", ".yml"):
-            if (directory / f"{name}{suffix}").is_file():
-                return directory / f"{name}{suffix}", f"{label}:{name}"
+        files = [*directory.glob("*.yaml"), *directory.glob("*.yml")] if directory.is_dir() else []
+        for path in sorted(files, key=lambda p: (p.stem, p.suffix)):
+            found.append((path.stem, path, f"{label}:{path.stem}"))
     for root in (current_home().user_recipes_dir, _templates.RECIPES_DIR):
-        if (root / name / "pipeline.yaml").is_file():
-            return root / name / "pipeline.yaml", f"recipe:{name}"
-    return None
+        for path in sorted(root.glob("*/pipeline.yaml")) if root.is_dir() else []:
+            found.append((path.parent.name, path, f"recipe:{path.parent.name}"))
+    return [entry for entry in found if TASK_PIPELINE_NAME.match(entry[0])]
+
+
+def _task_pipeline_file(project: str, name: str) -> tuple[Path, str] | None:
+    """The file and source label *name* resolves to: the first entry of ``task_pipeline_files``."""
+    return next(
+        ((path, source) for n, path, source in task_pipeline_files(project) if n == name), None
+    )
 
 
 def _task_pipeline(
@@ -188,6 +196,16 @@ def _task_pipeline(
     return loaded.spec, source
 
 
+def unstaffed_steps(plan: _orch.ExecutionPlan) -> dict[str, list[str]]:
+    """The roles of *plan*'s skipped unit steps, each with its step ids, both in step order."""
+    missing: dict[str, list[str]] = {}
+    for node in plan.nodes:
+        for unit in node.children if isinstance(node, _orch.PlannedGroup) else (node,):
+            if unit.role is not None and unit.skipped:
+                missing.setdefault(unit.role, []).append(unit.step_id)
+    return missing
+
+
 def _refuse_unstaffed_pipeline(
     project: str, name: str, source: str, spec: _pipeline.PipelineSpec
 ) -> None:
@@ -200,11 +218,7 @@ def _refuse_unstaffed_pipeline(
     problems = unresolvable_pipeline_steps(plan, project)
     if not problems:
         return
-    missing: dict[str, list[str]] = {}
-    for node in plan.nodes:
-        for unit in node.children if isinstance(node, _orch.PlannedGroup) else (node,):
-            if unit.role is not None and unit.skipped:
-                missing.setdefault(unit.role, []).append(unit.step_id)
+    missing = unstaffed_steps(plan)
     if missing:
         listed = ", ".join(
             f"{role} (step{'s' if len(steps) > 1 else ''} {', '.join(steps)})"

@@ -323,6 +323,10 @@ A bare object: the pod as it will run. Composes existing resolvers only and writ
   "needs": [
     { "kind": "fetch-hosts | search-host | isolation", "name": "string (equal to kind today)", "fix": "string (the one command that meets the need; empty when satisfied)", "satisfied": "boolean (computed as the pod is now)" }
   ],
+  "delivers": ["branch | report | records (what a task on this pod hands back; a list, so a new kind is additive)"],
+  "methods": [
+    { "name": "string (a pipeline a task may name)", "source": "pod:<name> | operator:<name> | shipped:<name> | recipe:<name>", "missingRoles": ["string (roles of its steps this pod's roster cannot fill, in step order, each once)"], "default": "boolean (true on the entry whose file is the pod's bound pipeline)", "error": "string (present only when the file does not load)" }
+  ],
   "configSource": "string (absolute directory the pod was last applied from; empty when never applied)",
   "configDigest": "string (sha256 hex of that directory's applied files; empty when never applied)",
   "drift":        "yes | no | \"\" (empty when there is no recorded source or the directory is gone)"
@@ -331,6 +335,17 @@ A bare object: the pod as it will run. Composes existing resolvers only and writ
 
 `needs` lists what the pod's applied recipes said their work needs, in the order first recorded,
 recomputed on every call; `[]` when none is recorded.
+
+`delivers` is `["branch"]` for a pod with a codebase, `["report"]` for a pod with a work folder, and
+ends with `"records"` when the pod declares at least one record set. `methods` lists every pipeline a
+task may name for the pod (`pipeline` on `POST /tasks/<pod>`), resolved as a claim resolves it: the
+pod's `pipelines/`, the operator's `config/pipelines`, the shipped pipelines, then every recipe (the
+operator's before the shipped ones) carrying a `pipeline.yaml`; the first scope holding a name wins
+and each name appears once. `missingRoles` is empty when a task naming the method runs every step.
+`default` is `true` on the one entry whose file bytes hash to the pod's bound pipeline, else `false`
+everywhere. A file that does not load is listed with `missingRoles: []` and an `error` string; a task
+naming it fails at claim with that text. The pod's own default pipeline is not a method: it has no
+name a task can give.
 
 `pipeline.steps` is the effective pipeline as the pod would run it: the steps resolved against the
 pod's roster, a step whose role the pod lacks left out, in run order. Each step:

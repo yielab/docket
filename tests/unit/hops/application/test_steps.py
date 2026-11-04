@@ -26,6 +26,7 @@ from tests.support.tasks import put_task as _put_task
 from tests.support.tasks import put_tasks
 from tests.support.tasks import task as _make_task
 
+import docket.kernel.templates as _templates
 from docket.agent import ports as _rd
 from docket.hops.application import compose as _compose
 from docket.hops.application import steps as _steps
@@ -560,3 +561,44 @@ class TestTaskPipelineScopes:
         found = _steps._task_pipeline_file("demo", "secure-build")
 
         assert found is not None and found[1] == "recipe:secure-build"
+
+
+class TestTaskPipelineFiles:
+    """`task_pipeline_files` lists every pipeline file a task may name, nearest scope first."""
+
+    def test_one_name_lists_pod_then_operator_then_recipes_and_the_claim_takes_the_first(
+        self,
+    ) -> None:
+        pod_dir = current_home().pod_config_dir("demo") / "pipelines"
+        user_recipe = current_home().user_recipes_dir / "tdd"
+        for directory in (pod_dir, current_home().pipelines_dir, user_recipe):
+            directory.mkdir(parents=True, exist_ok=True)
+        (pod_dir / "tdd.yaml").write_text("name: x\n")
+        (current_home().pipelines_dir / "tdd.yml").write_text("name: x\n")
+        (user_recipe / "pipeline.yaml").write_text("name: x\n")
+
+        listed = [
+            (path, source)
+            for name, path, source in _steps.task_pipeline_files("demo")
+            if name == "tdd"
+        ]
+
+        assert [source for _path, source in listed] == [
+            "pod:tdd",
+            "operator:tdd",
+            "recipe:tdd",
+            "recipe:tdd",
+        ]
+        assert listed[2][0] == user_recipe / "pipeline.yaml"
+        assert listed[3][0] == _templates.RECIPES_DIR / "tdd" / "pipeline.yaml"
+        assert _steps._task_pipeline_file("demo", "tdd") == listed[0]
+
+    def test_a_name_is_listed_for_each_recipe_that_carries_a_pipeline(self) -> None:
+        recipes = {
+            name
+            for name, _path, source in _steps.task_pipeline_files("demo")
+            if source.startswith("recipe:")
+        }
+
+        assert {"tdd", "secure-build"} <= recipes
+        assert "records" not in recipes
