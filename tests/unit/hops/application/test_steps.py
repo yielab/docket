@@ -386,6 +386,34 @@ class TestTaskPipeline:
         with pytest.raises(_task.DispatchError):
             _steps._task_pipeline("myapp", TaskRecord(description="x", pipeline=name), default)
 
+    def test_the_unstaffed_refusal_lists_each_missing_role_once_with_its_steps_in_step_order(
+        self, pod_home: Path
+    ) -> None:
+        _seed_lean_pod("myapp")
+        text = (
+            "name: wide\nsteps:\n  - plan: lead\n  - review: reviewer\n  - build: implementer\n"
+            "  - audit: tester\n  - recheck: reviewer\n"
+        )
+        loaded = _pipeline.load_pipeline(text, roles=_archetypes.load_registry("myapp").names())
+        assert loaded.spec is not None
+
+        with pytest.raises(_task.TaskRunRefusal) as raised:
+            _steps._refuse_unstaffed_pipeline("myapp", "wide", "pod:wide", loaded.spec)
+
+        assert str(raised.value) == (
+            "pipeline 'wide' (pod:wide) names roles this pod does not have: "
+            "reviewer (steps review, recheck), tester (step audit)"
+        )
+
+    def test_a_pipeline_the_pod_can_staff_passes_the_unstaffed_check(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+        loaded = _pipeline.load_pipeline(
+            _TWO_STEP_YAML, roles=_archetypes.load_registry("myapp").names()
+        )
+        assert loaded.spec is not None
+
+        _steps._refuse_unstaffed_pipeline("myapp", "two", "pod:two", loaded.spec)
+
     def test_an_unknown_pipeline_fails_the_task_before_any_hop(self, pod_home: Path) -> None:
         from tests.support.fakes import FakeDriver
 

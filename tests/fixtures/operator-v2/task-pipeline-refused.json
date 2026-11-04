@@ -1,0 +1,6 @@
+{
+  "status": "failed",
+  "failureKind": "pipeline",
+  "reason": "pipeline 'tdd' (pod:tdd) names roles this pod does not have: reviewer (step review)",
+  "hops": []
+}

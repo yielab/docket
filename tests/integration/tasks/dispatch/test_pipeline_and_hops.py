@@ -17,7 +17,10 @@ from docket.hops.application import sweep as _sweep
 from docket.hops.application import usage as _usage
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.cli.commands import pod_members as _pod_members
 from docket.kernel.home import current_home
+from docket.observability import trace as _trace
+from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record
 from docket.tasks.application.repository import TaskRepository
@@ -402,6 +405,96 @@ class TestPipeline:
             _fleet.remove_agent("demo-lead")
             with pytest.raises(_task.DispatchError):
                 _sweep.dispatch_pod("demo", runner=FakeDriver())
+
+
+_FIXTURES = Path(__file__).parents[3] / "fixtures" / "operator-v2"
+_THREE_STEPS = "name: tdd\nsteps:\n  - plan: lead\n  - build: implementer\n  - review: reviewer\n"
+
+
+def _pod_pipeline(name: str, text: str) -> None:
+    target = current_home().pod_config_dir("demo") / "pipelines"
+    target.mkdir(parents=True, exist_ok=True)
+    (target / f"{name}.yaml").write_text(text, encoding="utf-8")
+
+
+def _refusals(task_id: str) -> list[dict[str, object]]:
+    trace_file = current_home().traces_dir / "demo" / f"agent:demo:{task_id}.jsonl"
+    return [e for e in _trace.read_trace(trace_file) if e["event_type"] == "dispatch_refused"]
+
+
+class TestTaskNamedPipelineStaffing:
+    def test_a_named_pipeline_with_a_step_the_pod_cannot_staff_is_refused_at_claim(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path):
+            _pod_pipeline("tdd", _THREE_STEPS)
+            task, _ = _queue.enqueue_task_once("demo", "Ship it", channel="cli", pipeline="tdd")
+            runner = FakeDriver()
+
+            res = _sweep.dispatch_pod("demo", runner=runner)[0]
+
+            assert res.status == "failed"
+            assert res.failure_kind == "pipeline"
+            assert "'tdd'" in (res.reason or "")
+            assert "reviewer (step review)" in (res.reason or "")
+            assert runner.calls == []
+            stored = TaskRepository.for_pod("demo").list()[0]
+            assert stored.status == "failed"
+            assert stored.hops == []
+            answer = stored.model_dump(by_alias=True, mode="json")
+            shown = {k: answer[k] for k in ("status", "failureKind", "reason", "hops")}
+            assert shown == json.loads(
+                (_FIXTURES / "task-pipeline-refused.json").read_text("utf-8")
+            )
+            assert len(_refusals(task.id)) == 1
+
+    def test_the_same_pod_runs_a_task_without_a_pipeline_on_the_default_skip_rule(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path):
+            _pod_pipeline("tdd", _THREE_STEPS)
+            _queue.enqueue_task_once("demo", "Ship it", channel="cli")
+            runner = FakeDriver()
+
+            res = _sweep.dispatch_pod("demo", runner=runner)[0]
+
+            assert res.status == "done"
+            assert [c[0] for c in runner.calls] == ["demo-lead", "demo-implementer"]
+
+    def test_a_retry_after_the_pod_gains_the_role_runs_every_step(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            _pod_pipeline("tdd", _THREE_STEPS)
+            task, _ = _queue.enqueue_task_once("demo", "Ship it", channel="cli", pipeline="tdd")
+            assert _sweep.dispatch_pod("demo", runner=FakeDriver())[0].status == "failed"
+
+            _pod_members.add_members("demo", "reviewer")
+            assert _lifecycle.retry_task("demo", task.id)
+            runner = FakeDriver()
+            res = _sweep.dispatch_pod("demo", runner=runner)[0]
+
+            assert res.failure_kind != "pipeline"
+            assert [h.step_id for h in res.hops] == ["plan", "build", "review"]
+            assert list(dict.fromkeys(c[0] for c in runner.calls)) == [
+                "demo-lead",
+                "demo-implementer",
+                "demo-reviewer",
+            ]
+
+    def test_a_refused_task_stays_failed_and_is_traced_once_across_further_ticks(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path):
+            _pod_pipeline("tdd", _THREE_STEPS)
+            task, _ = _queue.enqueue_task_once("demo", "Ship it", channel="cli", pipeline="tdd")
+            runner = FakeDriver()
+
+            for _tick in range(3):
+                _sweep.dispatch_pod("demo", runner=runner)
+
+            stored = TaskRepository.for_pod("demo").list()[0]
+            assert stored.status == "failed"
+            assert runner.calls == []
+            assert len(_refusals(task.id)) == 1
 
 
 class TestHopEvidence:

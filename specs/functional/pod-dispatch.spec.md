@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 12.4.0
+**Version**: 12.5.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -396,7 +396,8 @@ wired agent's conversation current with the task it is working.
    -- an operator who hand-wrote a rework edge's own `maxCycles` did not ask for the pod setting to
    override it, the same as a `docket run --pipeline` file. A role-targeted step whose role the pod
    does not have is skipped and consumes no pipeline position (the plan marks it `skipped`), for a
-   bound pipeline exactly as for any other. A lean `build` pod (Lead + Implementer only) running
+   bound pipeline exactly as for any other; the one exception is a pipeline a task names, which
+   requirement 7 refuses at the claim instead. A lean `build` pod (Lead + Implementer only) running
    the default pipeline runs exactly two hops per pass; a full pod runs up to four, plus any rework
    cycles (see below); a `respond`, `operate`, or `routine` pod runs its blueprint's full roster and
    gates. Before any task is claimed, `dispatch_pod` **MUST** refuse (`DispatchError`) a run whose
@@ -461,12 +462,20 @@ wired agent's conversation current with the task it is working.
    never the pod's; a later claim under a file runs that file and keeps it instead. A task with neither runs the default and records source
    `default`. A chosen pipeline is
    caller-supplied-like: it is never patched with the pod's `maxReworkCycles`, and its variables
-   are resolved per task as the default's are. A name that resolves to nothing, a file that does
-   not validate, unresolved step variables, or a task `gate` that cannot be built **MUST** settle
+   are resolved per task as the default's are. A task-named pipeline **MUST** also be planned at
+   the claim against the pod's live roster (`resolve_plan`), and a step whose role the pod lacks
+   (or whose agent is outside the pod) is a refusal, never a skipped step: the reason is
+   `pipeline '<name>' (<source>) names roles this pod does not have: <role> (step <id>), ...`,
+   each missing role once, in step order, naming every step that wants it. The check covers only
+   a pipeline the task names; the pod's bound pipeline, a blueprint's default, the built-in
+   default and a `docket run --pipeline` file keep requirement 1's skip rule, and a kept
+   `pipelineSpec` is not re-planned. A name that resolves to nothing, a file that does
+   not validate, unresolved step variables, a role the pod lacks, or a task `gate` that cannot be built **MUST** settle
    the claimed task `failed` with `failureKind: "pipeline"` and the reason, before any hop and with
    no hop recorded, and emit one `dispatch_refused` trace event naming the reason; the dispatch
    loop then continues to the next task. `pipeline` is not in `RESUMABLE_FAILURE_KINDS`:
-   `--resume` does not reclaim it. The claim records `pipelineSource` on the task.
+   `--resume` does not reclaim it; `docket task retry` re-queues the task once the pod has the role,
+   and the refusal is not repeated on a later sweep tick. The claim records `pipelineSource` on the task.
 
 ### Per-hop execution
 
