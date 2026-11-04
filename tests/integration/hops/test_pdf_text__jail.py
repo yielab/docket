@@ -8,6 +8,8 @@ import dataclasses
 import json
 import os
 import socket
+import subprocess
+import sys
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -33,7 +35,7 @@ _DOCS = Path(__file__).resolve().parents[2] / "fixtures" / "documents"
 _HOLA = _DOCS / "hola.pdf"
 _BOMB = _DOCS / "bomb.pdf"
 _SECRET = "s3cr3t-token-value"
-_EXTRACTOR_ARGV = "extract.py\x00in.pdf"  # the extractor's own argv, NUL-joined as /proc shows it
+_EXTRACTOR_ARGV = "extract.py in.pdf"  # the extractor's own argv, as `ps` shows it
 _SLEEP = "61.37"  # a duration no other process on the machine sleeps for
 
 pytestmark = [
@@ -116,16 +118,15 @@ def _leftovers() -> list[Path]:
 
 
 def _alive(marker: str) -> list[int]:
-    found = []
-    for entry in Path("/proc").iterdir():
-        if entry.name.isdigit():
-            try:
-                cmdline = (entry / "cmdline").read_bytes()
-            except OSError:
-                continue
-            if marker.encode() in cmdline:
-                found.append(int(entry.name))
-    return found
+    """The pids whose command line holds *marker*, from `ps` (Linux has /proc, macOS does not)."""
+    listing = subprocess.run(
+        ["ps", "-axo", "pid=,command="], capture_output=True, text=True, check=True
+    ).stdout
+    return [
+        int(pid)
+        for pid, _, command in (line.strip().partition(" ") for line in listing.splitlines())
+        if marker in command and pid.isdigit() and int(pid) != os.getpid()
+    ]
 
 
 class TestAHostileExtractorIsContained:
@@ -137,11 +138,11 @@ class TestAHostileExtractorIsContained:
         out = _read(
             tmp_path,
             script=f"""
-import os, socket
+import errno, os, socket
 try:
     print("token:", open({str(token)!r}).read())
 except OSError as ex:
-    print("token:", ex.strerror)
+    print("token:", errno.errorcode.get(ex.errno, ex.errno))
 try:
     socket.create_connection(("127.0.0.1", {port}), timeout=2).close()
     print("socket: open")
@@ -158,7 +159,8 @@ print("env:", " ".join(sorted(os.environ)))
 
         assert out.ok, out.error
         assert _SECRET not in out.content
-        assert "token: Permission denied" in out.content
+        # Landlock answers EACCES, Seatbelt EPERM: either way the read was refused.
+        assert "token: EACCES" in out.content or "token: EPERM" in out.content
         assert "socket: blocked" in out.content
         assert "marker: denied" in out.content
         assert not _connected(listener)
@@ -233,12 +235,17 @@ class TestTheRealExtractor:
         small = source.replace("MEMORY_BYTES = 1 << 30", "MEMORY_BYTES = 192 << 20")
         assert small != source
         assert _BOMB.stat().st_size < 100_000
+        # macOS does not enforce RLIMIT_AS, so there the deadline ends the run (security-gates
+        # fetch: the address-space limit is best effort, memory bounded by the deadline alone).
+        enforced = sys.platform != "darwin"
         started = _clock.monotonic()
-        out = _read(tmp_path, script=small, body=_BOMB.read_bytes(), seconds=30.0)
+        out = _read(
+            tmp_path, script=small, body=_BOMB.read_bytes(), seconds=30.0 if enforced else 4.0
+        )
 
         assert not out.ok
         assert out.refusal == "fetch_not_allowed"
-        assert "memory" in out.error
+        assert ("memory" if enforced else "timed out") in out.error
         assert out.content == ""
         assert _clock.monotonic() - started < 9
         assert _alive(_EXTRACTOR_ARGV) == []
