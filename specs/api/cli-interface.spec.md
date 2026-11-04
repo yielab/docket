@@ -282,8 +282,7 @@ provisioning belongs to `init`, including multi-project automation.
 - `--all` reports the same summary for every registered pod, once per project rather than once
   per agent, with failed counts; `--all --json` also carries the fleet inventory
   (`timestamp`, `channels`, `agents`).
-- `--history [--days N]` shows tokens per day (empty against the production driver; see
-  cost-tracking.spec.md "Known gap").
+- `--history [--days N]` shows tokens per UTC day (cost-tracking.spec.md requirement 7).
 - No current-directory match **MUST** fail with the actionable Pod targeting message (`Run
   'docket init' here, or pass --pod <name>.`).
 - `docket setup --fix` remains workstation-wide technical health. It is not an implicit side effect

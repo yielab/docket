@@ -174,9 +174,8 @@ Each agent object (every pod member is one):
 ```
 
 `status --history --json` (also with `--all`, and with `--days N` to keep the last N days) emits
-`{"history": [{date, turns, input, output}, ...]}`. The list is empty against the
-production driver, which keeps one running total per session rather than per-day usage
-(cost-tracking.spec.md, "Known gap").
+`{"history": [{date, turns, input, output}, ...]}`, one row per UTC day with usage, oldest first
+(cost-tracking.spec.md requirement 7); the list is empty when no session holds dated usage.
 
 ### `docket inbox --json`
 

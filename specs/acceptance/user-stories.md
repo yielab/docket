@@ -94,8 +94,9 @@ The surface is `docket pod reset <member>`.
 - [ ] `docket status --all` summarises every pod
       (`test_all_shows_failed_counts`)
 - [ ] `docket status --json` is machine-readable (`test_json_carries_tasks_usage_last_run_and_the_start_flag`)
-- [ ] `docket status --history [--days N]` returns an empty history, because sessions store one
-      running total and no per-turn timestamp (`test_history_with_no_dated_data_is_an_empty_list`)
+- [ ] `docket status --history [--days N]` returns one row per UTC day with usage, and an empty
+      history when no session holds dated usage (`test_history_with_no_dated_data_is_an_empty_list`,
+      `test_history_prints_one_row_per_utc_day`)
 - [ ] A budget cap (`docket pod set budgetTokens <N>`) is checked before each hop against the
       pod's counted tokens, so it holds for every model;
       `docket setup --fix` warns at 80% or more of the cap and flags 100% or more

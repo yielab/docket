@@ -66,6 +66,10 @@ This specification does NOT cover:
 7. Measured token usage (real per-call counts reported by the completion endpoint) **MAY** be
    recorded alongside a session's history and **MUST** accumulate additively across appends (input,
    output, cached and cache-write tokens, plus a `turns` count of the appends that carried usage).
+   The same delta **MUST** also be added to a per-day bucket, `usageByDay["YYYY-MM-DD"]`, keyed by
+   the UTC day of the append, so the buckets sum to the total for every session written after the
+   field existed. A record without `usageByDay` reads as `{}`: a session written before it counts
+   toward the total only, never toward a day.
 8. Appending to the same session key concurrently **MUST NOT** be able to silently drop either
    append's messages.
 9. The turns of a conversation task (`pod-dispatch.spec.md` "A conversation task") share the key of
@@ -203,7 +207,7 @@ This specification does NOT cover:
 class StoredToolCall(BaseModel): ...          # id, name, arguments
 class StoredMessage(BaseModel): ...           # role, content, tool_calls, tool_call_id, name
 class MeasuredUsage(BaseModel): ...           # inputTokens, outputTokens, cachedTokens, cacheWriteTokens, turns
-class SessionRecord(BaseModel): ...           # sessionKey, created, updated, messages, usage
+class SessionRecord(BaseModel): ...           # sessionKey, created, updated, messages, usage, usageByDay
 
 # pure compaction planning
 def group_atomic_units(messages: Sequence[ChatMessage]) -> list[list[ChatMessage]]: ...
@@ -292,6 +296,11 @@ def compact_session(
   ],
   "usage": {
     "inputTokens": 512, "outputTokens": 64, "cachedTokens": 0, "cacheWriteTokens": 0, "turns": 2
+  },
+  "usageByDay": {
+    "2026-11-03": {
+      "inputTokens": 512, "outputTokens": 64, "cachedTokens": 0, "cacheWriteTokens": 0, "turns": 2
+    }
   }
 }
 ```

@@ -18,7 +18,8 @@ observability exporter's receiver, a provider's bill) still can; docket sends it
 This specification covers:
 
 - Reporting usage (`docket status`)
-- The per-pod budget cap (`docket pod set budgetTokens`), a count of tokens
+- The per-pod budget cap (`docket pod set budgetTokens`), a count of tokens, and the window it is
+  counted over (`docket pod set budgetWindow`)
 - Budget warnings (`docket setup`), the pre-hop gate and the pause contract
 
 This specification does NOT cover the role→model policy (see model-profiles.spec.md), nor the pod-dispatch pre-hop budget gate's mechanics (see
@@ -57,6 +58,12 @@ pod-dispatch.spec.md).
    ratio of every recorded `llm_call` (`trace-store.spec.md` requirements 39-40). The same figure
    is the `docket_tokens_per_accepted_task` metric (`serve-read-api.spec.md`). Both are measured
    tokens read from records docket already keeps; neither is a projection.
+7. `docket status --history [--days N]` **MUST** print one row per UTC day on which any of the
+   pod's members spent tokens, summed over the members' sessions and read from each session's
+   `usageByDay` buckets (`DocketDriver.usage(...).by_day`); with `--json` it emits `{"history":
+   [...]}` (cli-json-shapes.spec.md). A session written before the buckets existed has no day, so
+   it adds no row; a home with no dated usage prints `No dated session data yet` and `{"history":
+   []}`.
 
 ### Budget caps
 
@@ -86,14 +93,25 @@ pod-dispatch.spec.md).
    anything.
 8. No blueprint sets a pod budget: a cap is opt-in, and a task's `maxTokens` and the per-turn
    token budget already bound spend.
+9. **The window.** `docket pod set budgetWindow <day|week|none>` stores the span the cap is counted
+   over; absent reads as `none`, and any other value is refused naming the three. `none` counts
+   every token the pod has ever spent (requirement 1). `day` counts from 00:00 UTC today and `week`
+   from 00:00 UTC on the most recent Monday: the tokens of the days on or after that date, each
+   day's tokens being those of the sessions' appends made on that UTC day
+   (session-history.spec.md requirement 7). The window is calendar-aligned, never a rolling span,
+   and a session written before the day buckets existed counts toward `none` only. Setting or
+   unsetting `budgetWindow` clears a prior `paused` state and unblocks the pod's blocked tasks, as
+   `budgetTokens` does (requirement 3).
 
 ### Enforcement, warnings, and pause
 
-1. **Cap enforcement.** The pod-dispatch lane compares the pod's counted tokens with the Lead's
-   `budgetTokens` before each hop and blocks the task when the cap is reached
-   (pod-dispatch.spec.md). The comparison needs no rate, so it holds for every model, a model
-   the catalog does not list included. A `budget_exceeded` trace event records `spent`, `cap` and
-   `role`, all integers.
+1. **Cap enforcement.** The pod-dispatch lane compares the pod's counted tokens, over the pod's
+   `budgetWindow`, with the Lead's `budgetTokens` before each hop and blocks the task when the cap
+   is reached (pod-dispatch.spec.md). The comparison needs no rate, so it holds for every model, a
+   model the catalog does not list included. A `budget_exceeded` trace event records `spent`,
+   `cap` and `role`, all integers, and `window` (`none`, `day` or `week`) and `windowStart` (the
+   UTC instant the count began, `null` for `none`). The hop's token ceiling (requirement 4) counts
+   the same window.
 2. **Auto-pause.** The same check that blocks a task also marks the pod's Lead
    `paused = true`, `pausedReason = "budget"` (through the store chokepoint, per D-9). Once
    paused, dispatch refuses **every** further claim for that pod outright, before a task is
@@ -124,10 +142,11 @@ pod-dispatch.spec.md).
 ```bash
 docket status                     # Pod tokens and outcomes (table)
 docket status --all --json        # Machine-readable (see cli-json-shapes.spec.md)
-docket status --history [--days N]  # Daily history (see "Known gap" below)
+docket status --history [--days N]  # Tokens per UTC day, from the sessions' day buckets
 docket log --summary              # Tokens per accepted task and cache-hit ratio (not with --json)
 docket pod set budgetTokens <N>   # Set a cap, in counted tokens (a whole number above 0)
 docket pod unset budgetTokens     # Clear the cap
+docket pod set budgetWindow <day|week|none>  # Count the cap from today or this Monday, UTC
 docket run --resume               # Clear an auto-pause, unblock blocked tasks, reclaim stale claims
 docket setup                      # Includes budget/runaway check (display only)
 ```
@@ -136,16 +155,6 @@ docket setup                      # Includes budget/runaway check (display only)
 
 - `0`: Success
 - `1`: Any error (unknown pod, invalid budget value)
-
-### Known gap: `--history` is always empty
-
-`DocketDriver`'s usage report has no per-day breakdown (`by_day` is always `[]`): a session's
-stored usage is one running total for its whole lifetime, with no per-turn timestamp to bucket by
-day. `docket status --history` therefore returns an honest empty history (`{"history": []}` with
-`--json`, `No dated session data yet` otherwise) against real data, regardless of `--days`;
-`docket status` (non-history) is unaffected: totals still aggregate correctly. Adding a per-turn
-usage log to fabricate a daily breakdown is new scope for the session store; this is a named
-capability gap, not a bug.
 
 ## Examples
 
@@ -199,15 +208,17 @@ $ docket run --resume
 ## Implementation
 
 - `src/docket/hops/application/usage.py`: `aggregate_usage`, `usage_history`, `pod_counted_tokens`
+- `src/docket/agent/session.py`: `SessionRecord.usageByDay`, written by `append_messages`
 - `src/docket/hops/gates/pre_hop.py`: the pre-hop budget gate (`_gate_budget`), the hop's token ceiling, the Lead pause writer
-- `src/docket/hops/domain/gate_decisions.py`: `decide_pod_budget`, `turn_token_ceiling`
+- `src/docket/hops/domain/gate_decisions.py`: `decide_pod_budget`, `turn_token_ceiling`, `window_start`
 - `src/docket/teams/settings.py`: `pod_budget`
+- `src/docket/teams/pod_settings.py`: `PodSettings.budget_window`
 - `src/docket/tasks/application/lifecycle.py`: `unblock_pod`
 - `src/docket/tasks/application/queue.py`: the claim-time pause check
 - `src/docket/observability/trace.py`: `terminal_outcomes`, `EVENT_TYPES` (`budget_exceeded`, `paused_refused`)
 - `src/docket/agent/ports.py`: `UsageTotals`, `UsageDay`, `UsageReport`, `DriverCapabilities`
 - `src/docket/hops/application/driver.py`: `DocketDriver.usage`, `DocketDriver.capabilities`
 - `src/docket/interfaces/cli/commands/status.py`: `docket status`, the per-pod usage summary, the fleet inventory, `usage_snapshot` (the MCP `usage` tool reads it)
-- `src/docket/interfaces/cli/commands/pod.py`: `docket pod set|unset budgetTokens`
+- `src/docket/interfaces/cli/commands/pod.py`: `docket pod set|unset budgetTokens`, `budgetWindow`
 - `src/docket/interfaces/cli/commands/run.py`: `docket run --resume`, the cap header
 - `src/docket/interfaces/cli/commands/setup_check.py`: the `docket setup` budget and runaway checks
