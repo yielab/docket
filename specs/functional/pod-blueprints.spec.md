@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 4.6.0
+**Version**: 4.7.0
 **Status**: Implemented
 **Last Updated**: 2026-11-03
 

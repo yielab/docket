@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A plan of record reads a pod's contract (D-85, Phase 63, wave 1).**
+  - A pod keeps the `needs` its applied recipes declared; `docket pod show --json` reports
+    `needs: [{kind, name, fix, satisfied}]`, recomputed as the pod is now, and `pod show` prints one
+    line per need. `pod set needs` and `settings.needs` are refused like `configSource`.
+  - A task that names a pipeline the pod cannot staff is refused at claim: `failed`, `failureKind:
+    "pipeline"`, the reason names each missing role and its step, and no hop runs. The pod's own
+    pipeline and `docket run --pipeline` keep the skip rule. `features` gains `pipelineChecked`.
+  - `pod.yaml` takes `shape: build|respond|operate|routine`; applying a recipe whose shape differs
+    from the pod's is refused. `POST /pods/<p>/apply` reaches a folder pod (`respond`, `operate`,
+    `routine`) with an absolute `directory`, and an HTTP apply that skips every item writes one
+    `pod.apply` audit entry. `features` gains `podShape`.
+- **Pod memory (D-86, Phase 64, wave 1).** The kinds are `generated`, `tool`, `pitfall` and
+  `convention`; a `pitfall` or `convention` subject is a free label, a `tool` subject is the
+  invocation, and a note is Unicode-normalized and refused when it holds formatting characters or a
+  heading. `command` is no longer a kind.
+
 - **A step's budget is a checkpoint, not a cliff (D-81, Phase 59, ADR 0038).**
   - `docket task retry` now re-runs the step that failed and continues its session with a message
     that names why it stopped, its report and the paths it changed. Before, the retry skipped that
@@ -90,6 +106,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`MEMORY.md` is the operator's notes (D-86, Phase 64).** A new member workspace has no `memory/`
+  directory, and its `MEMORY.md` is a two-line header docket never writes; `WORKFLOW_AUTO.md` is
+  contract v6, which `docket setup --fix` re-seeds without touching `MEMORY.md`.
+
 - **A removed or rotated secret no longer survives in `secrets.json.bak`.** The secret store keeps
   no copy of an earlier version (no `.bak`, no `.corrupt`), and its next write deletes a backup an
   older docket left. A malformed `secrets.json` now raises instead of restoring a stale key.
@@ -113,6 +133,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a pod with a codebase`. `docket init` with a `workdir` blueprint reviews the same way.
 
 ### Removed
+
+- **The optional OpenHands SDK and PydanticAI adapters of `docket-runtime`** (`docket_runtime.adapters`),
+  their example, fixtures and release tests, and the claims about them in the runtime-library spec
+  (now 3.0.0), `COMPATIBILITY.md` and `SECURITY.md`. The facade and the governed-execution envelope
+  are unchanged.
 
 - **`DISPATCH_TURN_TIMEOUT_S`, `DISPATCH_VERIFY_TIMEOUT_S` and the 300 s `DEFAULT_TIMEOUT` constant.**
   A machine value beat the pod's own `turnTimeoutS`. With nothing declared a hop's time is now
