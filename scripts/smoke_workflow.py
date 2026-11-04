@@ -1516,7 +1516,7 @@ def _run(
     scenario: str,
     consult_mode: str = "park",
     api_key: str | None = None,
-    sandbox: str = "off",
+    sandbox: str = "on",
     exporters: tuple[str, ...] = (),
 ) -> None:
     home, codebase, pod_spec, pipeline = _write_inputs(world, scenario)
@@ -1675,9 +1675,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--sandbox",
         choices=_SANDBOX_CHOICES,
-        default="off",
-        help="Run with the jail on or off (default: off, the command allowlist governs). "
-        "on needs a sandbox backend on this machine.",
+        default="on",
+        help="Run with the jail on or off (default: on, as docket init sets it where the "
+        "machine has a backend). on needs a sandbox backend on this machine; off is the opt-out "
+        "and leaves the command allowlist governing.",
     )
     parser.add_argument(
         "--workdir",
