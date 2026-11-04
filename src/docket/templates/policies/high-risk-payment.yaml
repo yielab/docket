@@ -12,6 +12,8 @@ when:
     - command: {program: [stripe, bitcoin-cli, litecoin-cli], verb: [sendtoaddress, sendmany, send, charges, refunds, payouts, transfers]}
     - command: {program: cast, verb: [send]}
     # Payment wording in any other tool's arguments has no command structure to read.
-    - matches: '\bstripe\b|\bpaypal\b|\bbraintree\b|charge\s+customer|payment.*charge|refund.*amount|wire\s+transfer|bank\s+transfer|\bpayout\b|crypto.*send|\bbtc\b.*send|\beth\b.*send'
+    # A file the built-in tools write is not a payment until something runs it (security-gates 8).
+    - matches: '\bstripe\b|\bpaypal\b|\bbraintree\b|charge\s+customer|payment\W+(?:\w+\W+){0,4}charge|refund\W+(?:\w+\W+){0,4}amount|wire\s+transfer|bank\s+transfer|\bpayout\b|crypto\W+(?:\w+\W+){0,4}send|\bbtc\b\W+(?:\w+\W+){0,4}send|\beth\b\W+(?:\w+\W+){0,4}send'
+      notTool: [write, edit]
 then: ask
 message: Payment/financial operation always requires approval, regardless of exec allowlist.

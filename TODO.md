@@ -121,7 +121,7 @@ from `main`.
 >    guard refuses (no progress, round cap, irreducible unit) leaves the history unchanged and the turn runs. A
 >    summarizer that fails still aborts the turn (agent-loop 36), and request-fit stays the one stop for a request
 >    over the window.
-> 2. The free-text clause of the `ask` templates is not evaluated on the built-in file tools (`write`, `edit`):
+> 2. **Accepted 2026-11-04 by the maintainer; shipped as P68-2.** The free-text clause of the `ask` templates is not evaluated on the built-in file tools (`write`, `edit`):
 >    a new `when` key `notTool`; and `payment.*charge`-style spans are bounded to one phrase. Relaxing a gate is the
 >    maintainer's call; no corpus row is weakened (the payment rows are all commands).
 > 3. The `writer` archetype denies `fetch`: it drafts from the analyst's handoff and cites the researcher's URLs,
@@ -179,7 +179,7 @@ from `main`.
 
 ### P68-2 — A file that mentions payments is not a payment
 
-**Status:** TODO (D-89 proposed; relaxes a gate, needs the maintainer's yes) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** —
+**Status:** DONE 2026-11-04 (D-89 choice 2 accepted by the maintainer the same day; gate green: `test_policy.py` (`TestAFileIsNotAnAction`, `TestNotToolValidation`), `test_policy__corpus.py`, the governance unit and integration files, `tests/architecture`, goldens, `validate-specs.sh`; security-gates 3.16.0. The write/edit cases are unit tests, not corpus rows: the corpus is a measured table of `bash` calls) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** —
 
 - **Trigger:** decision 2's probe: with the shipped template, `write` of "La app cobra con Stripe.", of
   "Payment …(400 words)… No extra charge", of "Refund policy … The amount of stories", of "pays a payout", of

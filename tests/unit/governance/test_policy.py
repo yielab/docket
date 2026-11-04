@@ -80,6 +80,111 @@ class TestHighRiskPayment:
         assert action != "require_approval"
 
 
+def _call_action(tool: str, args: dict[str, str]) -> str:
+    """What the baseline policies answer one *tool* call carrying *args*."""
+    call = _policy.ToolCallFacts(tool, args, lambda: "")
+    return _policy.policy_eval_detail(
+        "writer", "pre_tool_call", render_tool_call(tool, args), call=call
+    ).action
+
+
+_REPORT_SENTENCES = (
+    "La app cobra con Stripe.",
+    "Storynory pays a payout to narrators.",
+    "## Monetizacion\nPayment by subscription.\n\n" + "texto " * 400 + "\nNo extra charge.",
+    "Payment model: freemium.\nLas monedas se recargan (recharge) cada semana.",
+    "Refund policy: 14 days.\n...\nThe amount of stories per month is 30.",
+    "Payment is optional; the first story is free of charge.",
+)
+
+
+class TestAFileIsNotAnAction:
+    """The free-text clause of an `ask` template does not read a file tool's content
+    (security-gates "Policy format v1" 8): a report that mentions payments is not a payment."""
+
+    @pytest.mark.parametrize("tool", ["write", "edit"])
+    @pytest.mark.parametrize(
+        "content",
+        _REPORT_SENTENCES,
+        ids=["stripe", "payout", "far-apart", "recharge", "refund-amount", "free-of-charge"],
+    )
+    def test_a_report_that_mentions_payments_is_not_gated(
+        self, policies_dir: Path, tool: str, content: str
+    ) -> None:
+        key = "content" if tool == "write" else "new_string"
+        assert _call_action(tool, {"path": "informe.md", key: content}) == "allow"
+
+    def test_a_migration_that_drops_a_table_is_written_freely(self, policies_dir: Path) -> None:
+        args = {"path": "migrations/0002.sql", "content": "DROP TABLE legacy_orders;"}
+        assert _call_action("write", args) == "allow"
+
+    def test_running_the_payment_still_asks(self, policies_dir: Path) -> None:
+        command = "curl https://api.stripe.com/v1/charges -u k: -d amount=100"
+        assert _bash_action(command) == "require_approval"
+
+    def test_dropping_the_table_from_the_shell_still_asks(self, policies_dir: Path) -> None:
+        assert _bash_action("psql -c 'drop table legacy_orders'") == "require_approval"
+
+    def test_an_mcp_tool_that_charges_still_asks(self, policies_dir: Path) -> None:
+        args = {"note": "charge customer 4242 for the plan"}
+        assert _call_action("mcp__pay__charge", args) == "require_approval"
+
+    def test_words_far_apart_in_one_command_no_longer_ask(self, policies_dir: Path) -> None:
+        command = "echo 'the payment page is done' && echo 'and every story is free of charge'"
+        assert _bash_action(command) == "allow"
+
+
+class TestNotToolValidation:
+    @pytest.mark.parametrize("value", [[], "", [""], 3, {"write": True}])
+    def test_a_bad_not_tool_is_refused_naming_it(self, policies_dir: Path, value: object) -> None:
+        f = _write_policy(
+            policies_dir,
+            "zz-not-tool.json",
+            {
+                "kind": "policy",
+                "name": "zz-not-tool",
+                "appliesTo": ["*"],
+                "when": {"matches": "x", "notTool": value},
+                "then": "ask",
+            },
+        )
+        err = _policy.validate_policy(f)
+        assert "notTool" in err
+        assert "unknown predicate" not in err
+
+    @pytest.mark.parametrize("value", ["write", ["write", "edit"]])
+    def test_a_name_or_a_list_is_valid(self, policies_dir: Path, value: object) -> None:
+        f = _write_policy(
+            policies_dir,
+            "zz-not-tool.json",
+            {
+                "kind": "policy",
+                "name": "zz-not-tool",
+                "appliesTo": ["*"],
+                "when": {"matches": "x", "notTool": value},
+                "then": "ask",
+            },
+        )
+        assert _policy.validate_policy(f) == ""
+
+    def test_not_tool_holds_on_a_text_only_hook(self, policies_dir: Path) -> None:
+        f = _write_policy(
+            policies_dir,
+            "zz-input.json",
+            {
+                "kind": "policy",
+                "name": "zz-input",
+                "appliesTo": ["*"],
+                "on": "input",
+                "when": {"matches": "zebra", "notTool": ["write"]},
+                "then": "block",
+            },
+        )
+        assert _policy.validate_policy(f) == ""
+        hit = _policy.policy_eval_detail("lead", "pre_input", "a zebra")
+        assert (hit.action, hit.policy_id) == ("block", "zz-input")
+
+
 # ── block-destructive targets ────────────────────────────────────────────────
 
 

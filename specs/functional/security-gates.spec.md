@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.15.0
+**Version**: 3.16.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -491,9 +491,10 @@ policy is refused. A policy can test structured facts of a tool call beside its 
    hook and role (requirement 7 of the policy engine) and the block names the refusal, so a
    canonical file left in `$POLICIES_DIR` fails closed with the short-form key to write.
 4. A policy **MAY** carry a structured `when` mapping instead of, or beside, `match`:
-   `{tool?, path?, matches?, branch?, plugin?, anyOf?: [...]}`. Keys are implicit AND; `anyOf` is
+   `{tool?, notTool?, path?, matches?, branch?, plugin?, anyOf?: [...]}`. Keys are implicit AND; `anyOf` is
    OR over its items, itself AND'd with any sibling keys. `tool` **MUST** equal the call's tool
-   name; `path` **MUST** be an `fnmatch` glob over whichever of the call's `path`, `file_path` or
+   name; `notTool` (a name or a list of names) **MUST** hold unless the call's tool is one of them,
+   so it holds on the text-only hooks, where there is no call; `path` **MUST** be an `fnmatch` glob over whichever of the call's `path`, `file_path` or
    `file` arguments is present (absent on the call, the predicate never matches); `matches`
    **MUST** be the same regex-over-rendered-text test `match.pattern` is; `branch` **MUST** be an
    `fnmatch` glob over the worktree's current branch; `plugin` is "Predicate plugins". A `when`
@@ -516,7 +517,8 @@ policy is refused. A policy can test structured facts of a tool call beside its 
    predicate for text with no command structure (SQL inside another program's argument). The
    validator **MUST** check `when` the way it checks `match`: a policy **MUST** carry a `match` or
    a `when` (a document with neither has nothing to fire on); an unknown `when` key **MUST** be
-   rejected naming the predicates; an uncompilable `when.matches` **MUST** be rejected as an
+   rejected naming the predicates; a `notTool` that is not a non-empty string or a non-empty list of
+   non-empty strings **MUST** be rejected naming `notTool`; an uncompilable `when.matches` **MUST** be rejected as an
    uncompilable `match.pattern` is; a `when.anyOf` that is not a non-empty list **MUST** be
    rejected.
 5. `ToolCallFacts(tool, args, branch_of, worktree_root="")` **MUST** carry what a `when` predicate
@@ -546,7 +548,13 @@ policy is refused. A policy can test structured facts of a tool call beside its 
    suite pins. The four `ask` templates (`block-destructive`, `high-risk-credentials`,
    `high-risk-deploy`, `high-risk-payment`) **MUST** be written with `when.command` for what a
    shell command does, `tool`/`path` for the file tools and `matches` only for text without
-   structure. The corpus of commands that differ in text but not in effect
+   structure. A `matches` item of these templates **MUST** carry `notTool: [write, edit]`: the content
+   of a file the built-in file tools write is not an action (it moves no money and drops no table
+   until something runs it, and running it is `command`'s and the high-risk classes'), and a call's
+   arguments are rendered JSON-encoded on one line, so a pattern over a file's content reads the
+   whole file as one sentence. A span between two words of such a pattern **MUST** be bounded to one
+   phrase (`payment\W+(?:\w+\W+){0,4}charge`, never `payment.*charge`). MCP and service tools keep
+   the free-text clause. The corpus of commands that differ in text but not in effect
    (`tests/fixtures/policy-corpus/corpus.yaml`) is the table
    `tests/unit/governance/test_policy__corpus.py` drives through `evaluate_tool_call` (tool rows)
    and `policy_eval_detail` (screen rows): each row's `expected` outcome **MUST** hold under both

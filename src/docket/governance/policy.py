@@ -49,7 +49,7 @@ _THEN_TO_ACTION: dict[str, str] = {
     "redact": "redact",
 }
 _WHEN_PREDICATE_KEYS: frozenset[str] = frozenset(
-    {"tool", "path", "matches", "branch", "plugin", "command"}
+    {"tool", "notTool", "path", "matches", "branch", "plugin", "command"}
 )
 _WHEN_MODIFIER_KEYS: frozenset[str] = frozenset({"with"})  # meaningful only beside "plugin"
 _POLICY_GLOBS: tuple[str, ...] = ("*.json", "*.yaml", "*.yml")
@@ -73,18 +73,31 @@ _TASK_POLICIES: ContextVar[tuple[dict[str, Any], ...]] = ContextVar("_TASK_POLIC
 _INJECTION_IDS: frozenset[str] = frozenset({"prompt-injection"})
 
 
+def _not_tool_names(value: Any) -> tuple[str, ...]:
+    """The names a ``notTool`` value lists, or ``()`` for a value that is not a non-empty name or
+    a non-empty list of non-empty names."""
+    names = [value] if isinstance(value, str) else value
+    if not isinstance(names, list) or not names:
+        return ()
+    if not all(isinstance(n, str) and n.strip() for n in names):
+        return ()
+    return tuple(names)
+
+
 def _validate_when(when: Any, label: str) -> str:
     """Validate a canonical ``when`` predicate mapping (or one ``anyOf`` item): '' if valid,
-    else the error. Unknown keys are reported against the five leaf predicates -- ``anyOf`` is
-    the OR container, not a predicate itself."""
+    else the error. Unknown keys are reported against the leaf predicates -- ``anyOf`` is the OR
+    container, not a predicate itself."""
     if not isinstance(when, dict):
         return f"{label}: when must be a mapping"
     unknown = set(when.keys()) - _WHEN_PREDICATE_KEYS - _WHEN_MODIFIER_KEYS - {"anyOf"}
     if unknown:
         return (
             f"{label}: unknown predicate key(s) {sorted(unknown)} "
-            "(valid: tool, path, matches, branch, plugin, command)"
+            "(valid: tool, notTool, path, matches, branch, plugin, command)"
         )
+    if "notTool" in when and not _not_tool_names(when["notTool"]):
+        return f"{label}: when.notTool must be a tool name or a non-empty list of tool names"
     command = when.get("command")
     if command is not None:
         err = _command.validate_command(command, label)
@@ -213,7 +226,7 @@ def normalize_policy(short: dict[str, Any]) -> dict[str, Any]:
         canonical["action"] = _THEN_TO_ACTION.get(doc["then"], doc["then"])
         del canonical["then"]
 
-    # `when: {tool?, path?, matches?, branch?, anyOf?}` is copied through -- except that a
+    # `when: {tool?, notTool?, path?, matches?, branch?, anyOf?}` is copied through -- except that a
     # `when` whose only key is `matches` collapses into `match: {type: regex, pattern: ...}`
     # instead, so a plain regex policy's canonical form is byte-identical whether it was
     # written short or long (the round trip the shipped templates rely on).
@@ -476,6 +489,8 @@ def _predicate_matches(
     # A `tool`/`path`/`branch` predicate never matches with `call is None` (a text-only hook);
     # `matches` always can, since it only needs the rendered text every hook already has.
     if "tool" in when and (call is None or call.tool != when["tool"]):
+        return False
+    if "notTool" in when and call is not None and call.tool in _not_tool_names(when["notTool"]):
         return False
     if "path" in when:
         path_val = _path_arg(call.args) if call is not None else None

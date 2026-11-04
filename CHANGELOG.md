@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A file that mentions payments is not a payment.** The free-text clause of the shipped
+  `high-risk-payment` and `block-destructive` policies no longer reads what `write` and `edit` put in a
+  file, so a report that names Stripe or says "free of charge" no longer waits for approval; running the
+  file, a `curl` to a payment provider and an MCP or service tool still ask. Its word spans are bounded to
+  one phrase (`payment … charge` within four words, not anywhere in the call). Policies gain the `when`
+  key `notTool`. A home keeps the policy files it installed: copy the two templates over them to take
+  the change.
 - **The Docker container that reads a PDF is bounded.** It runs with 1 GiB of memory and swap and 256
   processes, as the other backends bound the extractor; before, only the deadline bounded it.
 - **Three defects Tack found on a research team.**

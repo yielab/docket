@@ -611,7 +611,7 @@ message: curl needs approval
 |---|---|
 | `appliesTo` | Role names as dispatch sees them (`implementer`, `reviewer`, … or a custom role), or `"*"`. |
 | `on` | `input` (a task entering the queue; always evaluated as role `lead`), `toolCall` (tool name and arguments, the default), `output` (a hop's output). |
-| `when` | `tool`, `path` (glob over a path/file argument), `matches` (regex over the rendered call, case-insensitive; for text with no structure, such as SQL), `branch` (glob over the worktree branch), `command` (a shell command read by invocation, below), `anyOf` (OR over a list of the above); sibling keys AND. |
+| `when` | `tool`, `notTool` (a name or a list: holds unless the call is one of these tools), `path` (glob over a path/file argument), `matches` (regex over the rendered call, case-insensitive; for text with no structure, such as SQL; the shipped `ask` templates give it `notTool: [write, edit]`, since a file the agent writes moves no money and drops no table until something runs it), `branch` (glob over the worktree branch), `command` (a shell command read by invocation, below), `anyOf` (OR over a list of the above); sibling keys AND. |
 | `then` | `allow`, `warn` (record only), `redact`, `ask` (require approval), `block` (deny). There is no `deny` action; use `block`. |
 
 `when.command` reads a `bash` call's command line the way the classifier does (every segment behind
