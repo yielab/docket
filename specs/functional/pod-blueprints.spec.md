@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 4.5.0
+**Version**: 4.6.0
 **Status**: Implemented
 **Last Updated**: 2026-11-03
 
@@ -216,8 +216,8 @@ This specification does NOT cover:
    settable pod setting (Interface Contracts, "Pod settings keys"), validated before anything is
    written and audited as `pod.config`. `pipeline` and `schedule` keep their dedicated writers (a
    validated bound pipeline copy; the `docket-schedules.json` entry); the recorded keys
-   (`configSource`, `configDigest`, `exporters`) are refused, naming `docket pod update` as their
-   writer; an unknown key exits 1 listing the valid ones.
+   (`configSource`, `configDigest`, `exporters`, `needs`) are refused, naming `docket pod update` as
+   their writer; an unknown key exits 1 listing the valid ones.
 2. `budgetTokens` is a setting like the rest: setting a cap, or `unset`, clears
    the Lead's `paused`/`pausedReason` and re-queues the pod's blocked tasks.
 3. `verify` is the one key that belongs to a member, not the pod: `docket pod set verify "<cmd>"
@@ -502,8 +502,11 @@ overlay, policies, members, pipeline binding, settings) into one command.
     least one host), `search-host` (a known search site is among those hosts, or a search service
     is declared) and `isolation` (a jail enforces: isolation is recorded on and a sandbox backend
     exists). A value that is not a list, or an entry outside the three names, **MUST** be rejected
-    naming `needs` before anything is written. `needs` is part of what a recipe declares, not pod
-    state: apply records nothing for it and `docket pod export` does not write it back. After the
+    naming `needs` before anything is written. Every apply **MUST** record the Lead's `needs`
+    setting: the union, in first-seen order, of the pod's recorded list and the names that
+    directory's `pod.yaml` declares; a directory that declares none leaves the key as it was. `needs`
+    is a recorded key (requirement 1 of "Pod settings: set and unset"): `docket pod set needs` and a
+    `pod.yaml` `settings.needs` are refused, and `docket pod export` does not write it back. After the
     plan is applied, `docket pod update <dir>` (after its result line) and `docket init
     --recipe`/a discovered `.docket/` (at the end of its output, after init has recorded isolation
     on where a backend is detected, so the line is never stale) **MUST** print, from one function,
@@ -521,7 +524,9 @@ overlay, policies, members, pipeline binding, settings) into one command.
       not read, isolation is off -> docket setup sandbox on`, and when it is on but this machine
       has no sandbox backend, `needs isolation: PDFs are not read, no sandbox backend ->
       docket setup sandbox backend docker`.
-    Each not-ready line names exactly one command. The block is informational: it **MUST NOT**
+    Each line is also one entry of `needs` in `docket pod show --json` (`kind`, `name`, `fix`,
+    `satisfied`; cli-json-shapes.spec.md), and `docket pod show` prints the same words, one line per
+    recorded need, computed as the pod is now. Each not-ready line names exactly one command. The block is informational: it **MUST NOT**
     change the exit status, refuse or alter the apply, or write any setting, and `--dry-run`
     prints no block.
 

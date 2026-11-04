@@ -1,6 +1,6 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 5.7.0
+**Version**: 5.8.0
 **Status**: Complete. Every field below is written by a live path and read by one; the Lead's file
 also carries the pod's settings (see "Pod settings on the Lead"), which Phase 46 moves out.
 **Last Updated**: 2026-11-03
@@ -119,11 +119,13 @@ listed. Each write is audited (`pod.config`).
 | `protects` | comma-joined string | none | Path globs a task may not change without a person; they add to the defaults and never remove one |
 | `profile` | string | `attended` | `attended` or `lights-out`; a pod may only move toward stricter than the machine's recorded profile |
 
-Three more keys are **recorded by `docket pod update`**, are never operator-settable (`docket pod
+Four more keys are **recorded by `docket pod update`**, are never operator-settable (`docket pod
 set` and a `pod.yaml` `settings` mapping both refuse them), and are read alongside the table above:
 `configSource` (the absolute directory last applied), `configDigest` (sha256 of that directory's
-contents, lowercase hex or empty), and `exporters` (comma-joined exporter names the applied recipe
-named).
+contents, lowercase hex or empty), `exporters` (comma-joined exporter names the applied recipe
+named), and `needs` (comma-joined need names, in first-seen order: the union of what the pod
+already recorded and what each applied directory's `pod.yaml` declares; a directory that declares
+none leaves the key as it was; stored like `protects`).
 
 ## Single-source contract
 
@@ -284,7 +286,7 @@ stand as written; these change when the cards land.
 - **P46-11** (pod settings move to `pods/<pod>/settings.json`): the whole "Pod settings on the Lead"
   section (every key of the table, the "only the Lead's value is consulted" rule, the
   absent/`null`/malformed read rules, `unset` writing `null`, the recorded keys `configSource`,
-  `configDigest`, `exporters`), and the pod-level rows `budgetTokens`, `paused`
+  `configDigest`, `exporters`, `needs`), and the pod-level rows `budgetTokens`, `paused`
   and `pausedReason` of the agent table (the budget pause is stored on the Lead). `verifyCmd` is a
   per-member field and is not part of `PodSettings`; whether it moves is that card's decision.
 - **P46-1** (module layout): the "Implementation" section below is rewritten by the codemod; no

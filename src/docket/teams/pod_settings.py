@@ -268,6 +268,11 @@ class PodSettings(BaseModel):
     # by `plan_apply` before this is ever stored, so no catalog dependency is added here.
     exporters: tuple[str, ...] = Field((), alias="exporters")
 
+    # What the applied recipes said their work needs (`teams.apply.needs`): need names, comma-joined
+    # in storage like `protects`, in first-seen order. Recorded by `teams.apply.write.apply` as the
+    # union of the pod's list and each applied directory's `pod.yaml` `needs`; never settable.
+    needs: tuple[str, ...] = Field((), alias="needs")
+
     # The operator's recorded yes that widens this pod past a machine at network `none`
     # (``effective_network``): the stored form is the JSON text of ``{"at", "by"}``. Written only by
     # ``grant_network`` (`docket pod set network open --widen`), never by `apply`/`pod set`.
@@ -318,6 +323,7 @@ class PodSettings(BaseModel):
         "configSource",
         "configDigest",
         "exporters",
+        "needs",
         NETWORK_GRANT_KEY,
         FETCH_GRANT_KEY,
     )
@@ -546,12 +552,12 @@ class PodSettings(BaseModel):
             raise InvalidInput("must be 'park' or 'decide'")
         return name
 
-    @field_validator("exporters", mode="before")
+    @field_validator("exporters", "needs", mode="before")
     @classmethod
-    def _parse_exporters(cls, value: Any) -> tuple[str, ...]:
-        """Comma-separated exporter catalog names, like ``allow_commands`` -- already
-        validated against the catalog by ``teams.apply.plan.plan_apply`` before this is ever
-        stored, so this parser only reshapes the stored string back into a tuple."""
+    def _parse_recorded_names(cls, value: Any) -> tuple[str, ...]:
+        """Comma-separated names (exporter catalog names, need names), like ``allow_commands`` --
+        already validated by ``teams.apply.plan.plan_apply`` before they are ever stored, so this
+        parser only reshapes the stored string back into a tuple, first-seen order, no repeat."""
         if value in (None, ""):
             return ()
         tokens = list(value) if isinstance(value, (list, tuple)) else str(value).split(",")

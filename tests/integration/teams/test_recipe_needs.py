@@ -6,8 +6,10 @@ The block is informational: it comes from the readers the pod report uses
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 from tests.support.cli import pod_cli as _pod_cli
@@ -195,3 +197,125 @@ def test_web_research_declares_the_three_needs_and_its_text_is_not_stale() -> No
     assert "FETCH_ALLOWED_DOMAINS" not in readme
     assert "setup mcp add" not in readme
     assert "poppler" not in readme.lower() and "pdftotext" not in readme.lower()
+
+
+def _show_needs(project: str = "demo") -> list[dict[str, Any]]:
+    result = runner.invoke(app, ["pod", "show", "--pod", project, "--json"])
+    assert result.exit_code == 0, result.output
+    needs: list[dict[str, Any]] = json.loads(result.stdout)["needs"]
+    return needs
+
+
+def _recipe_dir(tmp_path: Path, name: str, extra: str) -> Path:
+    directory = tmp_path / name
+    directory.mkdir()
+    (directory / "pod.yaml").write_text(f"kind: pod\nname: {name}\n{extra}", encoding="utf-8")
+    return directory
+
+
+def test_pod_show_json_carries_the_three_needs_the_recipe_declared(
+    tmp_path: Path, no_backend: None
+) -> None:
+    """A fresh home: `init --recipe web-research` leaves three unsatisfied needs, each with its fix."""
+    code, output = _init_web_research(tmp_path)
+    assert code == 0, output
+
+    assert _show_needs() == [
+        {
+            "kind": "fetch-hosts",
+            "name": "fetch-hosts",
+            "fix": "docket pod set fetchDomains <hosts> --pod demo",
+            "satisfied": False,
+        },
+        {
+            "kind": "search-host",
+            "name": "search-host",
+            "fix": "docket pod set fetchDomains 'html.duckduckgo.com' --pod demo",
+            "satisfied": False,
+        },
+        {
+            "kind": "isolation",
+            "name": "isolation",
+            "fix": "docket setup sandbox on",
+            "satisfied": False,
+        },
+    ]
+
+
+def test_pod_show_prints_one_line_per_need_in_the_apply_words(
+    tmp_path: Path, no_backend: None
+) -> None:
+    """`pod show` repeats the three lines `init` printed, byte for byte."""
+    _init_web_research(tmp_path)
+
+    result = runner.invoke(app, ["pod", "show", "--pod", "demo"])
+
+    assert _needs_lines(result.output) == [FETCH_NOT_READY, SEARCH_NOT_READY, ISOLATION_OFF]
+
+
+def test_pod_show_json_recomputes_satisfaction_and_keeps_the_recorded_list(
+    tmp_path: Path, no_backend: None
+) -> None:
+    """Setting a search host satisfies two needs with an empty fix; the recorded list is unchanged."""
+    _init_web_research(tmp_path)
+    before = _fleet.meta_get("demo-lead", "needs", "")
+
+    assert _pod_cli("set", "fetchDomains", "html.duckduckgo.com", "--pod", "demo").exit_code == 0
+
+    by_kind = {entry["kind"]: entry for entry in _show_needs()}
+    assert (by_kind["fetch-hosts"]["satisfied"], by_kind["fetch-hosts"]["fix"]) == (True, "")
+    assert (by_kind["search-host"]["satisfied"], by_kind["search-host"]["fix"]) == (True, "")
+    assert by_kind["isolation"]["satisfied"] is False
+    assert (
+        _fleet.meta_get("demo-lead", "needs", "") == before == "fetch-hosts,search-host,isolation"
+    )
+
+
+def test_pod_show_json_has_no_needs_for_a_pod_whose_recipes_declared_none(
+    tmp_path: Path, no_backend: None
+) -> None:
+    """Nothing recorded: the key is present and empty, and `pod show` prints no needs line."""
+    with _seed_fixture_pod(tmp_path, "demo"):
+        assert _show_needs() == []
+        assert _needs_lines(runner.invoke(app, ["pod", "show", "--pod", "demo"]).output) == []
+
+
+def test_a_later_directory_without_needs_keeps_the_recorded_three(
+    tmp_path: Path, no_backend: None
+) -> None:
+    """Applying a recipe that declares no `needs` leaves the recorded list as it was."""
+    with _seed_fixture_pod(tmp_path, "demo"):
+        assert _pod_cli("update", "web-research", "--pod", "demo").exit_code == 0
+
+        assert _pod_cli("update", "secure-build", "--pod", "demo").exit_code == 0
+
+        assert [e["kind"] for e in _show_needs()] == ["fetch-hosts", "search-host", "isolation"]
+
+
+def test_a_later_directory_naming_a_need_already_recorded_adds_no_duplicate(
+    tmp_path: Path, no_backend: None
+) -> None:
+    """The union is first-seen order with no repeat; a new name lands after the recorded ones."""
+    with _seed_fixture_pod(tmp_path, "demo"):
+        first = _recipe_dir(tmp_path, "first", "needs: [isolation]\n")
+        assert _pod_cli("update", str(first), "--pod", "demo").exit_code == 0
+        assert _fleet.meta_get("demo-lead", "needs", "") == "isolation"
+
+        assert _pod_cli("update", "web-research", "--pod", "demo").exit_code == 0
+
+        assert _fleet.meta_get("demo-lead", "needs", "") == "isolation,fetch-hosts,search-host"
+        again = _recipe_dir(tmp_path, "again", "needs: [isolation]\n")
+        assert _pod_cli("update", str(again), "--pod", "demo").exit_code == 0
+        assert _fleet.meta_get("demo-lead", "needs", "") == "isolation,fetch-hosts,search-host"
+
+
+def test_needs_is_recorded_not_settable(tmp_path: Path) -> None:
+    """`pod set needs` and a `pod.yaml` `settings.needs` are refused naming the key."""
+    with _seed_fixture_pod(tmp_path / "home", "demo"):
+        result = _pod_cli("set", "needs", "isolation", "--pod", "demo")
+        assert result.exit_code == 1
+        assert "needs is written by update" in result.output
+
+        recipe = _recipe_dir(tmp_path, "bad", "settings:\n  needs: [isolation]\n")
+        with pytest.raises(_model.PodApplyError, match="needs"):
+            _pod_apply.plan_apply("demo", recipe)

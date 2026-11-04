@@ -332,6 +332,7 @@
     "fetchDomains": [
       "docs.python.org"
     ],
+    "needs": [],
     "workDir": "<home>/state/workspaces/pods/research/workdir",
     "configSource": "",
     "configDigest": "",

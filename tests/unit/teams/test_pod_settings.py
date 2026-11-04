@@ -536,6 +536,18 @@ class TestEffectiveNetworkGrant:
         assert pod_settings.effective_network("shop") == ("none", "global")
 
 
+class TestPodSettingsNeeds:
+    def test_needs_is_a_recorded_key_not_a_settable_one(self) -> None:
+        assert "needs" in pod_settings.PodSettings.RECORDED_KEYS
+        assert "needs" not in pod_settings.PodSettings.KEYS
+        with pytest.raises(pod_settings.PodSettingsError, match="unknown pod setting"):
+            pod_settings.PodSettings.coerce("needs", "isolation")
+
+    def test_needs_reads_back_comma_joined_in_order(self) -> None:
+        _write_lead_meta("shop", {"needs": "isolation,fetch-hosts,isolation"})
+        assert pod_settings.PodSettings.load_for("shop").needs == ("isolation", "fetch-hosts")
+
+
 class TestWorkspaceKind:
     """A pod's workspace kind is the one its Lead records; a folder pod takes no install."""
 
