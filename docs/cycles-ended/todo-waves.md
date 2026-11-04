@@ -22763,3 +22763,23 @@ Two cards: P62-1 (the PDF reader runs docket's own interpreter and `pypdf` in th
   check.
 - **Gate:** `uv run ruff check scripts/`; `uv run ruff format --check scripts/`.
 
+## ▶ WAVE 65 · the Docker PDF run is bounded (found by the PDF release-gate run, 2026-11-04)
+
+### P65-1 — The Docker container that reads a PDF has a memory and a process bound
+
+**Status:** DONE (2026-11-04) · **Size:** S · **Model:** Sonnet · **Kind:** security defect · **After:** none
+
+- **Trigger:** the release-gate PDF run on Docker (a subagent, 2026-11-04): `bomb.pdf` with a 60 s deadline
+  returned `ok` after 19.7 s, because `_docker_prefix` (`sandbox/docker.py` ~66) passed no `--memory` or
+  `--pids-limit`; on Landlock the same file is refused by the extractor's 1 GiB `RLIMIT_AS`.
+- **Goal:** the PDF container gets the same 1 GiB bound as the other backends, swap off, and a process cap.
+  Only the PDF run asks for it (`JailedRun.memory_bytes`, `max_pids`); `bash` and MCP containers are unchanged.
+- **Acceptance:** `docker_command_argv(..., memory_bytes=1<<30, max_pids=256)` carries `--memory`,
+  `--memory-swap` and `--pids-limit` before the image, none when not asked (unit); the Docker PDF run asks
+  for them and Landlock/Seatbelt ask for nothing (`test_pdf_text.py`). Live: a memory hog in the real argv
+  exits 137 in 0.4 s and leaves no container.
+- **Spec:** `security-gates.spec.md` 3.14.0, the Docker sentence of requirement 2's PDF bullet.
+- **Not done, on purpose:** a hostile-PDF test on Docker needs an image with `pdftotext`, which the
+  repository does not build; Seatbelt still needs a macOS run before the release tag (`RLIMIT_AS` there, the
+  read of the interpreter's `sys.prefix`).
+

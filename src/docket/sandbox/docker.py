@@ -55,10 +55,20 @@ def docker_command_argv(
     env: dict[str, str] | None,
     network: bool = True,
     read_only: tuple[Path, ...] = (),
+    memory_bytes: int = 0,
+    max_pids: int = 0,
 ) -> list[str]:
-    """The same jail as :func:`docker_run_argv`, running *argv* directly with stdin kept open (``-i``)."""
+    """The same jail as :func:`docker_run_argv`, running *argv* directly with stdin kept open (``-i``).
+    A non-zero *memory_bytes* caps memory and swap together, a non-zero *max_pids* the process count."""
     prefix = _docker_prefix(
-        container_name, roots, env, network, interactive=True, read_only=read_only
+        container_name,
+        roots,
+        env,
+        network,
+        interactive=True,
+        read_only=read_only,
+        memory_bytes=memory_bytes,
+        max_pids=max_pids,
     )
     return [*prefix, *argv]
 
@@ -70,6 +80,8 @@ def _docker_prefix(
     network: bool,
     interactive: bool = False,
     read_only: tuple[Path, ...] = (),
+    memory_bytes: int = 0,
+    max_pids: int = 0,
 ) -> list[str]:
     argv = [
         "docker",
@@ -83,6 +95,10 @@ def _docker_prefix(
     ]
     if not network:
         argv += ["--network", "none"]
+    if memory_bytes:
+        argv += ["--memory", str(memory_bytes), "--memory-swap", str(memory_bytes)]
+    if max_pids:
+        argv += ["--pids-limit", str(max_pids)]
     rw, ro = _mount_dirs(roots)
     for resolved in rw:
         argv += ["-v", f"{resolved}:{resolved}"]

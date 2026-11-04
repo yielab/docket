@@ -299,6 +299,8 @@ class Jail(Protocol):
         env: dict[str, str] | None,
         network: bool = True,
         read_only: tuple[Path, ...] = (),
+        memory_bytes: int = 0,
+        max_pids: int = 0,
     ) -> list[str]: ...
     def landlock_command_argv(
         self,

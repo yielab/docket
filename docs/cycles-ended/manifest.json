@@ -950,5 +950,13 @@
     "heading": "▶ PHASE 64 ACTIVE — WAVE 63-64 (three waves shared with Phase 63) · the pod's memory works for every pod (D-86, accepted 2026-11-03)",
     "bytes": 21803,
     "sha256": "1a6c42a3d82d43d605807dbeaa7ed13cf90c6c19aab733e325365dac0f87a6a2"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "▶ WAVE 65 · the Docker PDF run is bounded (found by the PDF release-gate run, 2026-11-04)",
+    "bytes": 1532,
+    "sha256": "57eb03a529755789ba08512f9778d36db55f6bc01d3d1431dc46aef0103a7507"
   }
 ]

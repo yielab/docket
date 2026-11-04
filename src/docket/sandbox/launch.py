@@ -292,8 +292,12 @@ class Launcher:
         env: dict[str, str] | None,
         network: bool = True,
         read_only: tuple[Path, ...] = (),
+        memory_bytes: int = 0,
+        max_pids: int = 0,
     ) -> list[str]:
-        return _docker.docker_command_argv(container_name, roots, argv, env, network, read_only)
+        return _docker.docker_command_argv(
+            container_name, roots, argv, env, network, read_only, memory_bytes, max_pids
+        )
 
     def landlock_command_argv(
         self,

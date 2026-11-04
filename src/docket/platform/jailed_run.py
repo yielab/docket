@@ -35,6 +35,9 @@ class JailedRun:
     seconds: float
     max_output: int
     network: bool = False
+    # The docker backend's bounds (0 is none); the other backends are bounded by the extractor itself.
+    memory_bytes: int = 0
+    max_pids: int = 0
 
 
 @dataclass(frozen=True)
@@ -61,7 +64,16 @@ def _jailed_argv(run: JailedRun) -> tuple[list[str], str]:
         return _jail.seatbelt_command_argv(roots, command, run.network, run.read_only), ""
     if run.backend == "docker":
         name = _ids.new_short_id("docket-pdf")
-        argv = _jail.docker_command_argv(name, roots, command, run.env, run.network, run.read_only)
+        argv = _jail.docker_command_argv(
+            name,
+            roots,
+            command,
+            run.env,
+            run.network,
+            run.read_only,
+            run.memory_bytes,
+            run.max_pids,
+        )
         return argv, name
     raise Unavailable(f"no sandbox backend to run under: {run.backend!r}")
 

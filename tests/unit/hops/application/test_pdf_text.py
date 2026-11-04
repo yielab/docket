@@ -171,6 +171,16 @@ class TestTheExtractor:
             "pdftotext", "-enc", "UTF-8", "-nopgbrk", "-q", "--", "in.pdf", "-",
         )  # fmt: skip
 
+    def test_docker_bounds_memory_and_processes_and_the_others_ask_nothing(
+        self, fake_jail: FakeJail
+    ) -> None:
+        docker, landlock = _Runner(), _Runner()
+        _read(_backend(fake_jail, "docker"), docker)
+        _read(_backend(fake_jail, "landlock"), landlock)
+
+        assert (docker.runs[0].memory_bytes, docker.runs[0].max_pids) == (1 << 30, 256)
+        assert (landlock.runs[0].memory_bytes, landlock.runs[0].max_pids) == (0, 0)
+
     def test_docker_without_it_names_the_image(self, fake_jail: FakeJail) -> None:
         runner = _Runner(_jailed_run.Ran(127, b"", b"exec: not found\n"))
         out, _ = _read(_backend(fake_jail, "docker"), runner)

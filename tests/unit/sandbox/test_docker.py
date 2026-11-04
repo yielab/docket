@@ -63,3 +63,28 @@ class TestRefNarrowingOnDocker:
         (common / "refs").mkdir(parents=True)
         mounts = self._mounts(self._docker(tmp_path, [common]))
         assert not [m for m in mounts if m.endswith(":ro") and "refs" in m]
+
+
+class TestResourceLimits:
+    def _argv(self, **limits: int) -> list[str]:
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(os, "getuid", lambda: 1000)
+            mp.setattr(os, "getgid", lambda: 1000)
+            return _docker_mod.docker_command_argv(
+                "c", (Path("/work"),), ["pdftotext"], None, False, **limits
+            )
+
+    def test_a_memory_and_pid_bound_become_docker_flags_with_swap_off(self) -> None:
+        argv = self._argv(memory_bytes=1 << 30, max_pids=256)
+
+        assert argv[argv.index("--memory") + 1] == str(1 << 30)
+        assert argv[argv.index("--memory-swap") + 1] == str(1 << 30)
+        assert argv[argv.index("--pids-limit") + 1] == "256"
+        assert argv.index("--pids-limit") < argv.index(
+            _docker_mod.current_home().sandbox_docker_image
+        )
+
+    def test_no_bound_adds_no_flag(self) -> None:
+        argv = self._argv()
+
+        assert not {"--memory", "--memory-swap", "--pids-limit"} & set(argv)

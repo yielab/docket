@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Docker container that reads a PDF is bounded.** It runs with 1 GiB of memory and swap and 256
+  processes, as the other backends bound the extractor; before, only the deadline bounded it.
 - **Three defects Tack found on a research team.**
   - `docket pod show` and `GET /pods/<pod>` no longer contradict themselves: the `settings.network`
     row carries the effective mode (a pod with nothing set reads `none` under a machine at `none`),

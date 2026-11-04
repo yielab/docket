@@ -34,6 +34,10 @@ _SCRIPT = "extract.py"
 _OWN_COMMAND = (sys.executable, "-I", _SCRIPT, _INPUT)
 # The one external extractor: the docker image has no docket interpreter, so it brings its own.
 _DOCKER_EXTRACTOR = "pdftotext"
+# The container's bounds: the extractor's own address-space limit on the other backends, and a
+# process count no extractor needs more than.
+_DOCKER_MEMORY_BYTES = 1 << 30
+_DOCKER_MAX_PIDS = 256
 _DOCKER_COMMAND = (_DOCKER_EXTRACTOR, "-enc", "UTF-8", "-nopgbrk", "-q", "--", _INPUT, "-")
 # The most the extractor's stdout is read for; the tool's own output cap then applies to it.
 _MAX_TEXT_BYTES = 2_000_000
@@ -138,6 +142,8 @@ def pdf_text(
                 read_only=read_only,
                 seconds=seconds,
                 max_output=_MAX_TEXT_BYTES,
+                memory_bytes=_DOCKER_MEMORY_BYTES if backend == "docker" else 0,
+                max_pids=_DOCKER_MAX_PIDS if backend == "docker" else 0,
             )
             ran = run(job)
         return _outcome(ran, backend)

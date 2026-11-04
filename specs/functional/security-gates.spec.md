@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.13.0
+**Version**: 3.14.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -1236,7 +1236,9 @@ material, may be read as saying otherwise.
      page's text to stdout, and a failure is exit 1 with one stderr line. With **Docker** the image
      has no docket interpreter, so the command is the image's own `pdftotext -enc UTF-8 -nopgbrk -q
      -- in.pdf -` (poppler): the one place an extractor is external, an image without it is
-     refused naming the image. The run is bounded by what is left of the call's deadline, its
+     refused naming the image. The Docker container is started with `--memory` and `--memory-swap` at
+     1 GiB (the extractor's own address-space limit on the other backends) and `--pids-limit` 256, so a
+     document that inflates past memory is killed by the daemon, not swapped. The run is bounded by what is left of the call's deadline, its
      process group is killed at the deadline (a docker container is stopped by name), its output is
      read up to a bound and then cut with the truncation announced, and the directory is removed
      whatever happens. The run **MUST** fail closed, each refusal (`refusal="fetch_not_allowed"`,
