@@ -175,7 +175,7 @@ def _record_task_memory(
                 task_id=task_id,
             )
             continue
-        subject, status, reason, code = _decide(line, facts, hop.role)
+        subject, status, reason, evidence = _decide(line, facts, hop.role)
         changes.append(
             MemoryEntry(
                 id=entry_id(line.kind, subject),
@@ -184,8 +184,8 @@ def _record_task_memory(
                 note=line.note[: current_home().pod_memory_note_max_chars],
                 status=status,
                 reason=reason,
-                provenance={"task": task_id, "date": today, "commit": facts.commit},
-                exit=code,
+                provenance={"task": task_id, "date": today, **facts.anchor},
+                exit=(evidence or {}).get("exit"),
             )
         )
     applied: list[MemoryEntry] = []

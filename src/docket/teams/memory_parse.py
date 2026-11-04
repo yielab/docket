@@ -24,74 +24,6 @@ _INSTRUCTION_PHRASES = re.compile(
     r"|\bdo not\b|\bdon'?t\b|\bfrom now on\b|\bsystem prompt\b",
     re.IGNORECASE,
 )
-_IMPERATIVE_FIRST_WORDS = frozenset(
-    [
-        "run",
-        "use",
-        "call",
-        "execute",
-        "delete",
-        "remove",
-        "write",
-        "read",
-        "send",
-        "fetch",
-        "download",
-        "install",
-        "push",
-        "pull",
-        "curl",
-        "wget",
-        "ignore",
-        "disregard",
-        "override",
-        "always",
-        "never",
-        "do",
-        "don't",
-        "dont",
-        "make",
-        "ensure",
-        "change",
-        "edit",
-        "open",
-        "skip",
-        "avoid",
-        "prefer",
-        "apply",
-        "create",
-        "rename",
-        "replace",
-        "enable",
-        "disable",
-        "allow",
-        "approve",
-        "grant",
-        "reveal",
-        "print",
-        "tell",
-        "paste",
-        "follow",
-        "obey",
-        "treat",
-        "assume",
-        "pretend",
-        "forget",
-        "remember",
-        "try",
-        "merge",
-        "commit",
-        "add",
-        "fix",
-        "keep",
-        "put",
-        "take",
-        "look",
-        "go",
-        "be",
-        "let",
-    ]
-)
 
 
 @dataclass(frozen=True)
@@ -156,11 +88,8 @@ def _safe_path(subject: str) -> str:
 
 
 def _reads_as_instruction(text: str) -> str:
-    words = re.findall(r"[A-Za-z']+", text.lower())
     if _URL.search(text):
         return "contains a link"
-    if words and words[0] in _IMPERATIVE_FIRST_WORDS:
-        return "starts with an imperative verb"
     if _INSTRUCTION_PHRASES.search(text):
         return "reads as an instruction"
     return ""

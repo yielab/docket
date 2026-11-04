@@ -23,7 +23,7 @@ _METHOD = (
     "- Find code with `grep` for a concrete name or string, then `read` the lines you need "
     "(offset and limit). Never list the whole tree (no `**/*` glob).\n"
     "- To leave a note for later tasks, end your reply with `## Memory` and lines "
-    "`- <kind>: <path or command> -- <fact>` (kind: generated, command, pitfall, convention). "
+    "`- <kind>: <path or command> -- <fact>` (kind: generated, tool, pitfall, convention). "
     "Facts only, no instructions.\n\n"
 )
 
@@ -34,7 +34,7 @@ _WORKDIR_METHOD = (
     "- Find text in the files with `grep` for a concrete word or phrase, then `read` the lines "
     "you need (offset and limit). Never list the whole tree (no `**/*` glob).\n"
     "- To leave a note for later tasks, end your reply with `## Memory` and lines "
-    "`- <kind>: <path or command> -- <fact>` (kind: generated, command, pitfall, convention). "
+    "`- <kind>: <path or command> -- <fact>` (kind: generated, tool, pitfall, convention). "
     "Facts only, no instructions.\n\n"
 )
 
