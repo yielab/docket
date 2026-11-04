@@ -177,7 +177,7 @@ from `main`.
 
 ### P63-2 — `GET /pods/<p>` carries the pod's contract: what it delivers, the methods a task may name, what it still needs
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P63-1 (it serves the recorded `needs`), P63-3 (both edit `hops/application/steps.py`)
+**Status:** DONE (wave 2, 2026-11-04) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P63-1 (it serves the recorded `needs`), P63-3 (both edit `hops/application/steps.py`)
 
 - **Trigger:** Tack's D2. Its card D fits a profile to a team from `delivers`, `methods` and `needs` and
   refuses a run before any `POST /tasks` when the fit fails; today it infers the first from
@@ -332,7 +332,7 @@ from `main`.
 
 ### P63-5 — The pod budget gets a window, counted from the day the tokens were spent
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P63-1 merged (both edit `teams/pod_settings.py`; no other dependency)
+**Status:** DONE (wave 2, 2026-11-04) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P63-1 merged (both edit `teams/pod_settings.py`; no other dependency)
 
 - **Trigger:** Tack's D4. `budgetTokens` is compared with `pod_counted_tokens`
   (`hops/application/usage.py` 45-54), a lifetime sum over every member and session, so `frugal`'s
@@ -350,7 +350,7 @@ from `main`.
     function in `hops/domain/gate_decisions.py`: `none` is `None`; `day` 00:00 UTC today; `week` Monday
     00:00 UTC.
   - `pod_counted_tokens(project, since=None)`: with `since`, sums each member's `by_day` buckets whose
-    day is on or after `since`'s date; without it, today's total. Both pre-hop readers
+    day is on or after `since`'s date; without it, the lifetime total (the existing behaviour). Both pre-hop readers
     (`hops/gates/pre_hop.py` ~104 the ceiling, ~123 the gate) pass the window's start.
     `budget_exceeded`'s detail gains `window` and `windowStart` (`"none"` and `null` without a window).
   - `docket pod set budgetWindow <day|week|none>` validates through `coerce`; a `set` or `unset` of
@@ -387,7 +387,7 @@ from `main`.
 
 ### P63-6 — `POST /pods/<p>/resume` clears a pause, and every pod answer says its budget
 
-**Status:** TODO (after P63-5) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P63-5 (the `window` and `windowStart` it reports; the clearing writer it shares); P64-4 merged (the memory entry's wire shape it lists)
+**Status:** IN-PROGRESS (@sonnet-p63-6) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P63-5 (the `window` and `windowStart` it reports; the clearing writer it shares); P64-4 merged (the memory entry's wire shape it lists)
 
 - **Trigger:** Tack's D4: the pause clears only from the CLI (`docket run --resume`,
   `interfaces/cli/commands/run.py` ~163; `docket pod set budgetTokens`,
@@ -567,7 +567,7 @@ from `main`.
 
 ### P64-3 — docket verifies a `tool` call and a folder pod's path, and holds instruction-like text for the operator
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P64-2 (the modules, the grammar)
+**Status:** DONE (wave 2, 2026-11-04) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P64-2 (the modules, the grammar)
 
 - **Trigger:** live home 2026-11-03: 5 `generated` entries of folder pods pending "no task commit to
   check the path against"; 3 `command` entries naming `svc__hn__search` and `rec__query` refused "no
@@ -621,7 +621,7 @@ from `main`.
 
 ### P64-4 — One id per fact, `stale` on a gone path, an eviction order, and `tool` rendered
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P64-2; parallel with P64-3 (disjoint files)
+**Status:** DONE (wave 2, 2026-11-04) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P64-2; parallel with P64-3 (disjoint files)
 
 - **Trigger:** `entry_id` is `hash(kind, subject)` (`teams/memory.py` ~177-179) and `_merge` skips an
   id already present (~553-556): one `convention: .` per repository, a second fact about one file
@@ -700,7 +700,7 @@ from `main`.
 
 ### P64-7 — The live smoke runs jailed by default (§7.1 decision)
 
-**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** scripts · **After:** — (wave 3 filler)
+**Status:** DONE (wave 2, 2026-11-04) · **Size:** S · **Model:** Haiku · **Kind:** scripts · **After:** — (wave 3 filler)
 
 - **Trigger:** ROADMAP §7.1: `scripts/smoke_workflow.py` ~1519 (`sandbox: str = "off"`) and ~1676
   (the flag), `scripts/maint/live_eval.py` ~356 default to `off`, while `docket init` turns the jail on
