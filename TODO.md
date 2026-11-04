@@ -177,7 +177,7 @@ from `main`.
 
 ### P63-2 — `GET /pods/<p>` carries the pod's contract: what it delivers, the methods a task may name, what it still needs
 
-**Status:** TODO (after P63-1 and P63-3) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P63-1 (it serves the recorded `needs`), P63-3 (both edit `hops/application/steps.py`)
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P63-1 (it serves the recorded `needs`), P63-3 (both edit `hops/application/steps.py`)
 
 - **Trigger:** Tack's D2. Its card D fits a profile to a team from `delivers`, `methods` and `needs` and
   refuses a run before any `POST /tasks` when the fit fails; today it infers the first from
@@ -332,7 +332,7 @@ from `main`.
 
 ### P63-5 — The pod budget gets a window, counted from the day the tokens were spent
 
-**Status:** TODO (wave 2) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P63-1 merged (both edit `teams/pod_settings.py`; no other dependency)
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P63-1 merged (both edit `teams/pod_settings.py`; no other dependency)
 
 - **Trigger:** Tack's D4. `budgetTokens` is compared with `pod_counted_tokens`
   (`hops/application/usage.py` 45-54), a lifetime sum over every member and session, so `frugal`'s
@@ -567,7 +567,7 @@ from `main`.
 
 ### P64-3 — docket verifies a `tool` call and a folder pod's path, and holds instruction-like text for the operator
 
-**Status:** TODO (after P64-2) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P64-2 (the modules, the grammar)
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P64-2 (the modules, the grammar)
 
 - **Trigger:** live home 2026-11-03: 5 `generated` entries of folder pods pending "no task commit to
   check the path against"; 3 `command` entries naming `svc__hn__search` and `rec__query` refused "no
@@ -621,7 +621,7 @@ from `main`.
 
 ### P64-4 — One id per fact, `stale` on a gone path, an eviction order, and `tool` rendered
 
-**Status:** TODO (after P64-2) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P64-2; parallel with P64-3 (disjoint files)
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P64-2; parallel with P64-3 (disjoint files)
 
 - **Trigger:** `entry_id` is `hash(kind, subject)` (`teams/memory.py` ~177-179) and `_merge` skips an
   id already present (~553-556): one `convention: .` per repository, a second fact about one file
