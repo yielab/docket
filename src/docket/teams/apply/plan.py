@@ -28,6 +28,7 @@ from docket.models import document_fields as _documents
 from docket.observability import exporter as _exporter
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
+from docket.teams import blueprints as _blueprints
 from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _mp
@@ -478,6 +479,21 @@ def _plan_exporters(manifest: dict[str, Any]) -> tuple[str, ...]:
     return tuple(names)
 
 
+def _check_shape(project: str, manifest: dict[str, Any]) -> None:
+    """Refuse a manifest whose `shape` is not the blueprint the pod was provisioned with; a pod
+    that records no blueprint, and a manifest that names no shape, fit every other."""
+    shape = manifest.get("shape")
+    if shape is not None and shape not in _blueprints.BUILTIN_BLUEPRINTS:
+        raise PodApplyError(
+            f"pod.yaml: 'shape' must be one of {', '.join(_blueprints.BUILTIN_BLUEPRINTS)}"
+        )
+    provisioned = _fleet.meta_get(pod.member_id(project, "lead"), "blueprint", "")
+    if shape and provisioned and shape != provisioned:
+        raise PodApplyError(
+            f"pod.yaml: shape {shape!r} but pod {project!r} was provisioned {provisioned!r}"
+        )
+
+
 def plan_apply(project: str, directory: Path) -> ApplyPlan:
     """Validate applying *directory* to *project* and return the plan. Read-only:
     no role overlay, policy, member, pipeline, or setting is ever written here."""
@@ -499,6 +515,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     unknown_keys = set(manifest) - _MANIFEST_KEYS
     if unknown_keys:
         raise PodApplyError(f"pod.yaml: unknown key(s): {', '.join(sorted(unknown_keys))}")
+    _check_shape(project, manifest)
 
     member_roles = manifest.get("members", [])
     if not isinstance(member_roles, list):

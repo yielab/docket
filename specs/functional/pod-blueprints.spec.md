@@ -253,15 +253,25 @@ overlay, policies, members, pipeline binding, settings) into one command.
      pod-scoped MCP server list;
    - `pipelines/<name>.yaml|yml`: named pipelines (see "Pod-local pipelines");
    - `pipeline.yaml`, or the file `pod.yaml`'s `pipeline` key names: the pod's bound pipeline;
-   - `pod.yaml`: a manifest of ten top-level keys. `kind: pod` and `name` are the envelope
+   - `pod.yaml`: a manifest of eleven top-level keys. `kind: pod` and `name` are the envelope
      (`config-format.spec.md`); `members` (a list of role names to add if absent), `settings` (a
      mapping of any settable `docket pod set <key> <value>` key), `pipeline` (a filename inside
      *dir*, default `pipeline.yaml` when that file exists), `description` (a string, read only for
      display, requirement 9, never applied to the pod), `exporters` (a list of
      observability-destination names, requirement 11, reported and recorded, never activated),
      `prepare` (a string, the install command of a task's worktree, requirement 13), and
-     `protects` (a list of path globs a task may not change without a person, requirement 14), and
-     `needs` (a list of what the recipe's work still needs once applied, requirement 16).
+     `protects` (a list of path globs a task may not change without a person, requirement 14),
+     `needs` (a list of what the recipe's work still needs once applied, requirement 16), and
+     `shape` (one of `build`, `respond`, `operate` or `routine`: the blueprint the recipe is for).
+
+   `shape` is read, never applied. Planning **MUST** refuse, before it plans any other item, a
+   `shape` that differs from the `blueprint` the pod's Lead records, naming both:
+   `pod.yaml: shape 'respond' but pod 'x' was provisioned 'build'`; a pod with no recorded
+   blueprint accepts any shape, and a manifest with no `shape` fits every pod. A `shape` that is
+   not one of the four is an invalid manifest. A shipped recipe declares a `shape` when its
+   `members` exist in one built-in blueprint's roster only, and none otherwise. The recipe
+   summary (`docket pod update`'s header, `docket pod validate`, the recipe listing) reports it
+   as `shape <name>` when declared.
 
    An unrecognized top-level `pod.yaml` key, a `members`/`settings` value of the wrong type, a
    `description` that is not a string, or an `exporters` entry that is not a plain string naming a
@@ -303,7 +313,8 @@ overlay, policies, members, pipeline binding, settings) into one command.
    `{kind, name, action, note}`.
 6. A successful `docket pod update <dir>` that wrote at least one item **MUST** write exactly one
    `pod.apply` audit entry naming every planned item and its action (and the channel when applied
-   over HTTP); an all-`skip` plan **MUST NOT** write a new audit entry. Every successful apply, an
+   over HTTP); an all-`skip` plan **MUST NOT** write a new audit entry, except over HTTP, where it
+   writes one `pod.apply` entry with `channel=http` and its `changed=0 skipped=<n>` counts. Every successful apply, an
    all-`skip` plan included, **MUST** also record this pod's configuration of record (ADR 0012,
    amended by ADR 0013) in its settings: `configSource` (the absolute *dir*) and `configDigest` (the sha256 of the
    `applied.lock` that apply wrote, which names every `roles/`, `prompts/` (and the tests file each names), `policies/`,

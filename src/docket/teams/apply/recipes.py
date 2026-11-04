@@ -81,11 +81,12 @@ class RecipeSummary:
     pipelines: tuple[str, ...] = ()
     records: tuple[str, ...] = ()
     routines: tuple[str, ...] = ()
+    shape: str = ""
 
     def render(self) -> str:
         """One line, every count always shown, in a fixed order; `pipeline none` when unbound;
-        `· exporters`, `· mcp-servers`, `· pipelines`, `· records` and `· routines <name>, ...`
-        appended only when present."""
+        `· exporters`, `· mcp-servers`, `· pipelines`, `· records`, `· routines <name>, ...` and
+        `· shape <name>` appended only when present."""
         line = (
             f"roles {self.roles} · policies {self.policies} · members {self.members} · "
             f"pipeline {self.pipeline or 'none'} · plugins {self.plugins} · skills {self.skills} · "
@@ -101,6 +102,8 @@ class RecipeSummary:
             line += f" · records {', '.join(self.records)}"
         if self.routines:
             line += f" · routines {', '.join(self.routines)}"
+        if self.shape:
+            line += f" · shape {self.shape}"
         return line
 
 
@@ -227,8 +230,10 @@ def summarize_recipe(directory: Path) -> RecipeSummary:
         else ()
     )
 
+    shape_raw = manifest.get("shape")
     servers = _declared_servers(directory)
     return RecipeSummary(
+        shape=shape_raw if isinstance(shape_raw, str) else "",
         mcp_servers=tuple(s.name for s in servers),
         pipelines=_document_names(directory, "pipelines"),
         records=_document_names(directory, "records"),

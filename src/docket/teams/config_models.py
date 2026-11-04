@@ -133,6 +133,7 @@ class PodDocument(BaseModel):
     prepare: str | None = None
     protects: list[str] | None = None
     needs: list[str] | None = None
+    shape: Literal["build", "respond", "operate", "routine"] | None = None
 
 
 class RoutineTask(BaseModel):

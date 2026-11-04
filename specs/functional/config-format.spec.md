@@ -1,8 +1,8 @@
 # Configuration Document Format Specification
 
-**Version**: 2.10.1
+**Version**: 2.11.0
 **Status**: Implemented
-**Last Updated**: 2026-10-30
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -438,7 +438,7 @@ docket pod validate [dir|file]
 ### The pod manifest key set
 
 `pod.yaml` accepts exactly these top-level keys; any other is an unknown-key error. Their
-meaning is owned by pod-blueprints.spec.md; the schema (`PodDocument`) lists the same nine.
+meaning is owned by pod-blueprints.spec.md; the schema (`PodDocument`) lists the same eleven.
 
 | Key | Meaning |
 | --- | --- |
@@ -451,6 +451,8 @@ meaning is owned by pod-blueprints.spec.md; the schema (`PodDocument`) lists the
 | `exporters` | a list of exporter catalog names this pod's recipe declares; reported by apply and `docket pod recipes`, never applied (never activates an exporter) |
 | `prepare` | the install command of a task's worktree |
 | `protects` | path globs a task may not change without a person |
+| `needs` | what the recipe's work still needs once applied |
+| `shape` | the blueprint the recipe is for: `build`, `respond`, `operate` or `routine`; a pod of another blueprint refuses it |
 
 ### Return Codes
 

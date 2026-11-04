@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import threading
 import urllib.error
 import urllib.request
@@ -13,6 +14,7 @@ from typing import Any
 
 import pytest
 
+import docket.kernel.templates as _templates
 from docket.governance import audit as _audit
 from docket.hops.application import report as _pod_report
 from docket.interfaces.http.server import _DocketHandler
@@ -187,6 +189,95 @@ def test_a_pod_with_no_recorded_codebase_is_refused(server: str, tmp_path: Path)
     assert status == 400
     assert "no recorded codebase" in body["error"]
     assert "reviewCode" not in body
+
+
+class TestApplyToAFolderPod:
+    """A pod that works in a folder has no repository: the directory is the caller's to name."""
+
+    def _outward(self, tmp_path: Path) -> Path:
+        copy = tmp_path / "outward-copy"
+        shutil.copytree(_templates.RECIPES_DIR / "outward", copy)
+        return copy
+
+    def test_a_copy_of_the_outward_recipe_applies_to_a_respond_pod(
+        self, server: str, tmp_path: Path
+    ) -> None:
+        _folder_pod(server)
+        status, body = _post(
+            f"{server}/pods/research/apply", {"directory": str(self._outward(tmp_path))}
+        )
+        assert status == 200, body
+        assert {(i["kind"], i["action"]) for i in body["items"]} >= {("policy", "add")}
+        assert body["dryRun"] is False
+
+    def test_the_roster_gains_the_recipes_members(self, server: str, tmp_path: Path) -> None:
+        _folder_pod(server)
+        directory = _directory(
+            tmp_path,
+            "team",
+            {"pod.yaml": "kind: pod\nname: x\nshape: respond\nmembers: [analyst]\n"},
+        )
+        status, body = _post(f"{server}/pods/research/apply", {"directory": str(directory)})
+        assert status == 200, body
+        assert ("member", "analyst", "add") in {
+            (i["kind"], i["name"], i["action"]) for i in body["items"]
+        }
+        assert "research-analyst" in {
+            m["id"] for m in _get(f"{server}/pods/research")[1]["members"]
+        }
+
+    def test_a_folder_pod_needs_a_directory(self, server: str) -> None:
+        _folder_pod(server)
+        status, body = _post(f"{server}/pods/research/apply", {})
+        assert status == 400
+        assert body["error"] == (
+            "directory is required: pod 'research' works in a folder and has no repository "
+            "to read .docket/ from"
+        )
+
+    def test_a_directory_that_runs_things_needs_the_code_then_applies(
+        self, server: str, tmp_path: Path
+    ) -> None:
+        _folder_pod(server)
+        directory = _directory(
+            tmp_path,
+            "runs-folder",
+            {"pipeline.yaml": "name: p\nsteps:\n  - migrate:\n      run: make migrate\n"},
+        )
+        status, body = _post(f"{server}/pods/research/apply", {"directory": str(directory)})
+        assert status == 409
+        assert body["runs"][0]["kind"] == "pipeline-step"
+        status, applied = _post(
+            f"{server}/pods/research/apply",
+            {"directory": str(directory), "accept": body["reviewCode"]},
+        )
+        assert status == 200, applied
+
+    def test_a_shape_that_is_not_the_pods_is_refused(self, server: str, tmp_path: Path) -> None:
+        _folder_pod(server)
+        directory = _directory(
+            tmp_path, "wrong", {"pod.yaml": "kind: pod\nname: x\nshape: build\nprotects: [a]\n"}
+        )
+        status, body = _post(f"{server}/pods/research/apply", {"directory": str(directory)})
+        assert status == 400
+        assert (
+            body["error"] == "pod.yaml: shape 'build' but pod 'research' was provisioned 'respond'"
+        )
+
+    def test_an_apply_that_skips_every_item_is_still_audited(
+        self, server: str, tmp_path: Path
+    ) -> None:
+        _folder_pod(server)
+        directory = self._outward(tmp_path)
+        assert _post(f"{server}/pods/research/apply", {"directory": str(directory)})[0] == 200
+        before = [e for e in _audit.read_audit() if e.get("action") == "pod.apply"]
+        status, body = _post(f"{server}/pods/research/apply", {"directory": str(directory)})
+        assert status == 200
+        assert {i["action"] for i in body["items"]} == {"skip"}
+        entries = [e for e in _audit.read_audit() if e.get("action") == "pod.apply"]
+        assert len(entries) == len(before) + 1
+        assert "channel=http" in str(entries[-1]) and "changed=0" in str(entries[-1])
+        assert f"skipped={len(body['items'])}" in str(entries[-1])
 
 
 _FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "operator-v2"

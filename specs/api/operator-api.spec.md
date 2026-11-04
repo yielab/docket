@@ -177,7 +177,7 @@ with `"created": false` and nothing is changed or re-applied; without it an exis
 
 | Field | Type | Rule |
 |---|---|---|
-| `directory` | string | absolute path to an existing directory, or unset for the repository's own directory (`.docket/teams/<p>/` when present, else `.docket/`) |
+| `directory` | string | absolute path to an existing directory, or unset for the repository's own directory (`.docket/teams/<p>/` when present, else `.docket/`). Required for a pod that works in a folder (`respond`, `operate`, `routine`): it has no repository to read `.docket/` from |
 | `dryRun` | bool | plan only, nothing written; no review code is needed |
 | `accept` | string | the review code for a directory that runs things on this machine (ADR 0024). HTTP is off a terminal: without the matching code such a directory is `409` with the code in the body and nothing is written |
 
@@ -483,11 +483,17 @@ and `runs` lists only the items that changed since the code was issued:
 
 A directory whose `allowCommands` names a refused command is `409` with an `error` naming it and
 no `reviewCode`. A
-nonexistent or relative `directory` is `400`, an unknown pod `404`. A pod with no recorded
-codebase is `400` with a message naming `docket pod update`
-and a codebase; it is never reviewed against the directory's parent. A plan that changes something
-is audited as `pod.apply` with `channel=http`; an accepted code is remembered as the CLI does
-(audit action `repo.allow`). A body field of the wrong type is `400`.
+nonexistent or relative `directory` is `400`, an unknown pod `404`. A pod with a repository and no
+recorded codebase is `400` with a message naming `docket pod update`
+and a codebase; it is never reviewed against the directory's parent. A pod that works in a folder
+reviews the directory against the Lead's `workDir` and answers `400` without a `directory`:
+`directory is required: pod 'x' works in a folder and has no repository to read .docket/ from`.
+A `pod.yaml` whose `shape` differs from the pod's blueprint is `400` naming both
+(`pod-blueprints.spec.md` requirement 1). A plan that changes something
+is audited as `pod.apply` with `channel=http`, and so is one whose every item is skipped
+(`changed=0 skipped=<n>`); a dry run is not audited. An accepted code is remembered as the CLI does
+(audit action `repo.allow`). A body field of the wrong type is `400`. A client probes the
+folder-pod apply and the manifest `shape` with the `podShape` feature.
 
 `GET /pods/<p>/corrections?since=2026-10-01T00:00:00Z` (`200`):
 

@@ -549,5 +549,6 @@ _MANIFEST_KEYS = frozenset(
         "prepare",
         "protects",
         "needs",
+        "shape",
     }
 )

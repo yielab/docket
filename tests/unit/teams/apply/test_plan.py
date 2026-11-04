@@ -5,12 +5,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import get_args
 
 import pytest
 from tests.support.git import repo_dir as _repo_dir
 from tests.support.pods import seed_fixture_pod as _seed_fixture_pod
 
 from docket.kernel.home import current_home
+from docket.teams import blueprints as _blueprints
+from docket.teams import config_models as _config_models
+from docket.teams import fleet as _fleet
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import roles as _arch
 from docket.teams.apply import model as _model
@@ -186,6 +190,57 @@ class TestProtects:
     def test_protects_is_not_a_run_item(self, tmp_path: Path) -> None:
         review = _review.classify_directory(self._recipe(tmp_path, "protects: [a]\n"))
         assert review.runs == () and ("setting", "protects") in review.adds
+
+
+class TestShape:
+    """`pod.yaml`'s `shape` names the blueprint a recipe is for; a pod of another one refuses it."""
+
+    def _recipe(self, tmp_path: Path, shape: str) -> Path:
+        recipe = tmp_path / "recipe"
+        recipe.mkdir()
+        (recipe / "pod.yaml").write_text(
+            f"kind: pod\nname: x\nshape: {shape}\nprotects: [Makefile]\n", encoding="utf-8"
+        )
+        return recipe
+
+    def test_a_shape_that_differs_from_the_pods_blueprint_plans_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_fixture_pod(tmp_path, "shaped"):
+            _fleet.meta_set("shaped-lead", "blueprint", "build")
+            with pytest.raises(_model.PodApplyError) as caught:
+                _pod_apply.plan_apply("shaped", self._recipe(tmp_path, "respond"))
+        assert str(caught.value) == (
+            "pod.yaml: shape 'respond' but pod 'shaped' was provisioned 'build'"
+        )
+
+    def test_the_pods_own_shape_plans_as_before(self, tmp_path: Path) -> None:
+        with _seed_fixture_pod(tmp_path, "shaped"):
+            _fleet.meta_set("shaped-lead", "blueprint", "build")
+            plan = _pod_apply.plan_apply("shaped", self._recipe(tmp_path, "build"))
+        assert [(i.kind, i.name) for i in plan.items] == [("setting", "protects")]
+
+    def test_a_pod_with_no_recorded_blueprint_takes_any_shape(self, tmp_path: Path) -> None:
+        with _seed_fixture_pod(tmp_path, "shaped"):
+            plan = _pod_apply.plan_apply("shaped", self._recipe(tmp_path, "operate"))
+        assert plan.items
+
+    def test_a_shape_outside_the_four_is_not_a_manifest(self, tmp_path: Path) -> None:
+        with (
+            _seed_fixture_pod(tmp_path, "shaped"),
+            pytest.raises(_model.PodApplyError, match="shape"),
+        ):
+            _pod_apply.plan_apply("shaped", self._recipe(tmp_path, "fleet"))
+
+    def test_the_schema_names_the_blueprints_there_are(self) -> None:
+        field = _config_models.PodDocument.model_fields["shape"]
+        assert set(get_args(get_args(field.annotation)[0])) == set(_blueprints.BUILTIN_BLUEPRINTS)
+
+    def test_the_summary_reports_the_shape_only_when_declared(self, tmp_path: Path) -> None:
+        summary = _recipes.summarize_recipe(self._recipe(tmp_path, "routine"))
+        assert summary.shape == "routine"
+        assert summary.render().endswith(" · shape routine")
+        assert _recipes.summarize_recipe(tmp_path / "none").shape == ""
 
 
 _FAST = "name: fast\nsteps:\n  - build: implementer\n    verify: make check\n"
