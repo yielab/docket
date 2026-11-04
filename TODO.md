@@ -136,7 +136,7 @@ from `main`.
 
 ### P63-1 — The pod keeps what its recipes said their work needs
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** DONE (wave 1, 2026-11-04) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
 - **Trigger:** Tack's D2 (2026-11-03): `needs[]` on `GET /pods/<p>`, "what Phase 62 computes at apply,
   kept and reported". Today `teams/apply/needs.py::readiness` is called once, by
@@ -229,7 +229,7 @@ from `main`.
 
 ### P63-3 — A task that names a pipeline the pod cannot staff is refused at claim, not run with holes
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** DONE (wave 1, 2026-11-04) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
 - **Trigger:** Tack's D3. `apply` and `pod set pipeline` refuse a step whose role the roster lacks
   (`teams/apply/recipes.py` 19-33, `unresolvable_pipeline_steps`), but a task that names a pipeline
@@ -269,14 +269,15 @@ from `main`.
   - Integration: after `docket pod add reviewer`, `docket task retry` runs all three steps.
   - Unit: the refusal text lists each missing role once with its step, in step order.
   - Integration (a check, not a fix): the task refused at claim stays `failed` across two further sweep
-    ticks and the audit log holds one `dispatch_refused` for it, not one per tick (`dispatch_refused` is in
+    ticks and the trace holds one `dispatch_refused` for it, not one per tick (`refuse_claimed_task` writes
+    trace only, no audit entry; `dispatch_refused` is in
     `RESUMABLE_FAILURE_KINDS`, `tasks/domain/state.py`; the follow-up "A refused task is resumed on every
     30 s sweep tick"). If this fails, it is its own card: report it, do not widen this one.
 - **Gate:** the three test files; `tests/architecture`; `validate-specs.sh`.
 
 ### P63-4 — `pod.yaml` names its shape, and apply reaches a folder pod over HTTP
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** DONE (wave 1, 2026-11-04) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
 - **Trigger:** Tack's D1. `PodDocument` (`teams/config_models.py` 121-134, `extra="forbid"`) and
   `_MANIFEST_KEYS` (`teams/config_docs.py` ~540) take no shape, so a recipe cannot say which blueprint
@@ -478,7 +479,7 @@ from `main`.
 
 ### P64-1 — The workspace loses `memory/`, and `MEMORY.md` is the operator's
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec + ADR amendment · **After:** —
+**Status:** DONE (wave 1, 2026-11-04) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec + ADR amendment · **After:** —
 
 - **Trigger:** audit 2026-11-03: 17 of 17 live `MEMORY.md` are the template (543-557 bytes), so
   `teams/identity.py::memory_has_content` (~199) is false and nothing is composed; `memory/` is created
@@ -519,7 +520,7 @@ from `main`.
 
 ### P64-2 — `teams/memory.py` splits into parse, decide and store; the grammar takes `tool`, a free subject and a normalized note
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** pure move (commit 1) + behaviour + spec (commit 2) · **After:** —
+**Status:** DONE (wave 1, 2026-11-04) · **Size:** M · **Model:** Sonnet · **Kind:** pure move (commit 1) + behaviour + spec (commit 2) · **After:** —
 
 - **Trigger:** `teams/memory.py` is 691 lines holding the grammar (32-214), the verifier (220-444) and
   the store (447-690); P64-3 and P64-4 add to the middle and the end and would open one file from two
@@ -551,7 +552,8 @@ from `main`.
   `tests/integration/teams/test_pod_memory_store.py` (new, by move).
 - **Acceptance (RED first, commit 2):**
   - `- pitfall: fetch tool -- returns cached summaries for a URL seen earlier` parses with subject
-    `fetch tool` and no refusal. Oracle: today `_vet` refuses it "not a repository-relative path".
+    `fetch tool` and no refusal. Oracle: the same line with `js // comments` as the subject, which `_vet`
+    refuses today ("not a repository-relative path"); `fetch tool` is not refused on the base.
   - `- tool: rec__query SELECT 1 -- one row` parses with kind `tool`; `- command: pytest -- ok` is a
     `ParsedLine` refusal naming an unknown kind.
   - A note with `U+200D`, one with `U+202E`, and one with a line starting `#` are each refused
@@ -678,7 +680,7 @@ from `main`.
 
 ### P64-6 — The PydanticAI and OpenHands adapters go (§7.1 decision)
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** deletion · **After:** — (wave 1 filler; no file in common with any other card)
+**Status:** DONE (wave 1, 2026-11-04) · **Size:** S · **Model:** Sonnet · **Kind:** deletion · **After:** — (wave 1 filler; no file in common with any other card)
 
 - **Trigger:** ROADMAP §7.1: no consumer, last changed 2026-09-01, the maintainer decided 2026-11-03.
   The follow-up "the adapters never pass `cache_write_tokens`" closes with them.
