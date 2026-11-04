@@ -17,6 +17,7 @@ from tests.support.pods import section as _section
 
 from docket.kernel.home import current_home, use_home
 from docket.observability import trace as _trace
+from docket.platform import store as _store
 from docket.teams import memory as pm
 
 SUBJECT = "docket.teams.memory"
@@ -38,8 +39,20 @@ class TestStore:
         assert path.parent == current_home().pods_dir / _PROJECT
         assert oct(path.stat().st_mode & 0o777) == "0o600"
         (entry,) = doc["entries"]
-        assert entry["path"] == "api/schema.proto" and "command" not in entry
-        assert set(entry) >= {"id", "kind", "note", "status", "reason", "provenance"}
+        assert entry["subject"] == "api/schema.proto"
+        assert not {"path", "tool", "command", "exit"} & set(entry)
+        assert set(entry) == {
+            "id",
+            "kind",
+            "subject",
+            "note",
+            "status",
+            "reason",
+            "provenance",
+            "stale",
+            "evidence",
+        }
+        assert entry["stale"] is False and entry["evidence"] == {}
 
     def test_a_repeated_fact_is_stored_once(self, repo: tuple[Path, str]) -> None:
         root, commit = repo
@@ -49,6 +62,19 @@ class TestStore:
         _record(root, commit, out)
 
         assert len(pm.list_entries(_PROJECT)) == 1
+
+    def test_two_notes_about_one_subject_are_two_entries_and_a_repeat_is_one(
+        self, repo: tuple[Path, str]
+    ) -> None:
+        root, commit = repo
+
+        _record(root, commit, _section("- pitfall: . -- Tests are slow."))
+        _record(root, commit, _section("- pitfall: . -- Tests need a database."))
+        _record(root, commit, _section("- pitfall: . -- tests  are slow."))
+
+        entries = pm.list_entries(_PROJECT)
+        assert [e.note for e in entries] == ["Tests are slow.", "Tests need a database."]
+        assert len({e.id for e in entries}) == 2
 
     def test_a_refused_entry_is_not_reopened_by_a_repeat(self, repo: tuple[Path, str]) -> None:
         root, commit = repo
@@ -192,6 +218,87 @@ class TestOperatorApi:
         assert "pod.memory.approved" in text and entry.id in text
 
 
+def _tool(subject: str, evidence: dict[str, int | bool]) -> pm.MemoryEntry:
+    return pm.MemoryEntry(
+        pm.entry_id("tool", subject, "n"),
+        "tool",
+        subject,
+        "n",
+        "accepted",
+        "",
+        {},
+        evidence=evidence,
+    )
+
+
+# -- staleness -----------------------------------------------------------------
+
+
+class TestStale:
+    def _commit(self, root: Path, message: str) -> str:
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", message)
+        return _git(root, "rev-parse", "HEAD")
+
+    def _actions(self, task: str) -> list[str]:
+        trace = current_home().traces_dir / _PROJECT / f"agent:{_PROJECT}:{task}.jsonl"
+        return [
+            r["payload"]["action"]
+            for r in _trace.read_trace(trace)
+            if r["event_type"] == "memory_update" and r["payload"]["action"] in ("stale", "fresh")
+        ]
+
+    def test_a_deleted_path_goes_stale_and_leaves_the_prompt_but_not_the_file(
+        self, repo: tuple[Path, str]
+    ) -> None:
+        root, commit = repo
+        _record(root, commit, _section("- generated: dist/bundle.js -- Built output."))
+        (root / "dist" / "bundle.js").unlink()
+        gone = self._commit(root, "drop the bundle")
+
+        _record(root, gone, "no memory section", task="job-2")
+
+        (entry,) = pm.list_entries(_PROJECT)
+        assert entry.stale is True and entry.status == "accepted"
+        assert pm.render_entries(_PROJECT, None, 4000) == ""
+        assert self._actions("job-2") == ["stale"]
+        assert "pod.memory.stale" in current_home().audit_log.read_text()
+
+    def test_a_restored_path_is_fresh_again(self, repo: tuple[Path, str]) -> None:
+        root, commit = repo
+        _record(root, commit, _section("- generated: dist/bundle.js -- Built output."))
+        (root / "dist" / "bundle.js").unlink()
+        _record(root, self._commit(root, "drop"), "none", task="job-2")
+        (root / "dist" / "bundle.js").write_text("x\n")
+
+        _record(root, self._commit(root, "restore"), "none", task="job-3")
+
+        (entry,) = pm.list_entries(_PROJECT)
+        assert entry.stale is False
+        assert "dist/bundle.js" in pm.render_entries(_PROJECT, None, 4000)
+        assert self._actions("job-3") == ["fresh"]
+
+    def test_a_path_that_stays_is_not_flipped_and_nothing_is_announced(
+        self, repo: tuple[Path, str]
+    ) -> None:
+        root, commit = repo
+        _record(root, commit, _section("- generated: dist/bundle.js -- Built output."))
+
+        _record(root, commit, "none", task="job-2")
+
+        assert pm.list_entries(_PROJECT)[0].stale is False
+        assert self._actions("job-2") == []
+
+    def test_a_pitfall_is_never_checked_against_the_commit(self, repo: tuple[Path, str]) -> None:
+        root, commit = repo
+        (entry,) = _record(root, commit, _section("- pitfall: gone/file.py -- Odd."))
+        pm.approve(_PROJECT, entry.id)
+
+        _record(root, commit, "none", task="job-2")
+
+        assert pm.list_entries(_PROJECT)[0].stale is False
+
+
 # -- what the next task reads --------------------------------------------------
 
 
@@ -241,6 +348,28 @@ class TestRender:
         assert "pytest -q" in pm.render_entries(_PROJECT, root, 4000)
         assert "exit 1" in pm.render_entries(_PROJECT, root, 4000)
 
+    def test_a_tool_renders_its_evidence(self, repo: tuple[Path, str]) -> None:
+        root, _commit = repo
+        self._seed(
+            _tool("make a", {"ok": True}),
+            _tool("make b", {"ok": False}),
+            _tool("make c", {"exit": 1}),
+            _tool("make d", {}),
+        )
+
+        assert pm.render_entries(_PROJECT, root, 4000).splitlines() == [
+            "- tool `make a` (ok): n",
+            "- tool `make b` (error): n",
+            "- tool `make c` (exit 1): n",
+            "- tool `make d`: n",
+        ]
+
+    def _seed(self, *entries: pm.MemoryEntry) -> None:
+        doc = {"entries": [e.to_dict() for e in [*pm.list_entries(_PROJECT), *entries]]}
+        path = current_home().pod_memory_path(_PROJECT)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _store.write_json(path, doc)
+
     def test_the_byte_cap_drops_the_oldest_whole_entries(self, repo: tuple[Path, str]) -> None:
         root, _commit = repo
         self._accept(repo, "dist/bundle.js", "api/schema.proto")
@@ -268,7 +397,7 @@ class TestRender:
                         {
                             "id": "mem-x",
                             "kind": "generated",
-                            "path": "../../etc/passwd",
+                            "subject": "../../etc/passwd",
                             "note": "n",
                             "status": "accepted",
                             "reason": "",

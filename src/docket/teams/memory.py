@@ -9,11 +9,12 @@ frame (``teams/identity.py``). See specs/functional/workspace-structure.spec.md 
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import os
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -21,9 +22,11 @@ from docket.governance.audit import audit_log
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Conflict
 from docket.kernel.home import current_home
+from docket.kernel.ports import git as _git
+from docket.kernel.text import one_line
 from docket.observability import trace as _trace
 from docket.platform import read_json, read_modify_write
-from docket.teams.memory_decide import HopLike, TaskLike, _decide, _task_facts
+from docket.teams.memory_decide import HopLike, TaskLike, _decide, _task_facts, _TaskFacts
 from docket.teams.memory_parse import KINDS, _safe_path, parse_memory_section
 
 
@@ -33,7 +36,8 @@ class PodMemoryError(Conflict):
 
 @dataclass(frozen=True)
 class MemoryEntry:
-    """One stored entry; ``subject`` is a path, a label or, for a ``tool``, the invocation."""
+    """One stored entry; ``subject`` is a path, a label or, for a ``tool``, the invocation, and
+    ``evidence`` is ``{"exit": n}``, ``{"ok": bool}`` or empty."""
 
     id: str
     kind: str
@@ -42,34 +46,41 @@ class MemoryEntry:
     status: str
     reason: str
     provenance: dict[str, str]
-    exit: int | None = None
+    stale: bool = False
+    evidence: dict[str, int | bool] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        doc: dict[str, Any] = {
+        return {
             "id": self.id,
             "kind": self.kind,
-            "tool" if self.kind == "tool" else "path": self.subject,
+            "subject": self.subject,
             "note": self.note,
             "status": self.status,
             "reason": self.reason,
             "provenance": self.provenance,
+            "stale": self.stale,
+            "evidence": self.evidence,
         }
-        if self.exit is not None:
-            doc["exit"] = self.exit
-        return doc
+
+
+def _evidence_from(raw: Any) -> dict[str, int | bool]:
+    if not isinstance(raw, dict):
+        return {}
+    code, ok = raw.get("exit"), raw.get("ok")
+    if isinstance(code, int) and not isinstance(code, bool):
+        return {"exit": code}
+    return {"ok": ok} if isinstance(ok, bool) else {}
 
 
 def _entry_from_dict(doc: Any) -> MemoryEntry | None:
     if not isinstance(doc, dict):
         return None
-    kind, status = doc.get("kind"), doc.get("status")
-    subject = doc.get("tool") if kind == "tool" else doc.get("path")
+    kind, status, subject = doc.get("kind"), doc.get("status"), doc.get("subject")
     if kind not in KINDS or status not in ("accepted", "pending", "refused"):
         return None
     if not isinstance(subject, str) or not isinstance(doc.get("id"), str):
         return None
     prov = doc.get("provenance")
-    exit_code = doc.get("exit")
     return MemoryEntry(
         id=doc["id"],
         kind=kind,
@@ -78,13 +89,16 @@ def _entry_from_dict(doc: Any) -> MemoryEntry | None:
         status=status,
         reason=str(doc.get("reason", "")),
         provenance={str(k): str(v) for k, v in prov.items()} if isinstance(prov, dict) else {},
-        exit=exit_code if isinstance(exit_code, int) and not isinstance(exit_code, bool) else None,
+        stale=doc.get("stale") is True,
+        evidence=_evidence_from(doc.get("evidence")),
     )
 
 
-def entry_id(kind: str, subject: str) -> str:
-    """The deduplication key as an id: stable for one ``(kind, subject)``."""
-    return "mem-" + hashlib.sha256(f"{kind}\0{subject}".encode()).hexdigest()[:10]
+def entry_id(kind: str, subject: str, note: str) -> str:
+    """The deduplication key as an id: stable for one ``(kind, subject, note)``, the note
+    casefolded with its whitespace collapsed."""
+    fact = one_line(note.casefold())
+    return "mem-" + hashlib.sha256(f"{kind}\0{subject}\0{fact}".encode()).hexdigest()[:10]
 
 
 # -- the store -------------------------------------------------------------------
@@ -97,15 +111,16 @@ def _load(doc: dict[str, Any]) -> list[MemoryEntry]:
 
 
 def _trim(entries: list[MemoryEntry]) -> list[MemoryEntry]:
-    """Apply the two caps, oldest first: accepted apart from pending and refused."""
+    """Apply the two caps: over the accepted cap a stale entry goes first, then the oldest
+    accepted; over the other, a refused entry goes first, then the oldest pending. Oldest first
+    within each."""
+    home = current_home()
     accepted = [e for e in entries if e.status == "accepted"]
     undecided = [e for e in entries if e.status != "accepted"]
-    drop = {
-        e.id for e in accepted[: max(0, len(accepted) - current_home().pod_memory_max_accepted)]
-    }
-    drop |= {
-        e.id for e in undecided[: max(0, len(undecided) - current_home().pod_memory_max_undecided)]
-    }
+    by_value = sorted(accepted, key=lambda e: not e.stale)
+    by_weight = sorted(undecided, key=lambda e: e.status != "refused")
+    drop = {e.id for e in by_value[: max(0, len(accepted) - home.pod_memory_max_accepted)]}
+    drop |= {e.id for e in by_weight[: max(0, len(undecided) - home.pod_memory_max_undecided)]}
     return [e for e in entries if e.id not in drop]
 
 
@@ -152,7 +167,8 @@ def _record_task_memory(
 ) -> list[MemoryEntry]:
     hops: list[HopLike] = [h for h in result.hops if h.ok]
     wanted = [(h, ln) for h in hops for ln in parse_memory_section(h.output)]
-    if not wanted:
+    live = [e for e in list_entries(project, "accepted") if e.kind == "generated"]
+    if not wanted and not live:
         return []
     facts = _task_facts(project, hops, root)
     today = _clock.today().isoformat()
@@ -176,35 +192,71 @@ def _record_task_memory(
             )
             continue
         subject, status, reason, code = _decide(line, facts, hop.role)
+        note = line.note[: current_home().pod_memory_note_max_chars]
         changes.append(
             MemoryEntry(
-                id=entry_id(line.kind, subject),
+                id=entry_id(line.kind, subject, note),
                 kind=line.kind,
                 subject=subject,
-                note=line.note[: current_home().pod_memory_note_max_chars],
+                note=note,
                 status=status,
                 reason=reason,
                 provenance={"task": task_id, "date": today, "commit": facts.commit},
-                exit=code,
+                evidence={"exit": code} if code is not None else {},
             )
         )
     applied: list[MemoryEntry] = []
+    flipped: list[tuple[str, MemoryEntry]] = []
 
     def _merge(doc: dict[str, Any]) -> dict[str, Any] | None:
         entries = _load(doc)
         applied.clear()
+        flipped.clear()
+        entries = _recheck(entries, facts, flipped)
         for new in changes:
             old = next((e for e in entries if e.id == new.id), None)
             if old is not None and not (old.status == "pending" and new.status == "accepted"):
                 continue
             entries = [e for e in entries if e.id != new.id] + [new]
             applied.append(new)
-        return _write(entries) if applied else None
+        return _write(entries) if applied or flipped else None
 
     read_modify_write(current_home().pod_memory_path(project), _merge)
+    for action, entry in flipped:
+        _announce(project, action, entry, task_id, "docket")
     for entry in applied:
         _announce(project, entry.status, entry, task_id, "docket")
     return applied
+
+
+def _still_there(facts: _TaskFacts, subject: str) -> bool | None:
+    """Whether *subject* is present at the task's commit, else under its root; ``None`` when
+    neither is known."""
+    if not facts.root:
+        return None
+    if facts.commit:
+        return _git.git_path_exists_at(facts.root, facts.commit, subject)
+    rel = _safe_path(subject)
+    return os.path.lexists(os.path.join(facts.root, rel)) if rel else None
+
+
+def _recheck(
+    entries: list[MemoryEntry], facts: _TaskFacts, flipped: list[tuple[str, MemoryEntry]]
+) -> list[MemoryEntry]:
+    """*entries* with ``stale`` flipped on every accepted ``generated`` one whose path is gone
+    (or back); each flip is added to *flipped* as ``(action, entry)``."""
+    out: list[MemoryEntry] = []
+    for entry in entries:
+        present = (
+            _still_there(facts, entry.subject)
+            if entry.kind == "generated" and entry.status == "accepted"
+            else None
+        )
+        if present is not None and present == entry.stale:
+            entry = dataclasses.replace(entry, stale=not present)
+            flipped.append(("fresh" if present else "stale", entry))
+        out.append(entry)
+    return out
 
 
 def _decide_entry(
@@ -234,16 +286,7 @@ def _decide_entry(
 
 
 def _with(entry: MemoryEntry, status: str, reason: str) -> MemoryEntry:
-    return MemoryEntry(
-        entry.id,
-        entry.kind,
-        entry.subject,
-        entry.note,
-        status,
-        reason,
-        entry.provenance,
-        entry.exit,
-    )
+    return dataclasses.replace(entry, status=status, reason=reason)
 
 
 def approve(project: str, entry_id_: str, *, actor: str = "operator") -> MemoryEntry:
@@ -306,17 +349,28 @@ def reset(project: str, *, actor: str = "operator") -> int:
 
 def _line(entry: MemoryEntry) -> str:
     if entry.kind == "tool":
-        status = f" (exit {entry.exit})" if entry.exit is not None else ""
-        return f"- tool `{entry.subject}`{status}: {entry.note}"
+        evidence = entry.evidence
+        shown = (
+            f"exit {evidence['exit']}"
+            if "exit" in evidence
+            else "ok"
+            if evidence.get("ok") is True
+            else "error"
+            if "ok" in evidence
+            else ""
+        )
+        return f"- tool `{entry.subject}`{f' ({shown})' if shown else ''}: {entry.note}"
     return f"- {entry.kind} {entry.subject}: {entry.note}"
 
 
 def render_entries(project: str, root: Path | None, max_bytes: int) -> str:
     """The accepted entries as bullet lines, oldest first, fitted to *max_bytes* by dropping the
-    oldest whole entries. An entry whose path no longer exists under *root* is left out (it is
-    not deleted). ``""`` when nothing accepted fits."""
+    oldest whole entries. A stale entry, or one whose path no longer exists under *root*, is left
+    out (it is not deleted). ``""`` when nothing accepted fits."""
     lines: list[str] = []
     for entry in list_entries(project, "accepted"):
+        if entry.stale:
+            continue
         if entry.kind != "tool":
             rel = _safe_path(entry.subject)
             if not rel or (root is not None and not os.path.lexists(os.path.join(root, rel))):

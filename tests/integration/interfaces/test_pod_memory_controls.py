@@ -22,7 +22,7 @@ from docket.teams import memory as _pm
 SUBJECT = "docket.interfaces.cli.commands.pod"
 
 _MEMBER = "demo-implementer"
-_PITFALL = _pm.entry_id("pitfall", "dist/bundle.js")
+_PITFALL = _pm.entry_id("pitfall", "dist/bundle.js", "Rebuilt on every install.")
 _runner = CliRunner()
 
 
@@ -46,13 +46,15 @@ def root(tmp_path: Path) -> Iterator[Path]:
 
 def _entry(kind: str, subject: str, status: str, note: str = "A fact.") -> dict[str, Any]:
     return {
-        "id": _pm.entry_id(kind, subject),
+        "id": _pm.entry_id(kind, subject, note),
         "kind": kind,
-        "command" if kind == "command" else "path": subject,
+        "subject": subject,
         "note": note,
         "status": status,
         "reason": "awaits operator approval" if status == "pending" else "ok",
         "provenance": {"task": "t1", "date": "2026-10-18", "commit": ""},
+        "stale": False,
+        "evidence": {},
     }
 
 
@@ -249,7 +251,7 @@ class TestListAndErrors:
         result = _run("pod", "memory", "list", "--json", "--pod", "demo")
 
         [entry] = json.loads(result.output)
-        assert (entry["id"], entry["kind"], entry["path"], entry["status"]) == (
+        assert (entry["id"], entry["kind"], entry["subject"], entry["status"]) == (
             _PITFALL,
             "pitfall",
             "dist/bundle.js",
