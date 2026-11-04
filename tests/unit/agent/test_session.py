@@ -8,6 +8,7 @@ token accounting, and fail-closed summarisation on a failing driver.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -197,6 +198,57 @@ class TestMeasuredUsage:
         record = _sess.load_session("agent:x:default")
         assert record.usage.input_tokens == 10
         assert record.usage.turns == 1
+
+    def test_usage_is_bucketed_by_the_utc_day_of_the_append(self) -> None:
+        _sess.append_messages(
+            "agent:x:default",
+            [user("hi")],
+            usage=TokenUsage(input_tokens=10, output_tokens=5),
+            now="2026-11-02T23:59:59Z",
+        )
+        _sess.append_messages(
+            "agent:x:default",
+            [assistant("hello")],
+            usage=TokenUsage(input_tokens=20, output_tokens=8),
+            now="2026-11-03T00:00:01Z",
+        )
+        _sess.append_messages(
+            "agent:x:default",
+            [assistant("again")],
+            usage=TokenUsage(input_tokens=1, output_tokens=1),
+            now="2026-11-03T12:00:00Z",
+        )
+
+        record = _sess.load_session("agent:x:default")
+
+        assert sorted(record.usage_by_day) == ["2026-11-02", "2026-11-03"]
+        assert record.usage_by_day["2026-11-02"].input_tokens == 10
+        assert record.usage_by_day["2026-11-03"].input_tokens == 21
+        assert record.usage_by_day["2026-11-03"].turns == 2
+        assert (
+            sum(d.input_tokens for d in record.usage_by_day.values()) == record.usage.input_tokens
+        )
+        assert (
+            sum(d.output_tokens for d in record.usage_by_day.values()) == record.usage.output_tokens
+        )
+        assert sum(d.turns for d in record.usage_by_day.values()) == record.usage.turns
+
+    def test_an_append_without_usage_opens_no_day(self) -> None:
+        record = _sess.append_messages("agent:x:default", [user("hi")], now="2026-11-02T10:00:00Z")
+
+        assert record.usage_by_day == {}
+
+    def test_a_record_without_usage_by_day_loads_with_an_empty_map(self) -> None:
+        _sess.append_messages("agent:x:default", [user("hi")], usage=TokenUsage(input_tokens=10))
+        path = _sess._session_path("agent:x:default", None)
+        doc = json.loads(path.read_text())
+        del doc["usageByDay"]
+        path.write_text(json.dumps(doc))
+
+        record = _sess.load_session("agent:x:default")
+
+        assert record.usage_by_day == {}
+        assert record.usage.input_tokens == 10
 
     def test_measured_usage_is_independent_of_estimated_token_size(self) -> None:
         """A tiny message can carry a huge *measured* usage figure (e.g. a large cached system prompt) -- the two numbers must never be derived from each other."""

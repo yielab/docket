@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -368,7 +369,40 @@ def test_pod_budget_decision(cap: int | None, spent: int, kind: str, reason: str
     if kind == "blocked":
         assert decision.failure_kind == "pod_budget"
         assert decision.event == "budget_exceeded"
-        assert dict(decision.detail) == {"spent": spent, "cap": cap, "role": "implementer"}
+        assert dict(decision.detail) == {
+            "spent": spent,
+            "cap": cap,
+            "role": "implementer",
+            "window": "none",
+            "windowStart": None,
+        }
+
+
+def test_a_windowed_pod_budget_names_the_window_and_where_it_began() -> None:
+    start = datetime(2026, 11, 2, tzinfo=UTC)
+
+    decision = _d.decide_pod_budget(
+        cap=1000, spent=1000, role="lead", window="week", window_start=start
+    )
+
+    assert decision.kind == "blocked"
+    assert decision.detail["window"] == "week"
+    assert decision.detail["windowStart"] == "2026-11-02T00:00:00Z"
+
+
+@pytest.mark.parametrize(
+    ("window", "now", "expected"),
+    [
+        ("none", datetime(2026, 11, 4, 15, 0, tzinfo=UTC), None),
+        ("day", datetime(2026, 11, 4, 15, 30, 7, tzinfo=UTC), datetime(2026, 11, 4, tzinfo=UTC)),
+        ("week", datetime(2026, 11, 4, 15, 0, tzinfo=UTC), datetime(2026, 11, 2, tzinfo=UTC)),
+        ("week", datetime(2026, 11, 2, 0, 0, tzinfo=UTC), datetime(2026, 11, 2, tzinfo=UTC)),
+        ("week", datetime(2026, 11, 8, 23, 59, tzinfo=UTC), datetime(2026, 11, 2, tzinfo=UTC)),
+        ("week", datetime(2026, 11, 9, 0, 0, tzinfo=UTC), datetime(2026, 11, 9, tzinfo=UTC)),
+    ],
+)
+def test_window_start(window: str, now: datetime, expected: datetime | None) -> None:
+    assert _d.window_start(window, now) == expected  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(
