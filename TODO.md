@@ -16,10 +16,12 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> ## ▶ BOARD — no active phase (Phases 63 and 64 closed 2026-11-04); Phase 66 planned (D-87 proposed)
+> ## ▶ BOARD — no active phase (Phases 63 and 64 closed 2026-11-04); Phases 66 (D-87 proposed) and 67 (D-88 accepted) planned
 >
 > **No active phase.** Phase 66 (the context a turn sends) is planned below as `○ PLANNED` and waits for the
-> maintainer's decision on D-87; its cards are not claimable until the section reads `ACTIVE`. Phases 63 (D-85) and 64 (D-86) closed 2026-11-04 on three shared waves: a plan of
+> maintainer's decision on D-87; its cards are not claimable until the section reads `ACTIVE`. Phase 67 (a
+> research team reads the web without a host list, D-88 accepted 2026-11-04) is planned below it and starts on
+> the maintainer's go. Phases 63 (D-85) and 64 (D-86) closed 2026-11-04 on three shared waves: a plan of
 > record reads a pod's contract (`delivers`, `methods`, `needs`, `budget`), applies to any shape, resumes a
 > pod over HTTP and queries its memory by status; the pod's memory is verified for every pod, `stale` when a
 > path goes, and the live smoke runs jailed by default. Their sections are archived and what they leave open
@@ -412,6 +414,188 @@ from `main`.
 - **Gate:** the phase-close list; the full suite once at the last merge.
 
 
+## ○ PHASE 67 PLANNED — a research team reads the web without anyone writing it a host list (D-88, accepted 2026-11-04)
+
+> **Trigger (the maintainer's request, with a reproduction).** Tack task `4C9BAB` ("Anliza app similares",
+> team `web-research`) has ended **Not started** eight times: Tack's `NoWeb` gate reads `network: none` and no
+> member holding `fetch` (`GET /pods/web-research`: `fetchDomains: []`, `network.enforced: true`,
+> `workspaceKind: workdir`, `needs: []`). The 2026-11-03 answer (per-pod `fetchDomains`, ADR 0036 decision 17)
+> asks someone to know in advance which hosts a research task will read: dozens per task, different each
+> time; the onboarding skill cannot write `*` and never wrote a list, so every research team is born unable
+> to research. Design and reasoning: `internal-docs/design/research-web-access-2026-11-04.es.md`.
+>
+> **Decisions (D-88; ADR 0036 decision 17 amended, no new ADR):**
+> 1. **Open read by shape, not by list.** A member's `fetch` reaches any public host, with no grant, when
+>    its pod works in a folder (`workspaceKind: workdir`), the jail is enforced (`jail_enforces()`), and
+>    the pod declares no `fetchDomains`. The reason is the rule of two (Willison's lethal trifecta, Meta's
+>    Agents Rule of Two): web content is untrusted and a GET can leak in its URL, so the safe posture removes
+>    private data from reach. A folder pod has no repository, and the jail keeps `bash` off the rest of the
+>    host. A role that holds a `send` tool already cannot hold `fetch` (`check.send_conflicts` at apply,
+>    `registry_for_role`'s allow-list at run time); open read changes neither.
+> 2. **Every other pod keeps today's rules.** A repository pod, a pod without an enforced jail, or a pod
+>    that declares `fetchDomains` reads only its list; `*` stays `--widen` only. A declared list narrows a
+>    folder pod (the operator's choice wins); `deniedTools: fetch` turns the web off.
+> 3. **One precondition for the web and for PDFs.** P61-8/P62-1 read a PDF only inside the jail; open read
+>    needs the same jail. On a folder pod, `docket setup sandbox on` is the single command that gives a
+>    research team both, and the `fetch-hosts` need says so instead of asking for hosts.
+> 4. **docket owns the sentence Tack shows.** The pod report says how the pod reads the web (`webRead`:
+>    mode, reason, fix) and whether each unmet need blocks the work or only degrades it (`blocking`).
+>    Tack quotes docket's fix instead of spelling docket commands in Rust, and refuses a run only on a
+>    blocking need. Additive on API 6, announced as the feature `webRead`.
+> 5. **Search is measured before anything ships.** Open read reaches `html.duckduckgo.com`, but search
+>    sites block bots; a search API as a declared service (ADR 0036 decision 13) ships only if the
+>    measurement says the HTML site fails.
+>
+> **Residual risk, said in the specs:** an injected page can make the agent put the task text, the pod's
+> memory or its folder's files into a GET URL. For a folder pod that is the research itself, not code or
+> secrets; it is the risk every deep-research tool accepts. Not tamper-proof wording; "enforcement covers the
+> tool calls docket dispatches".
+>
+> **Not doing:** per-host approval during a task (a human bottleneck that does not lower the risk); opening the
+> jail's network to research (it also opens `bash`, `run:` and MCP); open read without an enforced jail
+> (`bash` would read the whole host); a browser, POST or headers on `fetch` (ADR 0036 "Not doing").
+>
+> **Waves (by file; Sonnet workers, one integrator):**
+>
+> | Wave | Cards | File contention resolved |
+> | --- | --- | --- |
+> | 1 | P67-1 ∥ P67-3 | P67-1 owns `network_posture.py`, `builtin_tools.py`, `capabilities.py`, `security-gates.spec.md`, `agent-loop.spec.md` requirement 83 and ADR 0036; P67-3 edits no `src/` and no spec |
+> | 2 | P67-2 | `needs.py`, `report.py`, `pod_provisioning.py`, `health.py`, `operator-api.spec.md`, `pod-blueprints.spec.md`, the operator-v2 fixtures; needs P67-1's reader |
+> | 3 | P67-4, then P67-5 | P67-4 is prose only; P67-5 is the integrator's real run with Tack |
+>
+> **Against Phase 66:** P67-1 amends `agent-loop.spec.md` (requirement 83), which P66-1, P66-2 and P66-6 also
+> amend; if both phases run at once the integrator applies the spec hunks at merge. No `src/` file is shared.
+> **Tack's side** (another repository, its own session): the prompt in
+> `internal-docs/plans/tack-research-web-2026-11-04.md`; it waits for P67-2's fixtures.
+
+### P67-1 — A folder pod under an enforced jail reads any public host
+
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** the reproduction above: `web-research` meets every condition of decision 1 and its members
+  hold no `fetch`, because `_offered_fetch` (`hops/application/builtin_tools.py` ~550) offers `fetch` only when
+  `effective_fetch_domains` (`teams/pod_settings.py` ~735) is non-empty, and that list is the machine's plus
+  the pod's declared hosts.
+- **Goal (decisions 1-2):**
+  - `teams/network_posture.py` (58 lines; already imports `pod_settings` and has `jail_enforces`) gains
+    `fetch_reach(project) -> FetchReach(hosts, mode, reason, fix)`. `mode` is `open` (decision 1's three
+    conditions; `hosts == ("*",)`), `listed` (declared or machine hosts; `any` when the `--widen` grant is
+    recorded) or `none`. `reason` is one sentence ("a folder team under the jail reads any public host");
+    `fix` is the one command that opens it when `mode` is `none`: `docket setup sandbox on` (or the backend
+    choice, as `needs._isolation_line` words it) on a folder pod, `docket pod set fetchDomains <host> --pod
+    <pod>` on a repository pod.
+  - The three readers switch to it: `_offered_fetch`, `member_capabilities` (`hops/application/capabilities.py`
+    ~33, `fetchDomains` stays the served key and serves `["*"]` under open read) and the fetch handler's
+    allowed set (the same `_offered_fetch` call). `effective_fetch_domains` stays as the declared part that
+    `fetch_reach` reads; `needs.readiness` keeps calling it until P67-2.
+  - `fetch`'s perimeter is unchanged: `*` is not an exact host, so private addresses stay refused
+    (`platform/fetch.py` `_exact_hosts` ~216, `platform/perimeter.py` ~69), and credentials in a URL too.
+- **Non-goals:** the pod report's `webRead`, the needs, `blocking` (P67-2); search (P67-3); the hop message's
+  `Web:` line, which already words `*` as any public host (`hops/application/compose.py` ~175).
+- **Change:** `teams/network_posture.py`, `hops/application/builtin_tools.py`, `hops/application/capabilities.py`;
+  tests `tests/integration/teams/test_fetch_reach.py` (new), `tests/unit/teams/test_network_posture.py`.
+  Spec: `security-gates.spec.md` "Network egress and the fetch allowlist" (~1125-1150) and the default-install
+  requirement (~1905: "a default install MUST leave `fetch`..." gains the open-read case); `agent-loop.spec.md`
+  requirement 83 (~771); ADR 0036 decision 17 amended in place (its "`*` alone ... only through `--widen`"
+  becomes "only through `--widen`, or open read on a folder pod under the jail").
+- **Acceptance (RED first):** each with the jail bound the way `00825233` binds it (record isolation on and stub
+  the backend probe), never the host's real backend.
+  - Integration: a `respond` folder pod, jail enforced, no `fetchDomains`: `member_capabilities(pod,
+    "researcher")["tools"]` contains `fetch` and `fetchDomains == ["*"]`; the fetch tool built for that
+    member accepts `https://example.org/` at the host check and still refuses `http://127.0.0.1/`. Oracle:
+    today `tools` lacks `fetch`.
+  - Integration: the same pod's `actor` (the `send` role of `respond`) has no `fetch`.
+  - Integration: the same pod with isolation recorded off, a `codebase` pod with the jail on, and a folder pod
+    declaring `fetchDomains: docs.python.org` give, in order, no `fetch`, no `fetch`, and `["docs.python.org"]`.
+  - Unit: `fetch_reach` returns each `mode` with the `fix` named above; `deniedTools: fetch` leaves `mode`
+    computed but `tools` without `fetch`.
+- **Gate:** the two test files (under 10 s); `tests/architecture` (3 s); the e2e lane (42 s: the tool set
+  changes); `bash scripts/validate-specs.sh`; `scripts/maint/comment_lint.py --check` on touched files.
+
+### P67-2 — The pod says how it reads the web, and which unmet need blocks the work
+
+**Status:** TODO (after P67-1) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + wire · **After:** P67-1 (`fetch_reach`)
+
+- **Trigger:** Tack's `team_misfits` (Tack's repository, `crates/tack-protocol/src/execution/capabilities.rs`
+  ~490-535) refuses a run on **every** unsatisfied need but `model`, and spells docket's fix itself for
+  `NoWeb` (`crates/tack-runner/src/harness/docket.rs` ~214). A pod that records `isolation` or `search-host`
+  would then be refused for something that only degrades it, and Tack's sentence names `fetchDomains` where
+  the fix for a folder pod is the jail.
+- **Goal (decisions 3-4):**
+  - `GET /pods/<p>` and `docket pod show --json` carry `webRead: {mode, reason, fix}` from `fetch_reach`
+    (`hops/application/report.py`, beside `network` ~613/653); `pod show` prints `Web: <reason>` and, when
+    `mode` is `none`, `-> <fix>`.
+  - `NeedLine` (`teams/apply/needs.py` ~26) gains `blocking: bool` on the wire: `fetch-hosts` blocks;
+    `search-host` and `isolation` degrade (the agent can still read pages it knows, and every format but
+    PDF). `_fetch_line` reads `fetch_reach`: satisfied under `open` or `listed`, and its `fix` is
+    `fetch_reach`'s. `_isolation_line`'s text says what it opens: "PDFs, and the web on a folder team".
+  - `record_reading_needs` (`teams/pod_provisioning.py` ~391) records `fetch-hosts`, `search-host` and
+    `isolation` for a pod with a `researcher`, the same three `web-research` declares.
+  - `FEATURES` (`interfaces/http/routes/health.py` ~21) gains `webRead`; the operator-v2 fixtures
+    `pod-fetch.json` and `pod-reach.json` are re-recorded and `pod-web-read.json` added (a folder pod under
+    the jail, open read, three satisfied needs), captured from a real throwaway docket as P61 did.
+- **Non-goals:** Tack's code (its prompt is the plan file above); search (P67-3); a `blocking` per pod.
+- **Change:** `hops/application/report.py`, `teams/apply/needs.py`, `teams/pod_provisioning.py`,
+  `interfaces/http/routes/health.py`, `interfaces/cli/render/apply.py` (the `pod show` line); fixtures under
+  `tests/fixtures/operator-v2/`; tests `tests/integration/teams/test_researcher_needs_web.py` (extend),
+  `tests/unit/hops/application/test_report.py`. Spec: `operator-api.spec.md` "Pod answers" (~434-502) and the
+  features list; `pod-blueprints.spec.md` requirement 16 (~512-550); `cli-json-shapes` for `needs`.
+- **Acceptance (RED first):**
+  - Integration: the P67-1 folder pod reports `webRead.mode == "open"` and `needs` with three entries, all
+    `satisfied`, `fetch-hosts` `blocking: true`. Oracle: today `needs` holds one unsatisfied `fetch-hosts`.
+  - Integration: the same pod with isolation off reports `webRead.mode == "none"`, `fix == "docket setup
+    sandbox on"`, `fetch-hosts` unsatisfied and blocking with that fix, `isolation` unsatisfied and not blocking.
+  - Integration: a repository pod with a researcher and no list: `fetch-hosts` fix names `pod set fetchDomains`.
+  - The exact-list `FEATURES` test lists `webRead`; the three fixtures parse with the operator-v2 schema test.
+- **Gate:** the two test files; `tests/architecture`; the e2e lane (42 s: the HTTP API changes);
+  `validate-specs.sh`; `comment_lint.py --check`.
+
+### P67-3 — Measure whether a research team can search, before anything ships for it
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** measurement, then a decision · **After:** —
+
+- **Trigger:** `needs.SEARCH_HOSTS` (`teams/apply/needs.py` ~23) assumes `html.duckduckgo.com` answers a
+  GET from docket's `fetch`; nobody has measured it. Search sites rate-limit and challenge bots.
+- **Goal:** a throwaway script (not kept in `scripts/maint/`; one fix at most) sends 20 fixed research queries
+  (Spanish and English, from the real task: apps similar to the product, bedtime-story apps, pricing pages) through
+  `platform.fetch.fetch_url` with `*` to `html.duckduckgo.com`, `lite.duckduckgo.com` and `www.bing.com`, one
+  run, spaced 5 s. Per host: answers with at least five result links, challenge or captcha pages, errors.
+  Results to `internal-docs/baselines/phase-67/search.md`.
+- **Decision it fires:** if a host returns results for at least 18 of 20, that host is the documented search
+  and nothing ships. If none does, a follow-up card ships `services/search.yaml` in the `web-research` recipe
+  (declared service, ADR 0036 decision 13; Brave Search API or Tavily, the key in the home's secret store,
+  set once per machine), and the measurement is repeated through it. Choosing the provider is the maintainer's.
+- **Non-goals:** a native search tool (refused by ADR 0034 and ADR 0036 decision 17); any `src/` change.
+- **Gate:** none beyond the script running; no tokens are spent (no model call).
+
+### P67-4 — The prose says what a research team can read
+
+**Status:** TODO (after P67-2) · **Size:** S · **Model:** Haiku · **Kind:** docs · **After:** P67-1, P67-2
+
+- **Goal:** every user-facing sentence about `fetch` being off by default gains the open-read case, quoting
+  the spec, not paraphrasing it: `README.md` (rg `deny-by-default`), `docs/CONFIGURATION.md`,
+  `src/docket/templates/recipes/web-research/README.md` (a folder team needs only isolation, a repository team
+  needs hosts), the `fetch-hosts` follow-up in this board's "Phases 63-64" list (rewritten: it was the
+  decision of 2026-11-04 morning and D-88 replaced it), `CHANGELOG.md`. The README sentence is named in the
+  commit body (D-37).
+- **Gate:** `uv run python scripts/gen_cli_docs.py --check`; `comment_lint.py --check`; the README prose tests
+  (`tests/agent/`, the false-claim checks only).
+
+### P67-5 — The real run: Tack's research task reaches docket and comes back with sources
+
+**Status:** TODO (after P67-4 and Tack's adoption) · **Size:** M · **Model:** Opus (integrator) · **Kind:** real run
+
+- **Goal:** with the build installed (`./install.sh`, then `~/.local/bin/docket start ...` restarted), the
+  live `web-research` pod reapplied from the app's repository, branch `onboard/tack` (its `configSource` today is
+  a scratchpad copy under `/tmp`), isolation on, **no `fetchDomains` set by anyone**, Tack task `4C9BAB` runs
+  from **Run again**.
+- **Acceptance:** the task is sent (no "Not sent to docket"); the trace shows `fetch` calls to at least three
+  distinct public hosts and none refused for its host; a PDF among them, if the research reaches one, is read
+  as text; the Reviewer's gate passes on cited sources; Tack's Teams screen shows docket's `webRead.reason`.
+  Tokens spent are reported, never dollars. Evidence to `internal-docs/baselines/phase-67/`.
+- **Gate:** the phase-close list; the full suite once at the last merge.
+
+
 ## ◇ FOLLOW-UPS WITH TRIGGERS (not cards; triage when a trigger fires)
 
 > Re-checked against the code on 2026-10-24; paths are current. Removed as no longer true: notification
@@ -438,7 +622,8 @@ from `main`.
   `specs/functional/agent-lifecycle.spec.md` and `specs/test-framework.md`; `docs/recipes.md` does not mention
   `shape`; the word "adapters" in the `_execution.py` docstring and ADR 0006.
 - *The `web-research` pod's settings fix (2026-11-04).* A pod with a `researcher` records `fetch-hosts` and says it
-  cannot read the web, but no role holds `fetch` until a person names hosts; that is the decision, not a gap.
+  cannot read the web, but no role holds `fetch` until a person names hosts. Superseded the same day by D-88
+  (Phase 67): a folder team under the jail reads any public host; P67-4 rewrites this entry.
 - *The live home's old memory is invisible to the new build* (entries of kind `command` are dropped at the
   first write, as D-86 said); the installed `hn-live` entries are the two tasks of 2026-11-04.
 
