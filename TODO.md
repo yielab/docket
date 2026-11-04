@@ -16,16 +16,15 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> ## ▶ BOARD — no active phase (Phases 63 and 64 closed 2026-11-04); Phases 66 (D-87 proposed) and 67 (D-88 accepted) planned
+> ## ▶ BOARD — Phase 67 ACTIVE (its real run, P67-5, re-runs as P68-6); Phases 68 (D-89 proposed) and 66 (D-87 proposed) planned
 >
-> **No active phase.** Phase 66 (the context a turn sends) is planned below as `○ PLANNED` and waits for the
-> maintainer's decision on D-87; its cards are not claimable until the section reads `ACTIVE`. Phase 67 (a
-> research team reads the web without a host list, D-88 accepted 2026-11-04) is planned below it and starts on
-> the maintainer's go. Phases 63 (D-85) and 64 (D-86) closed 2026-11-04 on three shared waves: a plan of
-> record reads a pod's contract (`delivers`, `methods`, `needs`, `budget`), applies to any shape, resumes a
-> pod over HTTP and queries its memory by status; the pod's memory is verified for every pod, `stale` when a
-> path goes, and the live smoke runs jailed by default. Their sections are archived and what they leave open
-> is under "Phases 63-64" in the follow-ups below.
+> **Phase 67 is active** (D-88, accepted 2026-11-04): P67-1 to P67-4 are done and committed (`2ce62d69`, `3b32a2b4`,
+> not pushed): a folder pod under the jail reads any public host, the pod says how (`webRead`) and which need
+> blocks, and Tack reads both. Its real run (P67-5) read the web and failed in the writer hop on a compaction
+> defect, with no report. **Phase 68** (D-89, proposed) is that run's three defects plus search and runs first;
+> **Phase 66** (D-87, proposed) follows, since both edit `session_compaction.py`. Neither phase's cards are
+> claimable until the maintainer accepts its decision. Phases 63 (D-85) and 64 (D-86) closed 2026-11-04; their
+> sections are archived and what they leave open is under "Phases 63-64" in the follow-ups below.
 > Before them, Phases 60 (D-82), 61 (D-83) and 62 (D-84) closed 2026-11-03: a transient failure costs a request, a pod says what it can reach, and `fetch` keeps the perimeter. Their sections are archived and what they leave open is in the follow-ups below. Phase 59 (D-81, [ADR 0038](docs/adr/0038-a-step-budget-is-a-checkpoint-not-a-cliff.md)) closed 2026-11-03
 > (decision 5 amended before the push): a step's budget is a checkpoint, not a cliff, and docket keeps no dollars. Its
 > section is archived and what it leaves open is under "Phase 59" in the follow-ups below. Phase 58 (D-80) closed 2026-11-02: what a plan of record needs to follow a team it does
@@ -95,6 +94,177 @@ scope in one pass over the same files, parks at least once.
 by a fast-forward from `develop` when the maintainer cuts a release. Tags and release jobs originate
 from `main`.
 
+## ○ PHASE 68 PLANNED — what the first real research run broke: compaction, a payment false positive, a writer that researches (D-89, proposed 2026-11-04, awaiting the maintainer)
+
+> **Trigger: the P67-5 real run** (Tack task `4C9BAB`, docket task `task-52c89dbb-2eb6`, pod `web-research`, Haiku
+> 5.5, 2026-11-04): the web worked (no `fetch` refused), and the task ended `failed` with no report, after 445,209
+> input and 29,432 output tokens. Three independent defects, each reproduced; the investigation, the
+> reproductions and the options are in `internal-docs/audits/corrida-real-investigacion-2026-11-04.es.md`.
+>
+> 1. **A compaction that gains nothing kills the hop.** The writer's pre-turn compaction (history budget 6,000,
+>    its `token_budget`) ran five summary calls and failed `compaction summary did not reduce estimated history size
+>    (45271 -> 45272)`. Replayed offline on the session's copy: four of its 13 units (an `assistant` with 3-4
+>    parallel `fetch` results) weigh 7,003-8,371 estimated tokens, more than the 6,000-token summary prompt; once a
+>    summary sits in front, the batch is that summary alone, which cannot shrink. A `fetch` result alone reaches
+>    `DOCKET_TOOL_MAX_OUTPUT_CHARS` (30,000 chars, about 7,500 tokens). The request fitted the window (`request_fit
+>    fits`, 28,041 measured tokens of 200k). Conforms to `session-history` requirements 24 and 26, so the spec moves.
+> 2. **`high-risk-payment` parks a report that mentions payments.** `render_tool_call` JSON-encodes the file into one
+>    line, so `payment.*charge` and `refund.*amount` span the whole file, and the free-text clause reads `write`
+>    content, which moves no money. Measured with the real engine: six ordinary report sentences park, a bare price
+>    passes. `block-destructive`'s `drop table` clause has the same shape.
+> 3. **The writer researches again.** 23 `fetch` calls (the researcher 13) and 246,954 of the 445,209 input tokens:
+>    `fetch` is offered to every member that does not deny it, and the writer denies only `bash`.
+>
+> **Decisions the plan takes (D-89, `Proposed` until accepted):**
+> 1. A unit too large for a summary prompt is summarized from a projection of its tool results (cut, with a visible
+>    marker, in the summarizer's prompt only); a batch always holds one raw unit; a pre-turn compaction that the
+>    guard refuses (no progress, round cap, irreducible unit) leaves the history unchanged and the turn runs. A
+>    summarizer that fails still aborts the turn (agent-loop 36), and request-fit stays the one stop for a request
+>    over the window.
+> 2. The free-text clause of the `ask` templates is not evaluated on the built-in file tools (`write`, `edit`):
+>    a new `when` key `notTool`; and `payment.*charge`-style spans are bounded to one phrase. Relaxing a gate is the
+>    maintainer's call; no corpus row is weakened (the payment rows are all commands).
+> 3. The `writer` archetype denies `fetch`: it drafts from the analyst's handoff and cites the researcher's URLs,
+>    and asks with `consult` when a citation is missing.
+> 4. Search ships as a declared service in `web-research` (ADR 0036 decision 13) once the maintainer picks the
+>    provider (Brave Search API or Tavily); P67-3 measured that no search site answers `fetch`.
+>
+> **Not doing:** a summarizer output cap (follow-up with its measurement), the `hosted` history share (Phase 66
+> keeps it deferred), per-host approval, re-running the researcher when a question is answered in a later hop (the
+> hop that asks is the hop that resumes, by design).
+>
+> **Waves (by file; Sonnet workers, one integrator):**
+>
+> | Wave | Cards | File contention resolved |
+> | --- | --- | --- |
+> | 1 | P68-1 ∥ P68-2 ∥ P68-3 | P68-1 owns `agent/session_compaction.py`, `agent/loop_compaction.py`, `session-history.spec.md`, `agent-loop.spec.md` 37; P68-2 owns `governance/policy.py`, the policy templates, the corpus, `security-gates.spec.md`; P68-3 owns `teams/builtin_roles.py`, `role-archetypes.spec.md` |
+> | 2 | P68-4 (when the provider is chosen) ∥ P68-5 | P68-4 owns the `web-research` recipe and `services/`; P68-5 owns `agent/tools/capability_gap.py`, `hops/application/driver_support.py` `pod_offer`, `serve-read-api.spec.md` |
+> | 3 | P68-6 | the integrator's real run, which also closes P67-5 |
+>
+> **Against Phase 66:** P68-1 edits `session_compaction.py`, `loop_compaction.py` and `session-history.spec.md`, which
+> P66-2, P66-3 and P66-4 also edit. Phase 68 wave 1 goes first (a live defect that fails every long research hop);
+> Phase 66 re-checks its locators when it starts.
+
+### P68-1 — A compaction converges on a unit larger than its prompt, and never kills a turn that fits
+
+**Status:** TODO (D-89 proposed) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** decision 1's reproduction (`scratchpad` replay of the writer session: rounds 1-3 reduce, round 4
+  summarizes a lone summary, `45650 -> 45650`, `ok=False`).
+- **Goal:**
+  - `_bounded_summary_batch` (`agent/session_compaction.py` ~68) and `_summarization_message` (~38): a unit whose
+    prompt does not fit is rendered with each tool result cut to its share of the input budget and the marker
+    `[... <n> characters of this tool result not shown to the summarizer ...]`; the batch never consists of
+    compaction summaries only (a summary rides with the next raw unit, projected when needed).
+  - `_run_compaction_rounds` (~162) keeps failing closed (no write) when even the projection cannot fit or a round
+    still gains nothing; the `CompactionResult` names that case (a typed field, not a string match).
+  - `apply_initial_history_compaction` (`agent/loop_compaction.py` ~245): a result refused by that guard does not
+    end the turn; the turn runs on the stored history and the `session_compaction` event says `failed` with the
+    reason. Requirement 36's summarizer failures, cancellation and `token_budget` stop the turn as today.
+- **Non-goals:** a cap on the summary's length; the `hosted` share; request-fit (`reduce_for_fit`, P66-2).
+- **Change:** the two modules; `session-history.spec.md` requirements 24 and 26 (version bump); `agent-loop.spec.md`
+  requirement 37; tests `tests/unit/agent/test_session_compaction.py`, `tests/unit/agent/test_loop_compaction.py`,
+  and a synthetic fixture under `tests/fixtures/` with the measured shape (13 units, four of 7,000-8,400 estimated
+  tokens made of 3-4 tool results, filler text only, never the live session's content).
+- **Acceptance (RED first):**
+  - Unit: the fixture through `compact_session` with budget and input budget 6,000 and a fake summarizer returning
+    1,000 tokens: `ok`, `compacted`, every raw unit folded, `after_estimated_tokens < before_estimated_tokens`, and
+    no summarizer prompt made of compaction summaries alone. Oracle: today `ok=False`, "did not reduce".
+  - Unit: a single `user` message larger than the input budget still fails closed and the stored record is
+    byte-identical.
+  - Unit (loop): a pre-turn compaction refused by the guard leaves `session.json` unchanged, the turn reaches the
+    model, and the trace carries `session_compaction status=failed`; a summarizer timeout still ends the turn
+    `compaction_failed`.
+- **Gate:** the two unit files (seconds); `tests/architecture`; `validate-specs.sh`; `comment_lint.py --check`.
+
+### P68-2 — A file that mentions payments is not a payment
+
+**Status:** TODO (D-89 proposed; relaxes a gate, needs the maintainer's yes) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** —
+
+- **Trigger:** decision 2's probe: with the shipped template, `write` of "La app cobra con Stripe.", of
+  "Payment …(400 words)… No extra charge", of "Refund policy … The amount of stories", of "pays a payout", of
+  "Payment is optional; … free of charge" and of "Payment model … recharge" all `require_approval`; "Calm cuesta
+  69.99 USD al año" passes. Live: the P67-5 writer's report parked.
+- **Goal:**
+  - `when` gains `notTool` (a list of tool names; the predicate is false when the call's tool is one of them),
+    validated with the other keys (`governance/policy.py` `_WHEN_PREDICATE_KEYS` ~51, `validate` ~82,
+    `_predicate_matches` ~466).
+  - `templates/policies/high-risk-payment.yaml` and `block-destructive.yaml`: the `matches` item carries
+    `notTool: [write, edit]`; the payment spans become one-phrase proximity (`payment\W+(?:\w+\W+){0,4}charge` and
+    the same for `refund…amount`, `crypto…send`, `btc/eth…send`).
+- **Non-goals:** the `when.command` rules and `HIGH_RISK_PATTERNS` (unchanged); MCP and `svc__` tools keep the
+  free-text clause.
+- **Change:** `governance/policy.py`, the two templates, `tests/fixtures/policy-corpus/corpus.yaml`,
+  `tests/unit/governance/test_policy.py`, `tests/unit/governance/test_policy__corpus.py`; `security-gates.spec.md`
+  (the `when` grammar, requirement 8, its known limits).
+- **Acceptance (RED first):** corpus rows: the six sentences above as `write` → `allowed`; `curl
+  https://api.stripe.com/v1/charges …` → still `ask`; a `mcp__pay__charge` call whose arguments say "charge
+  customer" → still `ask`; `edit` of a migration containing `DROP TABLE` → `allowed`; `bash -c "psql -c 'drop
+  table x'"` → still `ask`. Unit: `notTool` with a non-list value is refused by validation naming `notTool`.
+- **Gate:** the corpus test and `test_policy.py`; `tests/architecture`; `validate-specs.sh`; `comment_lint.py
+  --check`.
+
+### P68-3 — The writer drafts from the handoff; it does not research again
+
+**Status:** TODO (D-89 proposed; a role's shape, the maintainer's call) · **Size:** S · **Model:** Haiku · **Kind:** data + spec · **After:** —
+
+- **Trigger:** decision 3's measurement (writer 23 `fetch`, 246,954 input tokens of 445,209).
+- **Goal:** the `writer` archetype's `denied_tools` becomes `("bash", "fetch")` (`teams/builtin_roles.py` ~180);
+  its `SOUL.md` sentence about its tools follows.
+- **Non-goals:** the researcher, analyst, lead and reviewer keep `fetch`; the `respond` pipeline is unchanged.
+- **Change:** `teams/builtin_roles.py`; `role-archetypes.spec.md` requirement 8 (the writer's tool list);
+  `tests/unit/teams/test_builtin_roles.py`; the operator-v2 fixtures whose writer capabilities list `fetch`
+  (`pod-reach.json`, `pod-fetch.json`; `pod-web-read.json` shows only the researcher), re-recorded with
+  `OPERATOR_RECORD_DIR` from a real server.
+- **Acceptance (RED first):** `member_capabilities(<respond pod under the jail>, "writer")["tools"]` lacks `fetch`
+  while `"researcher"` keeps it; `capability_missing` for a writer's `fetch` names the role's denial, not a host.
+- **Gate:** `test_builtin_roles.py`, `tests/integration/teams/test_fetch_reach.py`, the fixture tests;
+  `validate-specs.sh`; the e2e lane (42 s: a tool set changes).
+
+### P68-4 — A research team searches through a declared service
+
+**Status:** BLOCKED (the maintainer picks the provider: Brave Search API or Tavily) · **Size:** M · **Model:** Sonnet · **Kind:** data + docs + measurement · **After:** —
+
+- **Trigger:** P67-3 (`internal-docs/baselines/phase-67/search.md`): DuckDuckGo html and lite answer a challenge to
+  20 of 20 queries, Bing returns links unrelated to the query; the P67-5 run's two Bing searches returned
+  WhatsApp and Ualá for a question on bedtime-story apps.
+- **Goal:** `services/search.yaml` in the `web-research` recipe (`kind: service`, ADR 0036 decision 13), its key in
+  the home's secret store set once per machine; the recipe README says how; `needs.SEARCH_HOSTS` stops promising a
+  search site, so `search-host` is satisfied by the service only. Then P67-3's 20 queries again, through it.
+- **Change:** the recipe directory, `teams/apply/needs.py` (`SEARCH_HOSTS`, `_search_line`),
+  `pod-blueprints.spec.md` requirement 16, `tests/integration/teams/test_recipe_needs.py`.
+- **Acceptance:** with a stub service, `init --recipe web-research` reports `search-host` ready only once the service
+  resolves; under open read without the service, `search-host` is not satisfied (today it is, by the `*` reach).
+  The measurement: at least 18 of 20 queries with five relevant links, judged by reading, not by counting.
+- **Gate:** the recipe tests; `validate-specs.sh`; the measurement spends the provider's quota, never model tokens.
+
+### P68-5 — The fix docket names for a missing `fetch` is the one that opens it
+
+**Status:** TODO (after P68-1, which owns `agent-loop.spec.md`) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P68-1
+
+- **Trigger:** `agent/tools/capability_gap.py` ~56 always says `docket pod set fetchDomains <host>`; for a folder pod
+  whose jail is off the fix is `docket setup sandbox on` (`network_posture.fetch_reach`'s `fix`). Found in P67-2.
+- **Goal:** `PodOffer` gains `fetch_fix` (`hops/application/driver_support.py` `pod_offer` ~170 fills it from
+  `fetch_reach(project).fix`); `gap_for` uses it. `serve-read-api.spec.md`'s `features` list (stale since
+  `consultParts`) is replaced by a pointer to `FEATURES` and its exact-list test.
+- **Change:** `capability_gap.py`, `driver_support.py`, `serve-read-api.spec.md`, `agent-loop.spec.md` requirement
+  113; `tests/unit/agent/tools/test_registry__dispatch.py`.
+- **Acceptance (RED first):** a folder pod without the jail: the gap's fix is `run \`docket setup sandbox on\``; a
+  repository pod: unchanged. Oracle: today both name `pod set fetchDomains`.
+- **Gate:** the unit file; `tests/architecture`; `validate-specs.sh`.
+
+### P68-6 — The research task again, through to a report with sources
+
+**Status:** TODO (after P68-1, P68-2, P68-3; P68-4 if shipped) · **Size:** M · **Model:** Opus (integrator) · **Kind:** real run
+
+- **Goal:** P67-5's acceptance, on the installed build (`./install.sh`, service restarted), the user's go given in
+  Tack's session: Tack task `4C9BAB` from **Run again**, nobody writing `fetchDomains`.
+- **Acceptance:** the task ends `done` with a report in the workdir citing at least three distinct public hosts;
+  no `session_compaction status=failed` ends a hop; no `write` of the report parks on a payment policy; the writer
+  makes no `fetch`; input tokens reported against this run's 445,209 (never dollars). Evidence to
+  `internal-docs/baselines/phase-68/`. Closes P67-5.
+- **Gate:** the phase-close list; the full suite once at the last merge.
+
 ## ○ PHASE 66 PLANNED — the context a turn sends is protected, reduced by what it carries, explained and recoverable (D-87, proposed 2026-11-04, awaiting the maintainer)
 
 > From the context-engineering audit of 2026-11-04 (`internal-docs/audits/context-engineering-2026-11-04.es.md`,
@@ -157,7 +327,7 @@ from `main`.
 
 ### P66-1 — The one steering line docket stores is sent with the request instead
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** TODO (after P68-1: both amend `agent-loop.spec.md`) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P68-1
 
 - **Trigger:** the audit §6.6: the budget notice of requirement 108 is written into the last tool result that
   `dispatch_tool_batch` persists (`agent/loop_steps.py` ~142-160), so it lands in `session.json` and in every
@@ -278,7 +448,7 @@ from `main`.
 
 ### P66-4 — The compaction prompt is a shipped prompt document with sections, reached through the port
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** —
+**Status:** TODO (after P68-1: both edit `session_compaction.py` and `session-history.spec.md`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** P68-1
 
 - **Trigger:** the audit §6.3: `_summarization_message` (`agent/session_compaction.py` ~38) is a fixed
   string asking for "a concise summary"; no plantilla, no scope override, no hash on the trace, no recall
@@ -583,7 +753,7 @@ from `main`.
 
 ### P67-5 — The real run: Tack's research task reaches docket and comes back with sources
 
-**Status:** TODO (after P67-4 and Tack's adoption) · **Size:** M · **Model:** Opus (integrator) · **Kind:** real run
+**Status:** RAN 2026-11-04, acceptance NOT met: the web worked (no `fetch` refused, `webRead` open in Tack) and the task ended `failed` in the writer hop on a compaction defect, with no report; evidence `internal-docs/baselines/phase-67/real-run.md`. Re-run as P68-6 after Phase 68 wave 1 · **Size:** M · **Model:** Opus (integrator) · **Kind:** real run
 
 - **Goal:** with the build installed (`./install.sh`, then `~/.local/bin/docket start ...` restarted), the
   live `web-research` pod reapplied from the app's repository, branch `onboard/tack` (its `configSource` today is
@@ -621,29 +791,6 @@ from `main`.
 - *Stale `memory/` mentions* in `specs/api/cli-interface.spec.md`, `specs/acceptance/user-stories.md`,
   `specs/functional/agent-lifecycle.spec.md` and `specs/test-framework.md`; `docs/recipes.md` does not mention
   `shape`; the word "adapters" in the `_execution.py` docstring and ADR 0006.
-- *The `web-research` pod's settings fix (2026-11-04).* A pod with a `researcher` records `fetch-hosts` and says it
-  cannot read the web, but no role holds `fetch` until a person names hosts. Closed the same day by D-88
-  (Phase 67): a folder team under the jail reads any public host (`webRead`); the live `web-research` shows it.
-  What remains is search: `fetch` cannot search (P67-3), so a card ships `services/search.yaml` once the
-  maintainer picks the provider.
-- *`high-risk-payment` stops a research report that names a payment provider (2026-11-04, found in the P67-5 run).*
-  The policy's free-text clause (`matches: '\bstripe\b|\bpaypal\b|...|\bpayout\b'`,
-  `templates/policies/high-risk-payment.yaml`) is searched in the rendered arguments of every tool, so a `write`
-  of a competitor-pricing report that says "payments through Stripe" parks for approval although nothing moves
-  money. Open: whether a file `write`/`edit` in a folder pod's workdir should be exempt from the free-text clause
-  (the money moves only when something executes, and `exec` keeps its structured rules). Relaxing a gate is the
-  maintainer's call and amends security-gates; not done.
-- *A compaction that gains nothing fails the hop (2026-11-04, found in the P67-5 run).* The writer hop of the
-  research task failed three times with `compaction summary did not reduce estimated history size (45271 ->
-  45272)` (`agent/session_compaction.py` ~278, `failure_kind: invalid_output`, hop `hop_failed`). Its session holds
-  42 messages, about 194k characters, 30 of them tool results of 0.5k to 25k characters from `fetch`. A summary of
-  a batch smaller than its own `[compacted summary of ...]` header cannot shrink the history, and the guard turns
-  "no gain" into a dead hop. Hypothesis, not reproduced: the oldest unit(s) are tiny and the bulk sits in units
-  the plan keeps. Open: a round that gains nothing should stop and let the turn run (as the `rounds and all
-  summaries` break already does), not fail it. Not covered by Phase 66; needs spec (`session-history`), a failing
-  test with a history shaped like this one, then the smallest change.
-- *The live home's old memory is invisible to the new build* (entries of kind `command` are dropped at the
-  first write, as D-86 said); the installed `hn-live` entries are the two tasks of 2026-11-04.
 
 **Phases 60-62 (2026-11-03).** Left out of the cards on purpose, or found while merging:
 - *`NOT_ENFORCED` wording.* "isolation off" is also what a machine with isolation on and no backend prints
@@ -670,7 +817,10 @@ from `main`.
   its retries.
 - *A cache breakpoint at the condensed boundary.* Replayed: with P60-2's sizes, a miss would re-send
   69 % of what it re-sends without one. Trigger: after P60-2, `messages_changed` on more than 20 % of
-  a real task's requests.
+  a real task's requests. **FIRED 2026-11-04:** the P67-5 task (`task-52c89dbb`, raw trace under
+  `state/traces/web-research/`) has `cacheMiss: messages_changed` on 16 of its 30 `llm_call`s (53 %); the writer's
+  requests of 19-28k tokens cached only the 2,854-token prefix. Belongs with Phase 66 (D-87), which owns the
+  request projection.
 - *A missing workdir folder.* Not seen: `web-research`'s exists, and Tack's `workdir: null` was the
   absent field (P61-1). Trigger: a dispatch whose recorded `workDir` is gone; then the docket-owned
   default is recreated, and a declared location becomes a profile violation and a `POST /tasks` 422.
@@ -729,26 +879,12 @@ that already own the files.
     dependency; no `--tz`-aware `HH:MM` form. A routine fires only under `docket start --dispatch`.
     A routine skip is traced as `step_skipped` because `EVENT_TYPES` is closed.
 - *Phase 55 Wave 4.*
-  - P55-10, a gap in the flow: nothing user-facing stores a secret under an arbitrary name such as `crm` (provider add
-    and notify write only their own names; `setup_notify.store_secret` is the one writer), so a `secret:crm` reference
-    needs `secrets.json` or the keyring edited by hand. Recommended: a `docket setup secret set <name>` command that
-    reads the value from stdin or a prompt and never echoes it; needs the maintainer's go as a card. Sessions and the
-    model's own reply carry raw tool output (the model sees it); not checked. `setup --fix` (not bare `setup`) carries
-    the literal-credential warning; there is no CLI golden for `--secret` (run.sh replays readonly cases only).
   - P55-8: the check and the increment of a quota are not atomic (two concurrent sends in one pod could both pass at
     count-1); an unreadable counter counts as empty; `pod policies` and `check` do not show quotas.
-  - A flake, once: `test_consult_wait.py::TestAnsweredInPlace::test_an_answer_by_the_task_goes_through_the_same_record`
-    failed in the full run and passed alone (the file's other test is already on the list above).
   - Phase 56 Wave 2 merge run (2026-10-30), both passed alone: `test_consult_wait.py::TestAnsweredInPlace::
     test_a_decline_tells_the_model_to_decide_itself` (a third test of that class, so the class now has three flakes
     under load: that is its trigger), and `tests/integration/product/test_runtime_execution_envelope.py`, 8 setup
     errors from `uv build` exiting 2 in a parallel worker.
-- *Declarative external services (became Phase 56, closed 2026-10-30).* The maintainer wants a pod to reach
-  an external service from a `kind: service` document or commands (base URL, auth from the secret store, operations as
-  read/send tools through `dispatch_tool`), with no program written per service and no more MCP implementation work. It
-  reverses ADR 0036's "no native HTTP tool": written as decision 13 in the amendment of
-  [ADR 0036](docs/adr/0036-a-pod-works-outward.md) (proposed 2026-10-30, not accepted; no new ADR). Sketch and open
-  questions in `internal-docs/design/site-credentials-for-a-pod.md` (Addendum). Scope accepted 2026-10-30: Phase 56.
 - *To investigate, important: a pod logging in to a site nobody configured.* Per-service MCP bridges and `secret:<name>`
   are fixed when a server is registered; a task that ends in a `send` at a new site that needs a login has no per-site
   credential the model never sees. Raised by the maintainer 2026-10-30. Analysis, seven open questions and a suggested
@@ -803,9 +939,6 @@ that already own the files.
   - A hop's `output` is not in the task shape of `operator-api.spec.md`. Tack uses `artifact.summary`
     as the reply of a conversation turn. Trigger: a recorded turn whose summary is too terse to serve
     as the reply.
-  - Tack's audit found that `conversation.turns` (`len(hops)`, `tasks/domain/task.py` ~315) and
-    `_park_turn`'s limit (`executor.py` ~338) would count a hop parked for approval as a turn. This is
-    not verified by a run. It is the same trigger as "Turns taken" below.
 - *Phase 58 wave 1 (2026-11-02).* Found by the workers of P58-1 to P58-3, none in a card.
   - An escalation's `seq` is issued before its record is written (`platform/store.py::write_escalation`).
     A poller reading between the two can return a later record and move `next` past the missing one.
@@ -838,9 +971,6 @@ that already own the files.
     any of them.
   - `decide_task_tokens` is untouched: the budget end of a conversation is decided in the executor
     (`conversation_ends_on_budget`). Trigger: a second consumer of "ended after an answered turn".
-  - `rev` shows in the CLI and MCP task dumps because they print the record; Tack reads it over HTTP only.
-  - The live service on `:7399` runs the code from before the phase until it is restarted, and the `docket` on
-    PATH until `./install.sh` runs again.
   - Flakes under load, each passing alone, seen once: `tests/guards/test_no_removed_cli_names.py` (a 2 s timing
     bound), `test_record_store_conformance.py` (two sqlite tests: the row cut, the CSV header) and
     `test_bash_background.py::TestTheTurnLeavesNoOrphan`. A second failure of the same test is its trigger.
@@ -856,7 +986,6 @@ that already own the files.
   - P56-10 left: a producer of git evidence for a non-implementer role. The `operate` and `routine` pods are workdir
     pods with no commits, so nothing would read it (trigger: a git-backed pod whose non-implementer step commits what
     a later step needs).
-  - Tack's runner sends `"blueprint": "software"` in `POST /pods` and must send `build`.
   - `summarize_recipe` does not count a recipe's `services/`; `gen_recipe_docs._brings` and
     `pod_config_library._brings` are two near-duplicates. The `captured` column of `stories` holds the day a story
     was posted (the model has no clock); the row's `_at` is the capture time.
@@ -879,8 +1008,6 @@ that already own the files.
     idempotency key also hashes path and query arguments; `pod-blueprints.spec.md` should list `services/`.
   - Code: `setup_model_credentials._write_credential` duplicates store logic; `config_docs.py` imports itself;
     `_read_until_deadline` is duplicated; `decided_approval` sits in `escalations.py`.
-  - Flakes under load, each passes alone: the `test_consult_wait` decline test and the `uv build` in
-    `test_runtime_execution_envelope`.
 - *Phase 55 close (the repeated real run, 2026-10-30).* `docket run` does not wake a `wait` whose time has passed
   ("No pending tasks"); only the dispatch service's sweep does, as the spec says; a person expecting `run` to finish
   it is surprised (trigger: a second report). In one fresh home `setup provider add local ...` left the roles on
@@ -907,8 +1034,6 @@ that already own the files.
 
 - **HTTP/SSE MCP transport** (`mcp-client.spec.md:50`). Trigger: the first real pod whose connector
   exists only hosted.
-- **A per-pod `fetch` allowlist** (`kernel/home.py:278`, one list for the machine). Trigger: two pods
-  on one machine that need different hosts.
 - **`lifetime: task` for an MCP server.** Trigger: a recorded run in which a following hop needed the
   previous hop's session.
 - **A structured-output gate** (a result that must match a schema). Trigger: a recorded run whose
@@ -1004,12 +1129,10 @@ that already own the files.
 - **A parked turn is paid twice**: the resumed hop re-sends the whole prompt (4,157 input tokens before
   the park, 8,181 after; 100,573 in the 2026-10-18 joint run). Trigger: a third run that parks on the
   same shape. Then weigh resuming the session over re-running the hop (operator-loop §2 item 6).
+  **FIRED 2026-11-04:** the P67-5 writer parked on a question and resumed with 21,642 input tokens, 0 cached
+  (21:41:43 UTC); its second resume, after the approval, died in compaction (P68-1).
 - **A hop refused before any call records an empty model** (`hop_finished.model == ""`, a `""` key in
   `usage.byModel`). Trigger: a reader of `byModel` that trips on it.
-- **Provider rows lag the models in use:** Anthropic advertises dated ids while the template rows use
-  aliases (limits stay `unknown`), and no row prices `claude-sonnet-5-5` or `claude-opus-5-5`
-  (`task show` prints `cost: -`). Trigger: a run on an alias id whose window matters, or an operator
-  asking for the estimate.
 - **Hop language drift:** a resumed step once wrote its report in another language, which became the
   next handoff. Trigger: a second occurrence; then a pod `language` setting.
 - **The Lead plans with the codebase path while the Implementer is rooted in the task worktree**
@@ -1028,9 +1151,6 @@ that already own the files.
 
 **Workspace and checks.**
 
-- **`docket setup` without `--fix` writes:** its report re-seeds `WORKFLOW_AUTO.md`
-  (`interfaces/cli/commands/setup_check.py`). A check that writes is a defect. Trigger: the next edit
-  of that file.
 - **A file a check reaches only through `make` or `npm run` is protected only through the default
   files it reads**, and **a gitignored file is invisible to the check**. Trigger: a real gate whose
   script lives behind a target, or a repository that ignores a file its gate reads.
@@ -1043,16 +1163,8 @@ that already own the files.
 
 **Configuration.**
 
-- **A tool deny per team member** (a read-only researcher): `tool_profile` is prose, the only denial is
-  the pod-wide `deniedTools`. Trigger: a recipe or pod that needs one member without write tools.
-- **Delete the old-layout reader** (`kernel/layout.py::is_legacy` and the legacy branches of `Home`).
-  Trigger: the next minor release. First move what still seeds or reads an old-layout home:
-  `tests/support/home.py` and `pods.py`, and the old paths named in `scripts/gen_cli_docs.py`,
-  `scripts/render-doc-assets.py` and `docs/commands.md`.
 - **Parallel tasks in a pod:** ADR 0027 point 10 holds the trigger; a card would add a
   `maxParallelTasks` pod setting and a bounded pool in dispatch.
-- **A team's skills:** `hops/workspace/skills.py` reads only `<codebase>/.docket/skills`; a repository
-  keeping `teams/<pod>/` has no per-team skills scope.
 
 **Channels, inbox and the HTTP API.**
 
@@ -1082,8 +1194,6 @@ that already own the files.
 unknown tool name, `pod test`'s handoff spec, the live-run key lookup and the stale docs were fixed; what stays waits
 for its trigger.
 
-- **P52-12, a wait on a machine is an escalation.** Absorbed by P55-6 (ADR 0036 decision 5): a `wait` step is
-  an escalation of kind `wait` the sweep settles on time or on a probe; the wait on a machine is one case of it.
 - **P53-4 goal 3, the Lead's locators read into the Implementer's message.** Measured on three recorded smoke tasks
   (two local Qwen, one Haiku, `context_replay.py --repeats`): the Implementer read 1/1, 1/1 and 2/4 files the Lead had
   read, but all except one were files it then edited, whose exact text `edit` needs; "not edited after" was 0, 0 and
@@ -1107,8 +1217,6 @@ for its trigger.
 - **The runtime closure grows with any facade on a context the runtime imports** (measured in P47-8:
   agent 52 -> 75, teams 52 -> 157, governance 52 -> 101, observability 52 -> 60 files). Trigger: a
   proposed facade on one of them.
-- **`FailureKind` enumerates only the four kinds the task state writes**; hop and gate kinds stay plain
-  strings (pod-dispatch spec item 9). Trigger: the next change to those kinds.
 
 **Tests.**
 
