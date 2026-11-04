@@ -122,6 +122,24 @@
       ],
       "default": null,
       "title": "Needs"
+    },
+    "shape": {
+      "anyOf": [
+        {
+          "enum": [
+            "build",
+            "respond",
+            "operate",
+            "routine"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Shape"
     }
   },
   "required": [

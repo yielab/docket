@@ -6,6 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from docket.governance import audit as _audit
 from docket.interfaces.http.exchange import HttpExchange
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet
@@ -26,14 +27,18 @@ def post_pod_apply(h: HttpExchange, project: str) -> None:
     body = h._read_json_object(blank=True)
     if body is None:
         return
-    codebase = fleet.meta_get(_pod_core.member_id(project, "lead"), "codebase", "")
-    if not codebase:
+    lead = _pod_core.member_id(project, "lead")
+    workdir = _review.is_workdir(project)
+    root_value = fleet.meta_get(lead, "workDir" if workdir else "codebase", "")
+    if not root_value:
+        recorded = "workDir" if workdir else "codebase"
         h._send_json_error(
-            f"pod {project} has no recorded codebase; docket pod update reviews a "
+            f"pod {project} has no recorded {recorded}; docket pod update reviews a "
             "directory against the repository the pod was made from",
             400,
         )
         return
+    root = Path(root_value)
     directory_value = body.get("directory")
     dry_run, accept = body.get("dryRun", False), body.get("accept")
     if directory_value is not None and not isinstance(directory_value, str):
@@ -42,8 +47,15 @@ def post_pod_apply(h: HttpExchange, project: str) -> None:
     if not isinstance(dry_run, bool) or not (accept is None or isinstance(accept, str)):
         h._send_json_error("dryRun must be a boolean and accept a string", 400)
         return
+    if directory_value is None and workdir:
+        h._send_json_error(
+            f"directory is required: pod '{project}' works in a folder and has no repository "
+            "to read .docket/ from",
+            400,
+        )
+        return
     if directory_value is None:
-        directory_value = str(_review.repo_config_dir(Path(codebase), project))
+        directory_value = str(_review.repo_config_dir(root, project))
     elif not Path(directory_value).is_absolute():
         h._send_json_error("directory must be an absolute path", 400)
         return
@@ -53,7 +65,7 @@ def post_pod_apply(h: HttpExchange, project: str) -> None:
         return
     try:
         outcome = _pod_apply.apply_directory(
-            project, directory, Path(codebase), accept=accept, dry_run=dry_run, channel="http"
+            project, directory, root, accept=accept, dry_run=dry_run, channel="http"
         )
     except _model.PodApplyError as exc:
         h._send_json_error(str(exc), 400)
@@ -71,6 +83,13 @@ def post_pod_apply(h: HttpExchange, project: str) -> None:
         payload["runs"] = [asdict(i) for i in outcome.runs]
         h._send_json(payload, 409)
     else:
+        if outcome.status == "applied" and not any(i.action != "skip" for i in outcome.items):
+            _audit.audit_log(
+                "pod.apply",
+                f"project={project} dir={directory} "
+                f"items={';'.join(f'{i.kind}:{i.name}:{i.action}' for i in outcome.items)} "
+                f"channel=http changed=0 skipped={len(outcome.items)}",
+            )
         h._send_json(
             {
                 "ok": True,
