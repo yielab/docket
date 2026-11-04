@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (89 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (91 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (26 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [roadmap-decisions.md](roadmap-decisions.md) | archived sections (1 archived) |
@@ -26,6 +26,8 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 | 2026-11-03 | ▶ PHASE 60 ACTIVE — WAVE 60-61 · a transient failure costs a request, not a step (D-82) · accepted 2026-11-03 | `todo-waves.md` | 11,138 |
 | 2026-11-03 | ▶ PHASE 61 ACTIVE — WAVE 60-61 · a pod says what it can reach (D-83) · accepted 2026-11-03 | `todo-waves.md` | 30,633 |
 | 2026-11-03 | ▶ PHASE 62 ACTIVE — WAVE 62 · a new user can research without knowing what to install (D-84) · accepted 2026-11-03 | `todo-waves.md` | 7,635 |
+| 2026-11-03 | ▶ PHASE 63 ACTIVE — WAVE 63-64 (three waves shared with Phase 64) · a plan of record reads a pod's contract and applies to any shape (D-85, accepted 2026-11-03) | `todo-waves.md` | 29,334 |
+| 2026-11-03 | ▶ PHASE 64 ACTIVE — WAVE 63-64 (three waves shared with Phase 63) · the pod's memory works for every pod (D-86, accepted 2026-11-03) | `todo-waves.md` | 21,803 |
 | 2026-11-02 | ▶ Phase 58: what a plan of record needs to follow a team it does not run (D-80) · CLOSED 2026-11-02 | `todo-waves.md` | 13,367 |
 | 2026-11-01 | ▶ PHASE 57 — what docket gives a manager in the plan of record (D-79, ADR 0037) · CLOSED 2026-11-01 | `todo-waves.md` | 20,798 |
 | 2026-10-30 | ▶ PHASE 55 — a pod works outward, on its own schedule (D-77, ADR 0036) · CLOSED 2026-10-30 | `todo-waves.md` | 49,236 |

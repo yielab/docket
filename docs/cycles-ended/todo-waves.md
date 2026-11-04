@@ -22134,3 +22134,632 @@ Real runs on the reinstalled service (`claude-haiku-5-5`): a request timeout of 
 
 Two cards: P62-1 (the PDF reader runs docket's own interpreter and `pypdf` in the jail, no external binary or read grant) and P62-2 (a recipe prints what its work still needs, one command per gap). Both merged to `develop` with one whole-suite run each; the review of P62-1 found a macOS defect (the address-space limit can raise) that was fixed in `4ac92ce4`. Real runs: an arXiv PDF read inside the jail with no grant (30,037 chars); a fresh home told a new user the two commands that remained. Not run: Seatbelt and Docker (follow-up below, due before the next release tag).
 
+## ▶ PHASE 63 ACTIVE — WAVE 63-64 (three waves shared with Phase 64) · a plan of record reads a pod's contract and applies to any shape (D-85, accepted 2026-11-03)
+
+> From Tack's orchestration audit of 2026-11-03 (its `develop` 301b40fa against docket's adf584a6; every
+> line reference re-checked at a5432e9e, where all hold): four additive asks on API 6, each announced in
+> `features`, in the order that helps Tack most: the contract (`podContract`), the role check
+> (`pipelineChecked`), the shape and the folder apply (`podShape`), the budget window and the resume
+> route (`podResume`). Tack's cards D, F and G (`docs/plans/phase-89.md` in its repository) probe them.
+> API stays 6. Not asked, and not planned: subtasks or a DAG in docket (D-20), cross-pod dispatch, a
+> fifth blueprint, an authored blueprint format, dollars anywhere.
+>
+> **Decisions the plan takes (accepted by the maintainer 2026-11-03):**
+> 1. A task-named pipeline the roster cannot staff fails with the existing `failureKind: "pipeline"`, the
+>    kind an unknown pipeline already has; the reason names the pipeline, each role and its step.
+>    `capability_missing` stays a turn's stop on a tool the role could have held (ADR 0032 decision 7).
+>    The closed set of kinds does not grow.
+> 2. The `needs` a recipe declares are kept on the pod at apply (a recorded Lead key, like `configSource`,
+>    the union of every applied directory's list) and their readiness is computed per request. The
+>    2026-11-03 follow-up "`pod export` drops a recipe's `needs`" stands: export still omits them.
+> 3. The budget window counts from real per-day usage kept in the session record, which also closes the
+>    documented gap "`--history` is always empty" (`cost-tracking.spec.md`). Window starts are UTC: `day`
+>    is 00:00 today, `week` is Monday 00:00. A turn's tokens land in the day it ends.
+> 4. Over HTTP, a folder pod's apply needs `directory` (there is no repository to default to) and the
+>    review memory's root is the pod's `workDir`, as `docket pod update` already does on a terminal.
+> 5. One writer clears a pause (`tasks/application/lifecycle.py`), used by `docket run --resume`, `docket
+>    pod set budgetTokens` and the new route; the two copies in `interfaces/cli` go.
+>
+> **Waves (by file; the calendar is shared with Phase 64, Sonnet workers in parallel, one integrator;
+> plan: `internal-docs/plans/fases-63-64-consolidadas-2026-11-03.es.md`):**
+>
+> | Wave | Cards | File contention resolved |
+> | --- | --- | --- |
+> | 1 | P63-1 ∥ P63-3 ∥ P63-4 ∥ P64-1 ∥ P64-2 ∥ P64-6 | `pod_settings.py` is P63-1's (P63-5 waits); `apply/write,needs` (P63-1) and `apply/plan,recipes` (P63-4) are different files |
+> | 2 | P63-2 ∥ P63-5 ∥ P64-3 ∥ P64-4 | `report.py` and `steps.py` are P63-2's; `memory_decide.py` is P64-3's, `memory.py` P64-4's |
+> | 3 | P63-6 ∥ P64-5 ∥ P64-7 | `routes/pods.py`, `report.py`, `cli/pod_settings.py` are P63-6's; P64-5 is the integrator's real run |
+>
+> **`FEATURES` (`interfaces/http/routes/health.py` ~21) and its exact-list test
+> (`tests/unit/interfaces/http/routes/test_health.py`) are integrator-owned for the three waves:** a
+> worker names the feature it announces in its packet and does not open either file; the integrator adds
+> the names when merging the wave (1: `pipelineChecked`, `podShape` · 2: `podContract` · 3: `podResume`,
+> `memoryStatus`). P63-5 announces nothing: `podResume` covers the window and lands with P63-6. The
+> integrator runs the full suite once per wave, not per card.
+
+### P63-1 — The pod keeps what its recipes said their work needs
+
+**Status:** DONE (wave 1, 2026-11-04) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** Tack's D2 (2026-11-03): `needs[]` on `GET /pods/<p>`, "what Phase 62 computes at apply,
+  kept and reported". Today `teams/apply/needs.py::readiness` is called once, by
+  `interfaces/cli/render/apply.py` ~100, and nothing records the list; a pod made by `POST /pods` and
+  applied over HTTP never shows it.
+- **Goal:**
+  - `teams/apply/write.py::apply` (~339-348, where `configSource` is recorded) also records `needs` on
+    the Lead: the union, in first-seen order, of the pod's recorded list and `recipe_needs(plan.directory)`.
+    A directory that declares none leaves the key as it was.
+  - `needs` joins `PodSettings.RECORDED_KEYS` (`teams/pod_settings.py` ~317): `docket pod set needs` and
+    a `pod.yaml` `settings.needs` are refused like `configSource`; stored comma-joined like `protects`.
+  - `NeedLine` (`teams/apply/needs.py` ~24) becomes the wire shape: `kind` (`fetch-hosts`, `search-host`,
+    `isolation`), `name` (equal to `kind` today; the field exists so a need can later be named per host),
+    `fix` (the command, `""` when ready), `satisfied` (bool); `render()` keeps today's text, so P62-2's
+    output is byte-identical. `readiness(project, needs)` keeps its signature.
+  - `docket pod show --json` carries `needs: [{kind, name, fix, satisfied}]` (`[]` when none is
+    recorded); `pod show` prints one line per need, in `render()`'s words.
+- **Non-goals:** `GET /pods/<p>` (P63-2); new kinds of need; `pod export` writing `needs`.
+- **Change:** `teams/apply/write.py`, `teams/apply/needs.py`, `teams/pod_settings.py`,
+  `hops/application/report.py` (`pod_report` ~397-433: one `needs` key), the `pod show` renderer in
+  `interfaces/cli/commands/pod_config.py` (locate with `rg -n "settings" src/docket/interfaces/cli/commands/pod_config.py`),
+  tests `tests/integration/teams/test_recipe_needs.py`, `tests/unit/hops/application/test_report.py`.
+  Specs: `docket-meta.spec.md` (the `needs` row, writer: apply), `pod-blueprints.spec.md` "Pod
+  manifests: apply" requirement 16 (recorded), `cli-json-shapes.spec.md` "`docket pod show --json`".
+- **Acceptance (RED first):**
+  - Integration: a fresh home, isolation off, `docket init --recipe web-research`, then `pod show
+    --json`: `needs` has three entries, `satisfied: false` on each, each `fix` the command P62-2 prints.
+    Oracle: today `needs` is absent.
+  - Integration: `pod set fetchDomains 'html.duckduckgo.com'`, then `pod show --json`: `fetch-hosts` and
+    `search-host` are `satisfied: true` with `fix: ""`; the recorded list did not change.
+  - Integration: applying a second directory with no `needs` keeps the three; one with `needs:
+    [isolation]` keeps three (union, no duplicate).
+  - Unit: `docket pod set needs x` and a `pod.yaml` with `settings: {needs: [...]}` are refused naming
+    the key, as `configSource` is.
+  - `render()` on each line equals its 2026-11-03 text (the P62-2 test passes unchanged).
+- **Gate:** the two test files; `tests/unit/teams/apply/`; `tests/architecture`; `validate-specs.sh`;
+  `gen_cli_docs.py --check` if `pod show`'s help text moved.
+
+### P63-2 — `GET /pods/<p>` carries the pod's contract: what it delivers, the methods a task may name, what it still needs
+
+**Status:** DONE (wave 2, 2026-11-04) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P63-1 (it serves the recorded `needs`), P63-3 (both edit `hops/application/steps.py`)
+
+- **Trigger:** Tack's D2. Its card D fits a profile to a team from `delivers`, `methods` and `needs` and
+  refuses a run before any `POST /tasks` when the fit fails; today it infers the first from
+  `workspaceKind`, has no list of the pipelines a task may name, and learns of a skipped step only by
+  reading hops.
+- **Goal:** `hops/application/report.py::pod_report` (~397-433; `pod_detail` ~558 inherits it, so
+  `GET /pods/<p>` and `docket pod show --json` carry the same keys):
+  - `delivers`: a list, `["branch"]` for a `codebase` pod, `["report"]` for a `workdir` pod, plus
+    `"records"` when `teams/records.py::pod_record_sets(project)[0]` is non-empty. A list, so a third
+    kind is additive.
+  - `methods`: one entry per pipeline a task may name for this pod, from the same resolution
+    `_task_pipeline_file` uses (`hops/application/steps.py` 134-147): the pod overlay, the operator's
+    `config/pipelines`, every recipe (the operator's before the shipped ones) carrying a
+    `pipeline.yaml`; the first scope holding a name wins, as at claim. Refactor `_task_pipeline_file`
+    to iterate one new `task_pipeline_files(project) -> list[(name, path, source)]`, so the report and
+    the claim can never disagree. Each entry `{name, source, missingRoles, default}`: `source` the
+    claim's label (`pod:<n>`, `operator:<n>`, `shipped:<n>`, `recipe:<n>`); `missingRoles` the roles of
+    its unit steps `resolve_plan` marks `skipped` against `pod_full_roster(project)`
+    (`pipeline/domain/plan.py` 188-199), in step order, deduplicated; `default: true` on the entry whose
+    file's sha256 equals `PodSettings.pipeline` (the bound copy's digest), else `false` everywhere. A
+    file that does not load is listed with `missingRoles: []` and an `error` string, never dropped: the
+    method exists, and a task naming it fails at claim with that text.
+  - `needs`: P63-1's list, each `{kind, name, fix, satisfied}`, computed now.
+  - `features` gains `podContract`.
+- **Non-goals:** listing the blueprint's default pipeline as a method (it has no name a task can give;
+  `pipeline.source` already says what runs); the A2A agent card (follow-up); a method's steps.
+- **Change:** `hops/application/report.py`, `hops/application/steps.py`, tests
+  `tests/unit/hops/application/test_report.py`, `tests/unit/hops/application/test_steps.py`,
+  `tests/integration/interfaces/test_serve_pods_endpoint.py` (`FEATURES` and `test_health.py` are the
+  integrator's: name `podContract` in the packet), fixture
+  `tests/fixtures/operator-v2/pod-contract.json` (a `respond` pod with one overlay method missing a role
+  and two needs). Specs: `operator-api.spec.md` "Pod answers" (the three keys and the feature),
+  `cli-json-shapes.spec.md` "`docket pod show --json`".
+- **Acceptance (RED first):**
+  - Integration (HTTP): a `build` pod with no record sets: `delivers == ["branch"]`; a `respond` pod
+    with the `records` recipe applied: `["report", "records"]`.
+  - Integration: a pod with `pipelines/tdd.yaml` in its overlay and the shipped recipes present:
+    `methods` holds `tdd` with `source: "pod:tdd"`, then every shipped recipe carrying a
+    `pipeline.yaml`, each with the `missingRoles` the roster cannot fill (a `respond` roster lacks
+    `implementer`: every build-shaped method names it). Oracle: a task naming a method with
+    `missingRoles: []` runs every step (P63-3's test is the other half of this seam).
+  - Integration: after `pod set pipeline <file>` whose bytes equal `pipelines/tdd.yaml`, `tdd` has
+    `default: true` and no other entry does.
+  - Unit: `task_pipeline_files` lists `pod` before `operator` before `shipped` before `recipe` for one
+    name, and `_task_pipeline_file` returns that first entry (the existing `test_steps.py` cases pass).
+  - `status.json` `features` contains `podContract` once the integrator adds it at the wave merge.
+- **Gate:** the three test files; `tests/architecture`; `tests/e2e -n auto` (42 s, the HTTP API
+  changed); `validate-specs.sh`.
+
+### P63-3 — A task that names a pipeline the pod cannot staff is refused at claim, not run with holes
+
+**Status:** DONE (wave 1, 2026-11-04) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** Tack's D3. `apply` and `pod set pipeline` refuse a step whose role the roster lacks
+  (`teams/apply/recipes.py` 19-33, `unresolvable_pipeline_steps`), but a task that names a pipeline
+  (`{"pipeline": "tdd"}`, the only path Tack uses) runs with the role-less steps dropped
+  (`pipeline/domain/plan.py` 194; `ExecutionPlan.runnable_nodes` 129-133). A step Tack's profile counts
+  on is skipped in silence.
+- **Goal:**
+  - In `hops/application/steps.py::_task_pipeline` (160-186), once the named pipeline loads, plan it
+    against `pod_full_roster(project)` and the pod's registry (as `_plan_pipeline` does in
+    `teams/apply/plan.py` ~344-370) and raise `TaskRunRefusal` when `unresolvable_pipeline_steps(plan,
+    project)` is non-empty: `pipeline 'tdd' (recipe:tdd) names roles this pod does not have: reviewer
+    (step review)`. The sweep already turns a `TaskRunRefusal` into `refuse_claimed_task(project, task,
+    "pipeline", ...)` (`hops/application/sweep.py` ~136): the task settles `failed`, `failureKind:
+    "pipeline"`, the reason verbatim, before any hop, re-queued by `docket task retry` once the pod
+    has the role.
+  - Only a task-named pipeline is checked. The pod's bound pipeline, a blueprint's default and `docket
+    run --pipeline <file>` keep the skip rule (pod-dispatch "Pipeline order and participation"
+    requirement 1: a lean `build` pod runs two hops).
+  - `features` gains `pipelineChecked`.
+- **Non-goals:** a new failure kind; refusing at `POST /tasks` (the pod can change between enqueue and
+  claim, and the claim is where every other pipeline refusal lives); a kept `pipelineSpec` (it was
+  planned when it was kept).
+- **Change:** `hops/application/steps.py`, tests `tests/unit/hops/application/test_steps.py`,
+  `tests/integration/tasks/dispatch/test_pipeline_and_hops.py` (`FEATURES` and `test_health.py` are the
+  integrator's: name `pipelineChecked` in the packet), fixture
+  `tests/fixtures/operator-v2/task-pipeline-refused.json` (the failed task record). Specs:
+  `pod-dispatch.spec.md` "Pipeline order and participation" requirement 1 (the task-named exception)
+  and the unknown-pipeline rule (`rg -n "unknown pipeline" specs/`), `operator-api.spec.md` "Task
+  answers" (`failureKind` paragraph ~292-304: the role case under `pipeline`; the feature).
+- **Acceptance (RED first):**
+  - Integration: a lean `build` pod (Lead + Implementer) and a task `{"pipeline": "tdd"}` where `tdd`
+    has a `reviewer` step: the task is `failed`, `failureKind: "pipeline"`, the reason names `tdd`,
+    `reviewer` and the step id, `hops == []`, and the trace has `dispatch_refused`. Oracle: today the
+    task runs two hops and settles `done`.
+  - Integration: the same pod and task with no `pipeline`: two hops, `done` (the default pipeline's
+    skip rule is untouched).
+  - Integration: after `docket pod add reviewer`, `docket task retry` runs all three steps.
+  - Unit: the refusal text lists each missing role once with its step, in step order.
+  - Integration (a check, not a fix): the task refused at claim stays `failed` across two further sweep
+    ticks and the trace holds one `dispatch_refused` for it, not one per tick (`refuse_claimed_task` writes
+    trace only, no audit entry; `dispatch_refused` is in
+    `RESUMABLE_FAILURE_KINDS`, `tasks/domain/state.py`; the follow-up "A refused task is resumed on every
+    30 s sweep tick"). If this fails, it is its own card: report it, do not widen this one.
+- **Gate:** the three test files; `tests/architecture`; `validate-specs.sh`.
+
+### P63-4 — `pod.yaml` names its shape, and apply reaches a folder pod over HTTP
+
+**Status:** DONE (wave 1, 2026-11-04) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** Tack's D1. `PodDocument` (`teams/config_models.py` 121-134, `extra="forbid"`) and
+  `_MANIFEST_KEYS` (`teams/config_docs.py` ~540) take no shape, so a recipe cannot say which blueprint
+  it is for and Tack's import preview guesses the `docket init --blueprint` it prints.
+  `POST /pods/<p>/apply` answers 400 when the Lead has no `codebase`
+  (`interfaces/http/routes/pod_apply.py` 28-35), and every `respond`, `operate` and `routine` pod is
+  provisioned with `codebase=""` (`teams/pod_provisioning.py` 429-432), so the recipes meant for
+  those pods (`outward`, `ops-approval`, `records`, `web-research`) cannot be applied over HTTP; on a
+  terminal `docket pod update` already can (`interfaces/cli/commands/pod_config.py` ~133-141 passes
+  `workdir=`).
+- **Goal:**
+  - `shape: build|respond|operate|routine` is the eleventh `pod.yaml` key (`PodDocument`,
+    `_MANIFEST_KEYS`), the closed set `POST /pods` takes as `blueprint` (`teams/blueprints.py`
+    `BUILTIN_BLUEPRINTS`). `plan_apply` (`teams/apply/plan.py` ~481-520) refuses, before any other item
+    is planned, a `shape` that differs from the Lead's `blueprint` meta (`_plan_members` ~305 reads
+    it): `pod.yaml: shape 'respond' but pod 'x' was provisioned 'build'`; a pod with no recorded
+    blueprint accepts any shape. `summarize_recipe` (`teams/apply/recipes.py`) reports the shape so
+    `docket pod update`'s header prints it.
+  - `post_pod_apply`: for a `workdir` pod (`_review.is_workdir`), `directory` is required (400:
+    `directory is required: pod 'x' works in a folder and has no repository to read .docket/ from`),
+    absolute as today, and the review root passed to `apply_directory` is the Lead's `workDir`. The
+    `reviewCode` flow is unchanged: a directory that runs things on this machine still answers 409 with
+    the code.
+  - Shipped recipes whose `members` exist in one blueprint's roster only (check against
+    `teams/blueprints.py` 239-266) declare their `shape`; a recipe any shape can take declares none.
+  - `features` gains `podShape`.
+- **Non-goals:** a shape on `docket init` other than `--blueprint`; converting a pod from one shape to
+  another; relative directories; a shape in `pod export` beyond what the pod records.
+- **Change:** `teams/config_models.py`, `teams/config_docs.py`, `teams/apply/plan.py`,
+  `teams/apply/recipes.py`, `interfaces/http/routes/pod_apply.py`,
+  the shipped `pod.yaml` files that take a shape, tests `tests/unit/teams/apply/test_plan.py`,
+  `tests/integration/interfaces/test_serve_pods_config.py` (`FEATURES` and `test_health.py` are the
+  integrator's: name `podShape` in the packet). Specs: `pod-blueprints.spec.md` "Pod manifests:
+  apply" requirement 1 (eleven keys, the shape rule), `operator-api.spec.md` "`POST /pods/<p>/apply`"
+  (the folder-pod rule), `config-format.spec.md` if it lists `PodDocument`'s keys
+  (`rg -n "protects" specs/functional/config-format.spec.md`).
+- **Acceptance (RED first):**
+  - Unit: `plan_apply` on a `build` pod with `shape: respond` raises naming both shapes and plans
+    nothing; `shape: build` plans as before; `shape: fleet` is refused as not one of the four.
+  - Integration (HTTP): `POST /pods {name, blueprint: "respond"}` then `POST /pods/<p>/apply
+    {directory: <absolute copy of the shipped outward recipe>}`: 200 with the plan's items, and the
+    roster gains the recipe's members. Oracle: today 400 "has no recorded codebase".
+  - Integration (HTTP): the same with no `directory`: 400 naming `directory`; with a directory holding
+    a `run:` step: 409 with `reviewCode`, then 200 with `accept`.
+  - Integration: `docket pod update` on the same folder pod still works (`test_recipes.py`).
+  - Integration (HTTP, folded follow-up): an apply whose every item is skipped writes one `pod.apply`
+    audit entry with `channel=http` and the counts, as an apply that changes something does (today it
+    writes none; same file `routes/pod_apply.py`).
+- **Gate:** the three test files; `tests/integration/teams/test_recipes.py`; `tests/architecture`;
+  `tests/e2e -n auto` (the HTTP API changed); `validate-specs.sh`; `gen_cli_docs.py --check` if the
+  update header text is documented.
+
+### P63-5 — The pod budget gets a window, counted from the day the tokens were spent
+
+**Status:** DONE (wave 2, 2026-11-04) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P63-1 merged (both edit `teams/pod_settings.py`; no other dependency)
+
+- **Trigger:** Tack's D4. `budgetTokens` is compared with `pod_counted_tokens`
+  (`hops/application/usage.py` 45-54), a lifetime sum over every member and session, so `frugal`'s
+  1M pauses a healthy pod for ever. The session record keeps one running total (`agent/session.py`
+  `MeasuredUsage`, `_add_usage` ~117, `SessionRecord.usage` ~137), which is why
+  `DocketDriver.usage().by_day` is always empty (`hops/application/driver.py` 357-369;
+  `cost-tracking.spec.md` "Known gap: `--history` is always empty").
+- **Goal:**
+  - `SessionRecord` gains `usageByDay: {"YYYY-MM-DD": MeasuredUsage}` (UTC day of the append);
+    `append_messages` (~207-229) adds the delta to the total and to the day. A record without the key
+    reads as `{}`. `DocketDriver.usage` fills `by_day` from it, so `docket status --history` stops being
+    empty: the known-gap section is deleted.
+  - `PodSettings.budget_window: Literal["none", "day", "week"]` (alias `budgetWindow`, default `none`,
+    in `_SETTING_FIELD_BY_ALIAS` ~99 and `KEYS`). `window_start(window, now) -> datetime | None`, a pure
+    function in `hops/domain/gate_decisions.py`: `none` is `None`; `day` 00:00 UTC today; `week` Monday
+    00:00 UTC.
+  - `pod_counted_tokens(project, since=None)`: with `since`, sums each member's `by_day` buckets whose
+    day is on or after `since`'s date; without it, the lifetime total (the existing behaviour). Both pre-hop readers
+    (`hops/gates/pre_hop.py` ~104 the ceiling, ~123 the gate) pass the window's start.
+    `budget_exceeded`'s detail gains `window` and `windowStart` (`"none"` and `null` without a window).
+  - `docket pod set budgetWindow <day|week|none>` validates through `coerce`; a `set` or `unset` of
+    `budgetWindow` clears the pause and unblocks, as `budgetTokens` does
+    (`interfaces/cli/commands/pod_settings.py` ~96, ~221, ~339: extend the key check, never copy the
+    block). `pod.yaml` `settings.budgetWindow` applies through the same validator.
+- **Non-goals:** the resume route and the `budget` report object (P63-6); a rolling window; a per-day
+  count for a session written before this card (its tokens count toward `none` only); a budget per
+  member.
+- **Change:** `agent/session.py`, `hops/application/driver.py`, `hops/application/usage.py`,
+  `hops/domain/gate_decisions.py`, `hops/gates/pre_hop.py`, `teams/pod_settings.py`,
+  `interfaces/cli/commands/pod_settings.py`, tests `tests/unit/agent/test_session.py`,
+  `tests/integration/tasks/test_autopause.py` (`test_cap_breach_pauses_lead_and_blocks_task` ~130 gets
+  a windowed sibling). Nine files: the seam between the day bucket and the gate stays in one card so
+  no two green cards break it. Specs: `session-history.spec.md` (the record's `usageByDay`),
+  `cost-tracking.spec.md` ("Budget caps" the window, "Enforcement" the count, the known gap deleted),
+  `pod-dispatch.spec.md` "Pod dispatch settings" `KEYS` and "Budget gate and auto-pause" requirement
+  1, `docket-meta.spec.md` (`budgetWindow` row; `paused` writers).
+- **Acceptance (RED first):**
+  - Unit (`test_session.py`): two appends on different UTC days give two buckets whose sum equals the
+    total; a record without `usageByDay` loads with `{}`.
+  - Unit: `window_start("week", a Wednesday 15:00 UTC)` is that week's Monday 00:00 UTC; `"day"` is
+    that day's 00:00; `"none"` is `None`.
+  - Integration (`test_autopause.py`): a pod with `budgetTokens 1000`, `budgetWindow day` and sessions
+    holding 2000 tokens dated yesterday and 100 today: the hop runs and the pod is not paused. Oracle:
+    with `budgetWindow none` (and on today's code) it pauses. With 1000 today it pauses, and
+    `budget_exceeded` carries `window: "day"` and the start.
+  - Integration: `docket pod set budgetWindow week` on a paused pod clears `paused` and re-queues its
+    blocked tasks; `budgetWindow month` is refused naming the three values.
+  - `docket status --history` on a home with two days of sessions prints two rows (a test that pins the
+    empty history is rewritten, not deleted).
+- **Gate:** the two test files; `tests/unit/hops/`; `tests/architecture`; `validate-specs.sh`;
+  `gen_cli_docs.py --check` (`pod set`'s key list is documented).
+
+### P63-6 — `POST /pods/<p>/resume` clears a pause, and every pod answer says its budget
+
+**Status:** DONE (wave 3, 2026-11-04) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P63-5 (the `window` and `windowStart` it reports; the clearing writer it shares); P64-4 merged (the memory entry's wire shape it lists)
+
+- **Trigger:** Tack's D4: the pause clears only from the CLI (`docket run --resume`,
+  `interfaces/cli/commands/run.py` ~163; `docket pod set budgetTokens`,
+  `interfaces/cli/commands/pod_settings.py` ~96), two copies of the same two `meta_set` calls;
+  `operator-api.spec.md` "Pod answers" ~418 says "There is no route to clear a pause". Tack's card F
+  puts a **Resume team** button on the team row and a Limits fold on the run card.
+- **Goal:**
+  - One writer: `tasks/application/lifecycle.py::resume_pod(project) -> bool` clears
+    `paused`/`pausedReason` on the Lead, calls `unblock_pod`, audits `run.resume` when the Lead was
+    paused (cost-tracking requirement 7's entry, its name unchanged) and returns whether it was. `run
+    --resume` and `pod set`/`unset` of `budgetTokens` and `budgetWindow` call it; the two copies are
+    deleted, no shim.
+  - `POST /pods/<p>/resume` (`interfaces/http/routes/pods.py`; `routes/table.py` ~59 beside apply;
+    bearer token like every write): no body; a paused pod answers 200 with the pod report
+    (`pod_detail`) plus `resumed: true`; one that is not paused answers 200 with the report and
+    `resumed: false`, nothing written; an unknown pod 404. Audited with `channel=http`, as apply is.
+  - `budget: {tokens, used, window, windowStart}` on every `GET /pods` row (`pod_summary` ~530) and on
+    `GET /pods/<p>` (`pod_report`): `tokens` the cap or `null`; `used` the count the gate would compare
+    now (`pod_counted_tokens` with the window's start); `window` one of `none|day|week`; `windowStart`
+    the ISO-8601 UTC instant, `null` for `none`. One `_budget_fields(project, settings)` in `report.py`,
+    called from both.
+  - `GET /pods/<p>/memory?status=accepted|pending|refused` (`interfaces/http/routes/pods.py` ~59-66,
+    `get_pod_memory`): the entries in that status, oldest first, the wire shape P64-4 defines; no
+    `status` keeps today's answer (accepted only); another value is 400 naming the three. This is how a
+    plan of record sees what waits for `docket pod memory approve` until the inbox contract is bumped
+    (follow-up under "Channels, inbox and the HTTP API").
+  - `GET /pods` (the list, `pod_summary`) is checked for the invalid-settings failure fixed on `/pods/<p>`
+    (folded follow-up): a pod whose settings fail validation is listed with its error, the route answers
+    200.
+  - `features` gains `podResume` and `memoryStatus` (the integrator adds both).
+- **Non-goals:** resuming one task (`POST /tasks/<pod>/<id>/retry` exists); a body that changes the
+  budget; a `pausedUntil`; dollars; a route that approves a memory entry (CLI only; a follow-up if Tack asks).
+- **Change:** `tasks/application/lifecycle.py`, `interfaces/cli/commands/run.py`,
+  `interfaces/cli/commands/pod_settings.py`, `interfaces/http/routes/pods.py`,
+  `interfaces/http/routes/table.py`, `hops/application/report.py`,
+  tests `tests/integration/interfaces/test_serve_pods_pause.py`
+  (`test_a_budget_pause_shows_on_both_routes_until_resume_clears_it` ~36 grows the route),
+  `tests/unit/hops/application/test_report.py`, `tests/integration/interfaces/test_serve_pod_memory.py`
+  (the `status` query), fixture `tests/fixtures/operator-v2/pod-budget.json`. Specs: `operator-api.spec.md`
+  "Pod answers" (the `budget` object; the pause paragraph's last sentences replaced by the route), its
+  "Syntax" route table and "Arguments" (`POST /pods/<p>/resume`; `GET /pods/<p>/memory` and `status`),
+  `cost-tracking.spec.md` requirement 7 (the writers), `docket-meta.spec.md` `paused`/`pausedReason`
+  writers. `FEATURES` and `test_health.py` are the integrator's.
+- **Acceptance (RED first):**
+  - Integration (HTTP): a pod paused by the gate: the `GET /pods` row has `paused: true` and
+    `budget.used >= budget.tokens`; `POST /pods/<p>/resume` is 200, `resumed: true`, `paused: false` in
+    the same body; the blocked task is `pending`; the audit log has `run.resume` with `channel=http`. A
+    second `POST` is 200, `resumed: false`, no new audit row. Oracle: today the route is 404.
+  - Integration: a pod with no cap: `budget == {tokens: null, used: <n>, window: "none", windowStart:
+    null}` on both routes; with `budgetWindow day`, `windowStart` is today's 00:00Z and `used` counts
+    today only (P63-5's bucket).
+  - Unit: `resume_pod` on an unpaused pod returns `False` and writes no audit row; `rg` proves
+    `"paused", False` is written in one module.
+  - `docket run --resume` behaves as before (`tests/unit/interfaces/cli/commands/test_run.py` passes
+    unchanged).
+  - Integration (HTTP): a pod with one accepted and two pending entries: `GET /pods/<p>/memory` returns
+    one; `?status=pending` returns two, each with `reason` and `provenance.task`; `?status=stale` is 400
+    naming `accepted`, `pending`, `refused`. Oracle: today the query is ignored.
+  - Integration (HTTP): with one pod whose Lead carries an invalid setting, `GET /pods` is 200 and that
+    row names the error (the `/pods/<p>` fix of 2026-11-03 has a list-side test).
+- **Gate:** the four test files; `tests/unit/interfaces/cli/commands/test_run.py`;
+  `tests/architecture`; `tests/e2e -n auto` (the HTTP API changed); `validate-specs.sh`.
+
+## ▶ PHASE 64 ACTIVE — WAVE 63-64 (three waves shared with Phase 63) · the pod's memory works for every pod (D-86, accepted 2026-11-03)
+
+> From the memory audit of 2026-11-03 (`internal-docs/audits/memoria-de-pod-2026-11-03.es.md`; plan
+> `internal-docs/plans/memoria-de-pod-plan-2026-11-03.es.md`, consolidated in
+> `fases-63-64-consolidadas-2026-11-03.es.md`): 22 entries written by the four live pods, 0 accepted, 0
+> rendered into a prompt, 0 operator decisions. The verifier knew a git commit and a `bash` exit; three
+> of the four pods work in a folder with MCP, service and `fetch` tools. The design stays (docket
+> decides, one writer, audited, untrusted frame last, operator approval for `pitfall`/`convention`);
+> its sources of truth, its grammar and its screen are recalibrated, and the dead workspace memory goes.
+>
+> **Decisions (accepted 2026-11-03):** memory is for every pod; `tool` replaces `command` and is verified
+> by a `tool_call` of that tool with its `tool_result` in the trace (arguments are not matched: the model's
+> rendering of them is free text); a folder pod's `generated` path is verified under its `workDir`; a
+> `pitfall`/`convention` subject is a label of at most 60 characters and the id is the hash of kind,
+> subject and normalized note; a note is NFKC-normalized and refused with Unicode format characters or a
+> heading; instruction-like text is held `pending`, the imperative-word list goes; a gone path is `stale`
+> and evicted first; the wire emits `subject`, `stale`, `evidence {ok}`/`{exit}`, no `path`/`command`/`exit`
+> keys; `memory.json` has no schema version, so entries of the old kinds are dropped at the first write
+> (no users; said in the commit body). Not taken: embeddings or retrieval, model-driven consolidation,
+> `supersededBy`, an episodic digest, memory per member, a change to `HEARTBEAT.md`, the inbox contract
+> bump. ADR 0028 decision 7's last bullet is amended in P64-1; no new ADR.
+>
+> **Waves:** see Phase 63's table. P64-2 (wave 1) creates the modules and splits the test file that P64-3
+> and P64-4 (wave 2, parallel, disjoint files) then own. P64-5 is the integrator's real run after wave 2.
+> P64-6 and P64-7 are the two §7.1 decisions, fillers for waves 1 and 3.
+
+### P64-1 — The workspace loses `memory/`, and `MEMORY.md` is the operator's
+
+**Status:** DONE (wave 1, 2026-11-04) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec + ADR amendment · **After:** —
+
+- **Trigger:** audit 2026-11-03: 17 of 17 live `MEMORY.md` are the template (543-557 bytes), so
+  `teams/identity.py::memory_has_content` (~199) is false and nothing is composed; `memory/` is created
+  (`teams/member_workspace.py` ~152; `teams/agent_memory.py` ~289), chmod-walked (`member_workspace.py`
+  ~230-235), named in `_PRIVATE_FILE_NAMES` (`identity.py` ~85) and read or written by nothing
+  (`agent_memory.py` 9, 41-42). ADR 0028 decision 7 says the "Fill on first run" template goes;
+  `_memory_md_seed` (`agent_memory.py` ~222-255) still seeds it, and `_workflow_auto_text` (~121-126)
+  still tells a manual-path agent to fill it.
+- **Goal:**
+  - `memory_dir`, the two `mkdir` calls and the chmod branch are deleted; `_PRIVATE_FILE_NAMES` drops
+    `memory/`.
+  - `_memory_md_seed` is a header only: the title and one italic line, "Operator notes. docket composes
+    this file into every prompt of this member when it holds text beyond this line; docket never writes
+    it." No sections, no placeholder to fill. `memory_has_content` is unchanged (headings and `_italic_`
+    lines are template).
+  - `_workflow_auto_text` and `_workflow_auto_text_workdir`: the "Answering" section says to answer from
+    `MEMORY.md` when the operator filled it, else from the codebase `README` (or the working directory's
+    notes), and drops "fill it in". `CONTRACT_VERSION` 6, so `docket setup --fix` re-seeds a v5
+    `WORKFLOW_AUTO.md`; `MEMORY.md` is never rewritten (`seed_contract` keeps `if not mem_md.exists()`).
+  - ADR 0028 decision 7, last bullet: "`MEMORY.md` is the operator's notes; docket seeds a header and
+    never writes it; the `memory/` directory is gone." Spec req. 9 drops `memory/`; the file list
+    (~358-377) drops `memory/`.
+- **Non-goals:** `HEARTBEAT.md`; pod memory (`teams/memory.py`); the runtime contract projection
+  (`identity.py` ~165-179).
+- **Change:** `teams/agent_memory.py`, `teams/member_workspace.py`, `teams/identity.py` (~85 only),
+  `docs/adr/0028-context-in-layers-and-a-budget-that-counts-new-tokens.md`,
+  `specs/functional/workspace-structure.spec.md`, tests `tests/unit/teams/test_agent_memory.py`,
+  `tests/integration/teams/test_pod_role_workspace_parity.py`.
+- **Acceptance (RED first):**
+  - Integration: a fresh home, `docket init`: no member workspace has `memory/`; each `MEMORY.md` is
+    the two-line header; `compose_agent_prompt` composes no runtime context for it. Oracle: today
+    `memory/` exists and `MEMORY.md` is 543 bytes.
+  - Integration: a workspace with the v5 marker and an operator-edited `MEMORY.md`: `docket setup
+    --fix` rewrites `WORKFLOW_AUTO.md` to v6 and leaves `MEMORY.md` byte-identical; the manual-path
+    text no longer contains "fill".
+  - `rg -n '"memory"|memory_dir|memory/' src/docket/teams` returns nothing.
+- **Gate:** the two test files; `tests/architecture`; `validate-specs.sh`.
+
+### P64-2 — `teams/memory.py` splits into parse, decide and store; the grammar takes `tool`, a free subject and a normalized note
+
+**Status:** DONE (wave 1, 2026-11-04) · **Size:** M · **Model:** Sonnet · **Kind:** pure move (commit 1) + behaviour + spec (commit 2) · **After:** —
+
+- **Trigger:** `teams/memory.py` is 691 lines holding the grammar (32-214), the verifier (220-444) and
+  the store (447-690); P64-3 and P64-4 add to the middle and the end and would open one file from two
+  workers and pass D-78's 1,000 lines. Measured on the live home: 3 subjects refused "not a
+  repository-relative path" because req. 2 ties `pitfall`/`convention` to a path (`fetch tool`,
+  `consult tool`, a URL); `command` is `bash`-only (`_traced_exit` ~308-326) while three of four pods
+  call MCP and service tools; a note's Unicode is unchecked (`_safe_path` ~264 rejects control
+  characters in the path only; `_vet` ~401-405 measures the note and runs the regex).
+- **Goal:**
+  - Commit 1, a pure move with no new test: `teams/memory_parse.py` takes `KINDS`, `MEMORY_HEADING`,
+    the regexes and word lists, `ParsedLine`, `parse_memory_section`, `_safe_path`,
+    `_reads_as_instruction`, `_vet`; `teams/memory_decide.py` takes `HopLike`, `TaskLike`, `_TaskFacts`,
+    `_session_events` through `_decide_command`; `memory.py` keeps `MemoryEntry`, `entry_id`, the store,
+    the operator API and the render, importing the two. `tests/integration/teams/test_pod_memory_rules.py`
+    splits the same way: `TestDecide` and `TestCommandEntries` stay; `TestStore`, `TestOperatorApi` and
+    `TestRender` move to `tests/integration/teams/test_pod_memory_store.py`. `SUBJECT` of
+    `tests/unit/teams/test_memory.py` becomes `docket.teams.memory_parse`.
+  - Commit 2, in `memory_parse.py`: `KINDS = ("generated", "tool", "pitfall", "convention")`; a
+    `pitfall`/`convention` subject is a label of at most 60 characters with no URL and no control
+    character (`_safe_path` applies to `generated` only); a `tool` subject is the invocation as written,
+    at most 200 characters, no URL (what `command` required); the note is NFKC-normalized, then refused
+    when any character is Unicode category `Cf` or any line starts with `#`. `_reads_as_instruction`
+    keeps returning its label; what the label means is P64-3's.
+- **Non-goals:** any status `_decide` assigns (P64-3); the store, id, render (P64-4); the prompt line in
+  `builtin_roles.py` (P64-3).
+- **Change:** `teams/memory.py`, `teams/memory_parse.py` (new), `teams/memory_decide.py` (new),
+  `specs/functional/workspace-structure.spec.md` req. 1, 2, 4 (kinds, subjects, the note), tests
+  `tests/unit/teams/test_memory.py`, `tests/integration/teams/test_pod_memory_rules.py`,
+  `tests/integration/teams/test_pod_memory_store.py` (new, by move).
+- **Acceptance (RED first, commit 2):**
+  - `- pitfall: fetch tool -- returns cached summaries for a URL seen earlier` parses with subject
+    `fetch tool` and no refusal. Oracle: the same line with `js // comments` as the subject, which `_vet`
+    refuses today ("not a repository-relative path"); `fetch tool` is not refused on the base.
+  - `- tool: rec__query SELECT 1 -- one row` parses with kind `tool`; `- command: pytest -- ok` is a
+    `ParsedLine` refusal naming an unknown kind.
+  - A note with `U+200D`, one with `U+202E`, and one with a line starting `#` are each refused
+    "contains formatting characters or a heading"; the same notes without them pass `_vet`.
+  - A 61-character `pitfall` subject is refused "subject over 60 characters"; 60 passes.
+  - Commit 1's check: `uv run pytest --co -q` and `tests/architecture` green; the moved tests pass
+    unchanged.
+- **Gate:** `tests/unit/teams/test_memory.py`; `tests/integration/teams/test_pod_memory_rules.py`;
+  `tests/integration/teams/test_pod_memory_store.py`; `tests/architecture`;
+  `scripts/maint/comment_lint.py --check` on the three modules; `validate-specs.sh`.
+
+### P64-3 — docket verifies a `tool` call and a folder pod's path, and holds instruction-like text for the operator
+
+**Status:** DONE (wave 2, 2026-11-04) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P64-2 (the modules, the grammar)
+
+- **Trigger:** live home 2026-11-03: 5 `generated` entries of folder pods pending "no task commit to
+  check the path against"; 3 `command` entries naming `svc__hn__search` and `rec__query` refused "no
+  exit status for this command in the task's trace" while the trace holds their `tool_call` and
+  `tool_result` (`agent/loop_trace.py` ~188-250: `tool`, `callId`, `arguments`; `ok`, `executed`);
+  2 notes refused "starts with an imperative verb" whose first word is a tool name used as the
+  sentence's subject ("`curl` a dominios externos devuelve 000", "fetch returns HTTP 200"), while
+  Spanish imperatives ("ejecutarlos por separado", "deben") pass the English list.
+- **Goal** (`teams/memory_decide.py`):
+  - `_task_facts.root`: the pod's `workDir` when `teams/pod_settings.py::workspace_kind(project)` is
+    `WorkspaceKind.workdir`, else the codebase as today (`_pod_codebase` stays where it is).
+  - `generated`: accepted when the path exists at the task's commit (codebase pod, as today) or
+    `os.path.lexists(root/path)` at task end (folder pod), reason "path present under the work dir";
+    `provenance` carries `root` instead of `commit` for a folder pod; "no task commit" stays a codebase
+    pod's pending reason only.
+  - `tool`: the subject's first token is the tool name; accepted when the trace holds a `tool_call` of
+    that tool with a `tool_result` for its `callId`, reason "tool call found in the task's trace",
+    evidence `{ok}` from the last such result; for `bash`, `{exit}` from `process_exited`, a
+    `command_step` or the verify gate (today's `_traced_exit`, kept). A tool nobody called is refused.
+  - `_decide`: a note `_reads_as_instruction` labels is `pending` with that label as reason, never
+    refused; `refused` stays for a URL in the note, a `block`/`require_approval`/`redact` verdict and a
+    bad shape. `_IMPERATIVE_FIRST_WORDS` and its branch are deleted (`memory_parse.py`). A
+    `pitfall`/`convention` that also reads as an instruction carries one reason: "reads as an
+    instruction; awaits operator approval".
+  - `teams/builtin_roles.py` ~25 and ~36 name the kinds `generated, tool, pitfall, convention`.
+  - Spec req. 4 rewritten for the three verifiers and the pending rule; a sentence that a `convention`
+    is the operator's judgement, not the regex's.
+- **Non-goals:** the store, id, `stale`, render (P64-4); matching a tool's arguments; reading
+  `tool_result.text`; the one-codebase-reader follow-up (its helper would have to live in `teams`;
+  separate card when touched).
+- **Change:** `teams/memory_decide.py`, `teams/memory_parse.py` (the deletion only),
+  `teams/builtin_roles.py`, `specs/functional/workspace-structure.spec.md` req. 4, tests
+  `tests/integration/teams/test_pod_memory_rules.py` (`TestDecide`; `TestCommandEntries` becomes
+  `TestToolEntries`), `tests/integration/teams/test_pod_memory.py` (the seam), `tests/unit/teams/test_role_schema.py`
+  if it pins the method text, fixture `tests/fixtures/pod-memory/live-notes-2026-11-03.json` (the 22
+  live notes with pod and client names scrubbed, each with the status this card expects).
+- **Acceptance (RED first):**
+  - Integration: a folder pod, a hop ok that wrote `report.md` and ends `- generated: report.md -- ...`:
+    `accepted`, reason "path present under the work dir", `provenance.root` set. Oracle: today
+    `pending`, "no task commit". A path not under the work dir: `refused`. A codebase pod: unchanged.
+  - Integration: a trace with `tool_call {tool: "rec__query"}` and `tool_result {ok: true, executed:
+    true}` and `- tool: rec__query SELECT ... -- returns the full set`: `accepted`, evidence `{ok:
+    true}`; the same line with no such call: `refused`; a `bash` call with `process_exited 1`: evidence
+    `{exit: 1}`.
+  - Fixture replay: none of the 22 notes is refused with "imperative"; "`curl` a dominios externos
+    devuelve 000" is not refused; "do not reuse it in this pod's output" is `pending` "reads as an
+    instruction"; a note with a URL is `refused`; the file records the count accepted/pending/refused.
+  - Seam (`test_pod_memory.py`): the folder pod's accepted entry is in the next turn's system prompt
+    under `POD_MEMORY_FRAME`, rendered as `- generated report.md: ...`.
+- **Gate:** the three test files; `tests/architecture`; `validate-specs.sh`.
+
+### P64-4 — One id per fact, `stale` on a gone path, an eviction order, and `tool` rendered
+
+**Status:** DONE (wave 2, 2026-11-04) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P64-2; parallel with P64-3 (disjoint files)
+
+- **Trigger:** `entry_id` is `hash(kind, subject)` (`teams/memory.py` ~177-179) and `_merge` skips an
+  id already present (~553-556): one `convention: .` per repository, a second fact about one file
+  dropped with no trace. `_trim` (~456-466) drops the oldest accepted while a `generated` whose path is
+  gone stays accepted and counted (`render_entries` ~678-680 omits it from the prompt only).
+- **Goal** (`teams/memory.py`):
+  - `entry_id(kind, subject, note)`: the note casefolded with whitespace collapsed. Exact repeats
+    still store once; a refusal is still not reopened.
+  - `MemoryEntry.stale: bool = False` and `evidence: dict[str, int | bool]` replacing `exit`
+    (`{exit: n}` or `{ok: bool}`); `to_dict` emits `subject` for every kind, `stale` and `evidence`, and
+    no `path`, `command` or `exit` key; `_entry_from_dict` reads only this shape (old entries drop at
+    the first write; no reader for the old keys).
+  - `record_task_memory`, before merging the task's entries, re-checks every accepted `generated` of the
+    pod against the task's commit or root (the P64-3 verifiers, called through `memory_decide`) and
+    flips `stale`; one `memory_update` with `action: "stale"` or `"fresh"` per flip, audited like a
+    decision.
+  - `_trim` evicts, within the two caps, refused oldest, then stale, then pending oldest, then accepted
+    oldest. `render_entries` skips `stale` and renders a `tool` as `` - tool `<subject>` (ok|error|exit N): note ``.
+  - Spec req. 1 (the shape), 5 (id, caps, order), 6 (stale, the tool line), 7 (the two actions);
+    `operator-api.spec.md` "`GET /pods/<p>/memory`" lists the shape.
+- **Non-goals:** deciding (P64-3); the `status` query (P63-6); `supersededBy`; a schema version.
+- **Change:** `teams/memory.py`, `specs/functional/workspace-structure.spec.md` req. 1, 5, 6, 7,
+  `specs/api/operator-api.spec.md` (the memory shape), tests
+  `tests/integration/teams/test_pod_memory_store.py` (from P64-2's split),
+  `tests/integration/interfaces/test_serve_pod_memory.py` (the shape; P63-6 adds the query in wave 3),
+  fixture under `tests/fixtures/operator-v2/` if one holds a memory entry
+  (`rg -l '"kind": "command"' tests/fixtures`).
+- **Acceptance (RED first):**
+  - Two `pitfall` entries with one subject and different notes: two entries, two ids; the same note twice:
+    one. Oracle: today the second is skipped.
+  - An accepted `generated` whose path is deleted before the next task ends: `stale: true`, absent from
+    `render_entries`, present in the file, one `memory_update` `action: "stale"`; the path restored at a
+    later task: `stale: false`, `action: "fresh"`.
+  - 41 accepted entries with one stale: the stale one goes, the oldest live accepted stays.
+  - `GET /pods/<p>/memory` rows carry `subject`, `stale`, `evidence` and no `path`, `command`, `exit`.
+  - A `tool` entry with `{ok: true}` renders `(ok)`; with `{exit: 1}` renders `(exit 1)`.
+- **Gate:** the two test files; `tests/architecture`; `validate-specs.sh`.
+
+### P64-5 — The real run: a folder pod remembers, and the next task reads it
+
+**Status:** DONE (wave 3, 2026-11-04) · **Size:** M · **Model:** Opus (integrator) · **Kind:** real run + observability fix · **After:** P64-3, P64-4 merged
+
+- **Trigger:** 18 live tasks, 0 renders; `prompt_composed` (`agent/loop_trace.py` ~369-384) appears in
+  no live trace, so the `podMemory` section report the spec names (req. 6) is unobservable in
+  production.
+- **Goal:** find why `prompt_composed` is absent from the trace store (capture class, exporter-only
+  path, or never emitted) and make the section report reach the trace or `docket log`; `./install.sh`;
+  one task on `hn-live` or `web-research` (`DOCKET_TOOL_MAX_OUTPUT_CHARS=2500` against the local
+  endpoint) whose reply ends with a `## Memory` section; then a second task of the same pod. Record
+  before/after under `internal-docs/baselines/phase-64/` with the fixture replay of P64-3.
+- **Acceptance:** `docket pod memory list --pod <p>` shows at least one `accepted` entry with
+  `evidence`; the second task's trace shows the `podMemory` section with `status: full`; the fixture
+  replay reads n/22 accepted or pending-for-approval, none pending for an impossible check.
+- **Gate:** the phase-close gates (`CLAUDE.md` "Testing budget"); ROADMAP "Status", this section's
+  archive, `CHANGELOG.md` by the integrator.
+- **Result (2026-11-04, build 1c39b58c installed, service restarted):** the premise was wrong:
+  `prompt_composed` is in the live traces (71 events, 16 of 24); `podMemory` was absent because nothing
+  was ever accepted. The run found a second defect behind it: `render_entries` dropped every non-`tool`
+  entry whose subject was not an existing path, so an approved `pitfall`/`convention` never rendered
+  (fixed). On `hn-live` a first task left 3 accepted entries (2 `generated`, 1 `tool` with evidence) and
+  the second task's three hops carry `podMemory` 641 bytes `full`. The fixture replay reads 5 accepted,
+  9 pending for the operator, 8 refused. Record: `internal-docs/baselines/phase-64/README.md`.
+
+### P64-6 — The PydanticAI and OpenHands adapters go (§7.1 decision)
+
+**Status:** DONE (wave 1, 2026-11-04) · **Size:** S · **Model:** Sonnet · **Kind:** deletion · **After:** — (wave 1 filler; no file in common with any other card)
+
+- **Trigger:** ROADMAP §7.1: no consumer, last changed 2026-09-01, the maintainer decided 2026-11-03.
+  The follow-up "the adapters never pass `cache_write_tokens`" closes with them.
+- **Goal:** delete `packages/docket-runtime/src/docket_runtime/adapters/openhands.py` and
+  `pydantic_ai.py` (and the package if empty), `examples/runtime_adapters.py`,
+  `tests/support/runtime_adapters.py`, `tests/agent/release/test_pydantic_ai_adapter.py`,
+  `test_runtime_openhands_adapter.py`, `test_runtime_adapter_parity.py`,
+  `test_runtime_adapter_public_truth.py`, `tests/unit/test_runtime_adapter_fixture_contract.py`,
+  `tests/fixtures/runtime_adapters/`; the optional extras naming them in
+  `packages/docket-runtime/pyproject.toml`; the sentences claiming them in
+  `specs/api/runtime-library.spec.md`, `COMPATIBILITY.md` and any README; one `Removed` line in
+  `CHANGELOG.md` (integrator). `docket-runtime` itself stays.
+- **Acceptance:** `rg -n "pydantic_ai|openhands" --glob '!internal-docs/**' --glob '!docs/cycles-ended/**' --glob '!CHANGELOG.md' .`
+  returns nothing; `uv run pytest --co -q` collects; `tests/guards/suite_shape_baseline.txt` shrinks by
+  deletions only.
+- **Gate:** `uv run pytest --co -q`; `tests/architecture`; `tests/guards`; `validate-specs.sh`.
+
+### P64-7 — The live smoke runs jailed by default (§7.1 decision)
+
+**Status:** DONE (wave 2, 2026-11-04) · **Size:** S · **Model:** Haiku · **Kind:** scripts · **After:** — (wave 3 filler)
+
+- **Trigger:** ROADMAP §7.1: `scripts/smoke_workflow.py` ~1519 (`sandbox: str = "off"`) and ~1676
+  (the flag), `scripts/maint/live_eval.py` ~356 default to `off`, while `docket init` turns the jail on
+  where the machine can (D-67), so the default smoke runs a configuration users do not. Decided
+  2026-11-03.
+- **Goal:** both default to `on`; a machine without a backend gets the existing refusal
+  (`_sandbox_refusal` ~1743) naming `--sandbox off` as the opt-out and exits non-zero; the usage line
+  (`live_eval.py` ~12) reads `[--sandbox on|off] (default on)`.
+- **Acceptance:** `--help` of both scripts shows the default `on`; a run with no flag on this machine
+  prints `Sandbox: on`; `--sandbox off` prints `off`. Scripts carry no tests; the next live smoke is the
+  check.
+- **Gate:** `uv run ruff check scripts/`; `uv run ruff format --check scripts/`.
+

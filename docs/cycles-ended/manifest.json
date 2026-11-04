@@ -934,5 +934,21 @@
     "heading": "▶ PHASE 62 ACTIVE — WAVE 62 · a new user can research without knowing what to install (D-84) · accepted 2026-11-03",
     "bytes": 7635,
     "sha256": "e2bc35a6d75bc8526fa7176f8fbf2eea88b6befacc278e4905bd7c037dc093f1"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "▶ PHASE 63 ACTIVE — WAVE 63-64 (three waves shared with Phase 64) · a plan of record reads a pod's contract and applies to any shape (D-85, accepted 2026-11-03)",
+    "bytes": 29334,
+    "sha256": "f05ba070f5a409c317424d6ff2e43d9f2638f15b4cd4157278aa754298ed2e9b"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "▶ PHASE 64 ACTIVE — WAVE 63-64 (three waves shared with Phase 63) · the pod's memory works for every pod (D-86, accepted 2026-11-03)",
+    "bytes": 21803,
+    "sha256": "1a6c42a3d82d43d605807dbeaa7ed13cf90c6c19aab733e325365dac0f87a6a2"
   }
 ]
