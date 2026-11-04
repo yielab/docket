@@ -129,7 +129,6 @@
           "tools": [
             "consult",
             "edit",
-            "fetch",
             "glob",
             "grep",
             "read",
@@ -140,9 +139,6 @@
             "write": [],
             "query": false
           },
-          "fetchDomains": [
-            "docs.python.org"
-          ],
           "notComputed": [
             "mcp",
             "service"

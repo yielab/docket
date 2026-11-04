@@ -178,7 +178,9 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         description="drafts the pod's content deliverable",
         token_budget=6000,
         # Drafts with write/edit; running things is a pipeline `run:` step, docket's, not the role's.
-        denied_tools=("bash",),
+        # It also holds no `fetch`: it cites what the step before handed it and asks (`consult`)
+        # for a missing source, because a drafting role that fetches re-reads the web every round.
+        denied_tools=("bash", "fetch"),
     ),
     "operator": RoleArchetype(
         name="operator",

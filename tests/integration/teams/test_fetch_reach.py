@@ -13,9 +13,11 @@ from tests.support.pods import build_pod
 from tests.support.pods import seed_empty_home as _seed
 
 from docket.agent.ports import ToolCall
+from docket.agent.tools.capability_gap import gap_for
 from docket.agent.tools.registry import ToolContext, dispatch_tool
 from docket.hops.application import builtin_tools as _builtin_tools
 from docket.hops.application import capabilities as _capabilities
+from docket.hops.application import driver_support as _driver_support
 from docket.platform import fetch as _fetch
 from docket.sandbox.launch import Launcher
 from docket.teams import fleet as _fleet
@@ -95,6 +97,35 @@ def test_a_folder_pod_under_the_jail_with_no_list_reads_any_public_host(
         refused = fetch_of("http://127.0.0.1/")
         assert not refused.ok  # type: ignore[attr-defined]
         assert opened == ["https://example.org/"]
+
+
+def test_the_writer_of_that_pod_holds_no_fetch_while_the_researcher_keeps_it(
+    tmp_path: Path, bind_launcher: Callable[..., Launcher]
+) -> None:
+    with _seed(tmp_path):
+        _pp.provision_pod("demo", "respond")
+        _jail_on(bind_launcher)
+
+        writer = _capabilities.member_capabilities("demo", "writer")
+        assert "fetch" not in writer["tools"]
+        assert "fetchDomains" not in writer
+        researcher = _capabilities.member_capabilities("demo", "researcher")
+        assert "fetch" in researcher["tools"]
+        assert researcher["fetchDomains"] == ["*"]
+
+
+def test_a_writer_calling_fetch_is_denied_not_told_to_declare_a_host(
+    tmp_path: Path, bind_launcher: Callable[..., Launcher]
+) -> None:
+    with _seed(tmp_path):
+        _pp.provision_pod("demo", "respond")
+        _jail_on(bind_launcher)
+        base = _builtin_tools.builtin_registry("demo")
+        held = _tools("demo", "writer")
+        offer = _driver_support.pod_offer(base, "demo", "writer", "full")
+
+        assert not offer.fetch_declarable
+        assert gap_for("fetch", held, "writer", offer) is None
 
 
 def test_the_send_role_of_that_pod_holds_no_fetch(

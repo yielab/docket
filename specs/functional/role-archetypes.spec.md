@@ -1,9 +1,9 @@
 # Role Archetypes Specification
 
-**Version**: 5.9.0
+**Version**: 5.10.0
 **Status**: Implemented. Three built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
-**Last Updated**: 2026-11-03
+**Last Updated**: 2026-11-04
 
 ## Purpose
 
@@ -263,10 +263,14 @@ This specification does NOT cover:
    not `cat >`, heredocs or `sed -i`; inspect with `read`/`grep`/`glob`; use `bash` to run things.
    This is guidance, not enforcement: `bash` stays available to the Implementer and its
    classification is unchanged. The writer's `SOUL.md` carries the same sentence without the last
-   clause, because the writer's `deniedTools` is `["bash"]`: it holds `read`, `write`, `edit`,
-   `glob`, `grep`, `fetch`, `skill` and `consult`, and neither `bash` nor the two tools that only
-   serve it (requirement 9). A drafting role that needs to run something does so in a pipeline
-   `run:` step, which docket runs, not the role.
+   clause, because the writer's `deniedTools` is `["bash", "fetch"]`: it holds `read`, `write`,
+   `edit`, `glob`, `grep`, `skill` and `consult`, and neither `bash` nor the two tools that only
+   serve it (requirement 9), nor `fetch`. A drafting role that needs to run something does so in a
+   pipeline `run:` step, which docket runs, not the role. The writer drafts from the handoff of the
+   step before and cites the URLs the researcher gave; when a citation is missing its `SOUL.md`
+   tells it to ask with `consult` and not to research, because the web is the researcher's (a
+   writer that held `fetch` re-read it on most rounds). A call to `fetch` by the writer is the
+   role's denial, not a missing host: no capability gap tells it to declare `fetchDomains`.
 9. A role that denies `bash`, by its own `deniedTools` or its pod's, **MUST NOT** be offered the
    tools that only serve a background `bash` process, `process_output` and `process_stop`:
    `registry_for_role` removes them with `bash`, by name, from the same union. The built-in Lead,
@@ -649,7 +653,7 @@ applies to the persisted wire object.
 | --- | --- | --- | --- | --- | --- |
 | `researcher` | pod | strong | none | 8000 | *(none)* |
 | `analyst` | pod | cheap | none | 8000 | *(none)* |
-| `writer` | pod | cheap | none | 6000 | bash |
+| `writer` | pod | cheap | none | 6000 | bash, fetch |
 | `operator` | pod | strong | mechanical | 8000 | *(none)* |
 | `monitor` | pod | cheap | approval | 4000 | write, edit, bash |
 | `actor` | pod | strong | none | 4000 | write, edit, bash |

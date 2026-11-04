@@ -76,6 +76,23 @@ class TestTheWriterHoldsNoShell:
         assert "bash" not in BUILTIN_ARCHETYPES["implementer"].denied_tools
 
 
+class TestTheWriterDraftsFromTheHandoff:
+    """The writer holds no `fetch`: it cites what the step before gave it and asks when one is missing."""
+
+    def test_the_writer_denies_exactly_bash_and_fetch(self) -> None:
+        assert STARTER_ARCHETYPES["writer"].denied_tools == ("bash", "fetch")
+
+    def test_its_soul_sends_a_missing_citation_to_consult(self) -> None:
+        writer = STARTER_ARCHETYPES["writer"]
+        soul = render(writer.soul_template, {**_SAMPLE_VARIABLES, "role": "writer"})
+
+        assert "`consult`" in soul
+        assert "do not research" in soul
+
+    def test_the_researcher_keeps_the_web(self) -> None:
+        assert "fetch" not in STARTER_ARCHETYPES["researcher"].denied_tools
+
+
 class TestTheMethodBlockFollowsTheWorkspaceKind:
     @pytest.mark.parametrize("name", ["lead", "implementer", "writer", "reviewer"])
     def test_a_workdir_method_names_no_repository_or_code(self, name: str) -> None:

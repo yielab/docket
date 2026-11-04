@@ -160,7 +160,6 @@
           "tools": [
             "consult",
             "edit",
-            "fetch",
             "glob",
             "grep",
             "read",
@@ -171,9 +170,6 @@
             "write": [],
             "query": false
           },
-          "fetchDomains": [
-            "*"
-          ],
           "notComputed": [
             "mcp",
             "service"
