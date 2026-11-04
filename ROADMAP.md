@@ -363,7 +363,8 @@ today:
   endpoint is the real run.
 - **Phase 68, D-89 (proposed 2026-11-04):** the four choices in `TODO.md`'s `○ PLANNED` section. (1) the compaction, (2) file content out of the
   payment and `drop table` patterns and (3) `fetch` taken from the writer were accepted the same day and shipped
-  (P68-1, P68-2, P68-3, P68-5). Open: (4) the search provider, Brave Search API or Tavily, and P68-6, the real run.
+  (P68-1, P68-2, P68-3, P68-5). Open: (4) the search provider (measured 2026-11-04: a local SearXNG 20 of 20 queries, free; Marginalia 1 of 20;
+  Brave's terms conflict across sources; Tavily's search is a POST, which docket reads as `send`), and P68-6, the real run.
 - **Push `develop`.** 148 commits since 2026-11-02 (Phase 58's last waves through Phase 67) are local only
   (`git log origin/develop..develop`); pushing is the maintainer's call.
 - **The implementer's re-sent context** (a fired trigger on `TODO.md`): its measurement spends

@@ -224,58 +224,35 @@ from `main`.
 
 ### P68-4 — A research team searches through a declared service
 
-**Status:** BLOCKED (the maintainer picks the provider: Brave Search API or Tavily) · **Size:** M · **Model:** Sonnet · **Kind:** data + docs + measurement · **After:** —
+**Status:** TODO (measured 2026-11-04, `internal-docs/baselines/phase-68/search.md`; the provider is the maintainer's yes: a local SearXNG is recommended, Brave Search API the fallback) · **Size:** M · **Model:** Sonnet · **Kind:** data + docs + measurement · **After:** —
 
 - **Trigger:** P67-3 (`internal-docs/baselines/phase-67/search.md`): DuckDuckGo html and lite answer a challenge to
   20 of 20 queries, Bing returns links unrelated to the query; the P67-5 run's two Bing searches returned
   WhatsApp and Ualá for a question on bedtime-story apps.
+- **Measured (the same 20 queries, 5 s apart, no tokens):** a local SearXNG (Docker, `127.0.0.1:8888`, JSON on):
+  20 of 20 with 38-55 results, 0 errors, and a competitor, comparison or pricing page among the first three results
+  of every query, English and Spanish (engines: `google cse`, `duckduckgo`, `brave`). Marginalia's public API: 1 of 20
+  (17 timeouts). Not measured: a burst or a week of use (upstream engines throttle heavy use).
 - **Provider constraint (service-client requirements 10-11):** an operation's access is `read` for `GET` and
   `send` for every other method, and a role that names a `send` tool cannot hold `fetch` (ADR 0036 decision 2).
-  Brave Search's API is a `GET` with a header token, so its operation is `read` and the researcher keeps `fetch`;
-  Tavily's search is a `POST`, so its operation is `send` and the researcher would have to give up `fetch` or the
-  rule would change. This is why the recommendation is Brave.
-- **Goal:** `services/search.yaml` in the `web-research` recipe (`kind: service`, ADR 0036 decision 13), its key in
-  the home's secret store set once per machine; the recipe README says how; `needs.SEARCH_HOSTS` stops promising a
-  search site, so `search-host` is satisfied by the service only. Then P67-3's 20 queries again, through it.
-- **Change:** the recipe directory, `teams/apply/needs.py` (`SEARCH_HOSTS`, `_search_line`),
-  `pod-blueprints.spec.md` requirement 16, `tests/integration/teams/test_recipe_needs.py`.
+  SearXNG's and Brave's search are a `GET`, so the operation is `read` and the researcher keeps `fetch`; Tavily's
+  search is a `POST`, so it would be `send`.
+- **Goal:** `services/search.yaml` in the `web-research` recipe (`kind: service`, ADR 0036 decision 13): `baseUrl`
+  `http://127.0.0.1:8888`, `hosts: [127.0.0.1]` (a loopback host must be listed, service-client requirement 29; the
+  call is docket's own, so a jail with network `none` reaches it), one `GET /search` operation with `q` and
+  `format=json`, access `read`. The recipe README says how to run it: the `docker run` line and the two lines of
+  `settings.yml` (`search.formats: [html, json]`, `server.limiter: false`), once per machine; with Brave instead, the
+  `baseUrl`, the `X-Subscription-Token` header from the home's secret store and the same operation. `needs.SEARCH_HOSTS`
+  stops promising a search site, so `search-host` is satisfied by the service only. Then the 20 queries again through
+  the declared service (not through urllib), spaced 5 s, judged by reading.
+- **Non-goals:** docket starting or supervising the container; a native search tool (ADR 0034, ADR 0036 decision 17).
+- **Change:** the recipe directory, `teams/apply/needs.py` (`SEARCH_HOSTS`, `_search_line`), `pod-blueprints.spec.md`
+  requirement 16, `tests/integration/teams/test_recipe_needs.py`, `docs/recipes.md` (generated).
 - **Acceptance:** with a stub service, `init --recipe web-research` reports `search-host` ready only once the service
-  resolves; under open read without the service, `search-host` is not satisfied (today it is, by the `*` reach).
-  The measurement: at least 18 of 20 queries with five relevant links, judged by reading, not by counting.
-- **Gate:** the recipe tests; `validate-specs.sh`; the measurement spends the provider's quota, never model tokens.
-
-### P68-7 — A tool result the model has not answered yet is never condensed
-
-**Status:** TODO (D-89 choice 5 proposed; a behaviour change in what the model reads) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** — (before P68-6; owns `agent/session.py`, which P66-3 also edits)
-
-- **Trigger:** the billed runs of 2026-11-04. The P67-5 task's writer made 23 `fetch` calls and the live notes
-  say "the app.com keeps appearing as already seen"; a throwaway two-step run's report lists `the app.com` and
-  `storynory.com` as "no text: response *already seen and omitted*", and its first run made 39 `fetch` calls in 8
-  model calls and died with `cannot start terminal finalization ... within token_budget=100000`. Reproduced
-  offline: `condense_history` on one assistant message with 5 parallel `fetch` calls whose results (25,000
-  characters each) the model has not answered returns 2 whole and 3 `already seen and omitted` notices.
-- **Cause:** `session-history.spec.md` requirement 30 says "the last `keep` **answered** `tool` messages stay
-  whole", but `condense_history` (`agent/session.py` ~370, `_batch_cut` ~322, `HISTORY_KEEP_FULL_RESULTS = 2`,
-  budget 6,000 characters) counts every result, so the results of the round the model is about to read are
-  condensed before it has read them. The notice says "already seen", which is false; the model calls the tool
-  again, fills the turn's token budget and, on the pod with a cap, dies.
-- **Goal:** a result with no assistant message after it (the current round's) stays whole, is not counted toward
-  `keep` or `budget`, and is never replaced by a notice; the rest of requirement 30 (the batches, the low-water
-  mark, the artifact line, the `ERROR:` rule) is unchanged. A request that is then over the window is the request-fit
-  path's job (`reduce_for_fit`), as for any large request.
-- **Non-goals:** the notice text and the `keep`/`budget` constants (P66-3 says what was condensed); the
-  summary compaction (P68-1).
-- **Change:** `agent/session.py` `condense_history`/`_batch_cut`; `session-history.spec.md` requirement 30 (the
-  word "answered" gets its definition); tests `tests/unit/agent/test_session.py` (extend; it already tests
-  `condense_history`).
-- **Acceptance (RED first):**
-  - Unit: one assistant message with 5 parallel `fetch` calls and 5 results of 25,000 characters, then nothing:
-    all 5 whole. Oracle: today 2 whole and 3 notices.
-  - Unit: the same history after an assistant message that follows the results: the results fall under the existing
-    cut (2 whole at most by budget), so the notices appear only once the model has answered.
-  - Unit: determinism and purity as requirement 29 (same input, same bytes; the input is not changed).
-- **Gate:** the unit file; `tests/architecture`; `validate-specs.sh`; `comment_lint.py --check`; the integration
-  files that exercise the request builder (`rg -l condense_history tests`).
+  resolves; under open read without the service, `search-host` is not satisfied (today it is, by the `*` reach). The
+  measurement: at least 18 of 20 queries with five relevant links through the service, judged by reading.
+- **Gate:** the recipe tests; `validate-specs.sh`; `gen_recipe_docs.py --check`; the measurement spends no model
+  tokens.
 
 ### P68-5 — The fix docket names for a missing `fetch` is the one that opens it
 
