@@ -44,6 +44,7 @@ from docket.teams import role_composer as _role_composer
 from docket.teams import roles as _archetypes
 from docket.teams import settings as _settings
 from docket.teams.apply import lock as _lock
+from docket.teams.apply import needs as _needs
 from docket.teams.apply import review as _review
 from docket.teams.models import AgentKind, AgentMeta, WorkspaceKind
 from docket.teams.workspace import skills as _skills
@@ -428,9 +429,16 @@ def pod_report(project: str) -> dict[str, Any]:
         "pipeline": _pipeline_report(project),
         "network": _network_report(project),
         "fetchDomains": list(settings.fetch_domains),
+        "needs": [line.wire() for line in _pod_needs(project, settings)],
         **_work_dir_fields(project),
         **record,
     }
+
+
+def _pod_needs(project: str, settings: _pod_settings.PodSettings) -> tuple[_needs.NeedLine, ...]:
+    """The pod's recorded needs, computed as the pod is now; a recorded name this build does not
+    know is left out."""
+    return _needs.readiness(project, tuple(n for n in settings.needs if n in _needs.NEEDS))
 
 
 def _blueprint(project: str) -> str:

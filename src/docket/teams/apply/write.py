@@ -23,7 +23,7 @@ from docket.teams import roles as _arch
 from docket.teams.apply import lock as _lock
 from docket.teams.apply.external import export_services, write_services
 from docket.teams.apply.model import ApplyPlan, ApplyResult, PodApplyError
-from docket.teams.apply.recipes import _directory_files, _named_pipeline_files
+from docket.teams.apply.recipes import _directory_files, _named_pipeline_files, recipe_needs
 from docket.teams.apply.records import export_records, write_records
 from docket.teams.apply.routines import export_routines, write_routines
 
@@ -348,5 +348,14 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
     # `configSource`/`configDigest` always describing the *last* directory applied (ADR 0014
     # rule 7). Activates nothing: no write ever reaches `docket-exporters.json` from this path.
     _fleet.meta_set(lead_id, "exporters", ",".join(plan.exporters))
+
+    # What the recipes' work needs accumulates (the union, first-seen order): a directory that
+    # declares none leaves the record as it was, unlike `exporters`, which describes the last one.
+    declared = recipe_needs(plan.directory)
+    if declared:
+        recorded = (_fleet.meta_get(lead_id, "needs", "") or "").split(",")
+        _fleet.meta_set(
+            lead_id, "needs", ",".join(dict.fromkeys((*filter(None, recorded), *declared)))
+        )
 
     return ApplyResult(project=plan.project, items=plan.items, exporters=plan.exporters)

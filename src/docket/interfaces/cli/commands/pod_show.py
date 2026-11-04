@@ -6,6 +6,7 @@ from typing import Any
 
 from docket.hops.application.report import network_text
 from docket.interfaces.cli.render import ui
+from docket.teams.apply import needs as _needs
 
 
 def _kv(label: str, value: object) -> None:
@@ -44,6 +45,9 @@ def render_pod(report: dict[str, Any]) -> None:
             "Config source:",
             f"{report['configSource']} (digest {report['configDigest'][:12]}..., drift: {drift})",
         )
+    kinds = tuple(need["kind"] for need in report["needs"])
+    for line in _needs.readiness(report["pod"], kinds):
+        ui.console.print(f"  {line.render()}", markup=False, highlight=False, soft_wrap=True)
 
 
 def _render_endpoint(report: dict[str, Any]) -> None:

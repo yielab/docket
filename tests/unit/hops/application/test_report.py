@@ -140,3 +140,26 @@ class TestPodReportShapeAndSteps:
         assert (steps["ship"]["kind"], steps["ship"]["role"]) == ("command", None)
         assert (steps["hold"]["kind"], steps["hold"]["modelClass"]) == ("wait", None)
         assert "steps" not in steps["build"]
+
+
+class TestPodReportNeeds:
+    """The pod report serves the recorded needs as wire entries, recomputed as the pod is now."""
+
+    def test_no_recorded_need_is_an_empty_list(self, tmp_path: Path) -> None:
+        with seed_empty_home(tmp_path):
+            build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+
+            assert pod_report.pod_report("demo")["needs"] == []
+
+    def test_each_recorded_need_has_exactly_the_four_wire_keys(self, tmp_path: Path) -> None:
+        with seed_empty_home(tmp_path):
+            build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+            _fleet.meta_set("demo-lead", "needs", "fetch-hosts,search-host")
+            _fleet.meta_set("demo-lead", "fetchDomains", "html.duckduckgo.com")
+
+            needs = pod_report.pod_report("demo")["needs"]
+
+        assert needs == [
+            {"kind": "fetch-hosts", "name": "fetch-hosts", "fix": "", "satisfied": True},
+            {"kind": "search-host", "name": "search-host", "fix": "", "satisfied": True},
+        ]

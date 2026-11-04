@@ -25,17 +25,29 @@ SEARCH_HOSTS = ("html.duckduckgo.com", "lite.duckduckgo.com", "www.bing.com", "w
 
 @dataclass(frozen=True)
 class NeedLine:
-    """One declared need: whether it is met and, when not, the one command that meets it."""
+    """One need: whether it is met and, when not, the one command that meets it. ``wire()`` is the
+    shape ``docket pod show --json`` serves; ``render()`` is the line ``init``/``pod update``/
+    ``pod show`` print."""
 
-    need: str
-    ready: bool
+    kind: str
+    name: str
+    satisfied: bool
     text: str
-    command: str = ""
+    fix: str = ""
+
+    def wire(self) -> dict[str, Any]:
+        """``{kind, name, fix, satisfied}``: ``name`` equals ``kind`` until a need is named per host."""
+        return {
+            "kind": self.kind,
+            "name": self.name,
+            "fix": self.fix,
+            "satisfied": self.satisfied,
+        }
 
     def render(self) -> str:
-        """``needs <name>: <text>`` and, when not ready, `` -> <command>``."""
-        line = f"needs {self.need}: {self.text}"
-        return f"{line} -> {self.command}" if self.command else line
+        """``needs <name>: <text>`` and, when not satisfied, `` -> <fix>``."""
+        line = f"needs {self.name}: {self.text}"
+        return f"{line} -> {self.fix}" if self.fix else line
 
 
 def declared_needs(manifest: dict[str, Any]) -> tuple[str, ...]:
@@ -67,8 +79,9 @@ def _declares_search(project: str) -> bool:
 def _fetch_line(project: str, hosts: tuple[str, ...]) -> NeedLine:
     if hosts:
         noun = "host" if len(hosts) == 1 else "hosts"
-        return NeedLine(FETCH_HOSTS, True, f"ready ({len(hosts)} {noun})")
+        return NeedLine(FETCH_HOSTS, FETCH_HOSTS, True, f"ready ({len(hosts)} {noun})")
     return NeedLine(
+        FETCH_HOSTS,
         FETCH_HOSTS,
         False,
         "the researchers cannot read the web",
@@ -78,9 +91,10 @@ def _fetch_line(project: str, hosts: tuple[str, ...]) -> NeedLine:
 
 def _search_line(project: str, hosts: tuple[str, ...]) -> NeedLine:
     if any(host_allowed(site, hosts) for site in SEARCH_HOSTS) or _declares_search(project):
-        return NeedLine(SEARCH_HOST, True, "ready")
+        return NeedLine(SEARCH_HOST, SEARCH_HOST, True, "ready")
     value = ",".join((*hosts, SEARCH_HOSTS[0]))
     return NeedLine(
+        SEARCH_HOST,
         SEARCH_HOST,
         False,
         "no search site is allowed",
@@ -90,15 +104,17 @@ def _search_line(project: str, hosts: tuple[str, ...]) -> NeedLine:
 
 def _isolation_line() -> NeedLine:
     if _network_posture.jail_enforces():
-        return NeedLine(ISOLATION, True, "ready")
+        return NeedLine(ISOLATION, ISOLATION, True, "ready")
     if not _fleet.get_isolation_enabled():
         return NeedLine(
+            ISOLATION,
             ISOLATION,
             False,
             "PDFs are not read, isolation is off",
             "docket setup sandbox on",
         )
     return NeedLine(
+        ISOLATION,
         ISOLATION,
         False,
         "PDFs are not read, no sandbox backend",

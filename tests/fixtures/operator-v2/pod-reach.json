@@ -339,6 +339,7 @@
       "enforced": true
     },
     "fetchDomains": [],
+    "needs": [],
     "workDir": "<home>/state/workspaces/pods/research/workdir",
     "configSource": "",
     "configDigest": "",
