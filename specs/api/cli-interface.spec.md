@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.13.0
+**Version**: 5.14.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-11-03

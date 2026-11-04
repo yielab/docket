@@ -1,6 +1,6 @@
 # User Stories and Acceptance Criteria
 
-**Version**: 2.2.0
+**Version**: 2.3.0
 **Status**: Active
 **Last Updated**: 2026-11-03
 

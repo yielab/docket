@@ -37,6 +37,7 @@ FEATURES: tuple[str, ...] = (
     "consultParts",
     "pipelineChecked",
     "podShape",
+    "podContract",
 )
 
 

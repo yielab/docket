@@ -87,6 +87,7 @@ class TestBuildStatus:
             "consultParts",
             "pipelineChecked",
             "podShape",
+            "podContract",
         ]
 
     def test_channels_from_acl(self, fake_home: Path) -> None:

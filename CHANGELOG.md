@@ -24,6 +24,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `convention`; a `pitfall` or `convention` subject is a free label, a `tool` subject is the
   invocation, and a note is Unicode-normalized and refused when it holds formatting characters or a
   heading. `command` is no longer a kind.
+- **A pod publishes its contract and its budget window (D-85, Phase 63, wave 2).**
+  - `GET /pods/<p>` and `docket pod show --json` carry `delivers` (`branch`, `report`, plus `records`)
+    and `methods`: one entry per pipeline a task may name, `{name, source, missingRoles, default}`,
+    from the same resolution the claim uses. `features` gains `podContract`.
+  - `docket pod set budgetWindow day|week|none` counts a pod's `budgetTokens` from 00:00 UTC today or
+    from Monday, instead of for ever. Sessions record tokens by UTC day, so `docket status --history`
+    prints one row per day, and `budget_exceeded` names the window and its start.
+- **Pod memory verifies a tool call and a folder pod's path (D-86, Phase 64, wave 2).**
+  - A `tool` entry is accepted when the task's trace holds the call and its result; a `generated`
+    entry of a folder pod when the path exists under its work directory. A note that reads as an
+    instruction waits for the operator instead of being refused, and the imperative-verb list is
+    gone.
+  - Two notes about one subject are two entries. An accepted `generated` entry whose path is gone
+    is marked `stale` at the next task end, left out of prompts and evicted first among the accepted;
+    `GET /pods/<p>/memory` rows are `{id, kind, subject, note, status, reason, provenance, stale,
+    evidence}`.
 
 - **A step's budget is a checkpoint, not a cliff (D-81, Phase 59, ADR 0038).**
   - `docket task retry` now re-runs the step that failed and continues its session with a message
@@ -106,6 +122,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The live smoke and the live eval run jailed by default (Phase 64).** `scripts/smoke_workflow.py` and
+  `scripts/maint/live_eval.py` default to `--sandbox on`, as `docket init` does where the machine can;
+  `--sandbox off` is the opt-out.
 - **`MEMORY.md` is the operator's notes (D-86, Phase 64).** A new member workspace has no `memory/`
   directory, and its `MEMORY.md` is a two-line header docket never writes; `WORKFLOW_AUTO.md` is
   contract v6, which `docket setup --fix` re-seeds without touching `MEMORY.md`.
