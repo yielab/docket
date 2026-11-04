@@ -38,9 +38,10 @@ HEARTBEAT_FILE = "HEARTBEAT.md"
 #: are for an agent reading it directly, outside Docket's own turn loop, which
 #: never sends this raw text and applies its own read-only runtime contract
 #: instead (`teams/identity.py`).
-#: v5 drops the `memory/YYYY-MM-DD.md` daily log from the read order: docket never
-#: reads, writes or composes one.
-CONTRACT_VERSION = 5
+#: v5 drops the daily log from the read order: docket never reads, writes or composes one.
+#: v6 answers "what is this project about" from `MEMORY.md` when the operator wrote notes there,
+#: else from the README or the working directory's notes, and no longer asks for it to be written.
+CONTRACT_VERSION = 6
 _CONTRACT_MARKER = f"<!-- docket-contract: v{CONTRACT_VERSION} -->"
 
 #: Shared by both `_workflow_auto_text` and `_workflow_auto_text_workdir`: this
@@ -58,10 +59,6 @@ _MANUAL_PATH_HEADER = (
 
 
 # --- date + path canon (UTC everywhere) ---------------------------------------
-
-
-def memory_dir(ws: Path) -> Path:
-    return ws / "memory"
 
 
 def memory_md_path(ws: Path) -> Path:
@@ -116,14 +113,13 @@ def _workflow_auto_text(
         f"1. `{HEARTBEAT_FILE}` — active tasks / pending decisions (always; obey the "
         "resume rule above before doing anything else).\n"
         "2. `SOUL.md` — who you are, your scope, and your safety rules.\n"
-        "3. `MEMORY.md` — what this project **is** and durable facts about it "
+        "3. `MEMORY.md` — the operator's notes about this project, if any "
         "(product summary, architecture, current state).\n\n"
         '## Answering "what is this project about"\n'
-        "Answer from **MEMORY.md → What this project is**: describe what the "
-        "product does and who it's for. Do **not** answer with your pod role, "
-        "agent id, session key, or workspace paths — that is *your* scaffolding, "
-        "not the project. If that section is still a placeholder, read the "
-        "codebase `README` (and `docs/`) first and fill it in before answering.\n\n"
+        "Answer from `MEMORY.md` when the operator wrote notes there; otherwise from the "
+        "codebase `README` (and `docs/`). Describe what the product does and who "
+        "it's for. Do **not** answer with your pod role, agent id, session key, or "
+        "workspace paths — that is *your* scaffolding, not the project.\n\n"
         "## Repo\n"
         f"{origin_line}"
         f"- codebase: `{cb}`\n"
@@ -171,14 +167,13 @@ def _workflow_auto_text_workdir(*, project: str, work_dir: str, stack: str, orig
         f"1. `{HEARTBEAT_FILE}` — active tasks / pending decisions (always; obey the "
         "resume rule above before doing anything else).\n"
         "2. `SOUL.md` — who you are, your scope, and your safety rules.\n"
-        "3. `MEMORY.md` — what this project **is** and durable facts about it "
+        "3. `MEMORY.md` — the operator's notes about this objective, if any "
         "(objective summary, current state).\n\n"
         '## Answering "what is this project about"\n'
-        "Answer from **MEMORY.md → What this project is**: describe what the "
-        "objective is and who it's for. Do **not** answer with your pod role, "
-        "agent id, session key, or workspace paths — that is *your* scaffolding, "
-        "not the project. If that section is still a placeholder, read any notes "
-        "in the working directory first and fill it in before answering.\n\n"
+        "Answer from `MEMORY.md` when the operator wrote notes there; otherwise from the "
+        "notes in the working directory. Describe what the objective is and who "
+        "it's for. Do **not** answer with your pod role, agent id, session key, or "
+        "workspace paths — that is *your* scaffolding, not the project.\n\n"
         "## Working directory\n"
         f"{origin_line}"
         f"- path: `{wd}`\n"
@@ -219,40 +214,12 @@ def heartbeat_seed(name: str) -> str:
     )
 
 
-def _memory_md_seed(*, project: str, stack: str, workdir: bool = False) -> str:
-    source = "the task and the notes in the working directory" if workdir else "the codebase README"
-    lines = [
-        f"# MEMORY.md — {project}",
-        "",
-        "_Long-term curated memory. Keep it lean — every byte is re-fed each "
-        "session. Record durable facts, not day-to-day logs._",
-        "",
-        "## What this project is",
-        f"_One paragraph: what {project} does and who it's for — the product, "
-        f"not this agent's pod role. Fill from {source} on first run; "
-        'this is the answer to "what is this project about"._',
-        "",
-    ]
-    if stack.strip():
-        lines += ["## Stack", f"- stack: {stack.strip()}", ""]
-    layout = (
-        (
-            "## Layout",
-            "_Fill on first run: what the working directory holds and how it is organised._",
-        )
-        if workdir
-        else (
-            "## Architecture",
-            "_Fill on first run: entry points, key modules, how it fits together._",
-        )
+def _memory_md_seed(*, project: str) -> str:
+    return (
+        f"# MEMORY.md \u2014 {project}\n\n"
+        "_Operator notes. docket composes this file into every prompt of this member when it "
+        "holds text beyond this line; docket never writes it._\n"
     )
-    lines += [
-        *layout,
-        "",
-        "## Current state",
-        "_What works, what's in flight, known issues._",
-    ]
-    return "\n".join(lines) + "\n"
 
 
 # --- seeding + healing --------------------------------------------------------
@@ -282,12 +249,10 @@ def seed_contract(
 ) -> None:
     """Create/refresh the files the turn loop's system-prompt composition requires. Rewrites
     ``WORKFLOW_AUTO.md`` (derived, always refreshed); creates ``MEMORY.md`` only if absent, so
-    re-seeding never clobbers the operator's notes, and an empty ``memory/``. Idempotent;
+    re-seeding never clobbers the operator's notes. Idempotent;
     every touched file is normalized to ``0600`` even when already present, so a doctor-driven
     heal also fixes stale permissions. ``work_dir`` (mutually exclusive with ``codebase``) is
     set for a `workdir`-kind pod blueprint; unset reproduces the codebase-flavored output."""
-    memory_dir(ws).mkdir(parents=True, exist_ok=True)
-
     workflow_auto = ws / REQUIRED_STARTUP_FILE
     workflow_auto.write_text(
         _workflow_auto_text(
@@ -301,7 +266,7 @@ def seed_contract(
     mem_md = memory_md_path(ws)
     if not mem_md.exists():
         mem_md.write_text(
-            _memory_md_seed(project=project, stack=stack, workdir=bool(work_dir)),
+            _memory_md_seed(project=project),
             encoding="utf-8",
         )
     with contextlib.suppress(OSError):

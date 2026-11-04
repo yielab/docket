@@ -9,8 +9,17 @@ completion promise).
 
 from __future__ import annotations
 
-import pytest
+import json
+from pathlib import Path
 
+import pytest
+from tests.support.pods import build_pod
+from typer.testing import CliRunner
+
+from docket.interfaces.cli.app import app
+from docket.kernel.home import Home, use_home
+from docket.teams import agent_memory as _mem
+from docket.teams import identity as _identity
 from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod
 
@@ -170,3 +179,60 @@ class TestLegacyByteParity:
         actual = _member_workspace._member_soul(member, "demo", "/src/demo", "Python", "")
         assert actual == expected
         assert "demo-implementer-2" in actual
+
+
+_HEADER = (
+    "# MEMORY.md \u2014 demo\n\n"
+    "_Operator notes. docket composes this file into every prompt of this member when it "
+    "holds text beyond this line; docket never writes it._\n"
+)
+
+
+def _fresh_home(tmp_path: Path) -> Path:
+    home = tmp_path / ".docket"
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    return home
+
+
+class TestMemoryIsTheOperators:
+    def test_a_fresh_pod_has_no_memory_dir_and_a_header_only_memory_file(
+        self, tmp_path: Path
+    ) -> None:
+        home = _fresh_home(tmp_path)
+        with use_home(Home(home)):
+            members = build_pod("demo", pod.DEFAULT_POD_ROLES, codebase="/src/demo", stack="Python")
+            assert members
+            for mid in members:
+                ws = home / "state" / "workspaces" / "projects" / mid
+                assert not (ws / "memory").exists()
+                assert (ws / "MEMORY.md").read_text(encoding="utf-8") == _HEADER
+                composed = _identity.compose_agent_prompt(mid)
+                assert "runtimeContext" not in composed.sources
+                assert "Runtime-loaded Docket workspace state" not in composed.text
+
+    def test_setup_fix_rewrites_a_v5_contract_and_leaves_the_operators_memory_alone(
+        self, tmp_path: Path
+    ) -> None:
+        home = _fresh_home(tmp_path)
+        with use_home(Home(home)):
+            (mid, *_) = build_pod("demo", pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            ws = home / "state" / "workspaces" / "projects" / mid
+            mem = ws / "MEMORY.md"
+            mem.write_text("# mine\n\nThe billing service retries twice.\n", encoding="utf-8")
+            before = mem.read_bytes()
+            wf = ws / _mem.REQUIRED_STARTUP_FILE
+            wf.write_text(
+                wf.read_text(encoding="utf-8").replace("contract: v6", "contract: v5")
+                + "\nfill it in\n",
+                encoding="utf-8",
+            )
+            assert not _mem.contract_ok(ws)
+
+            result = CliRunner().invoke(app, ["setup", "--fix"])
+
+            assert result.exit_code in (0, 1), result.output
+            text = wf.read_text(encoding="utf-8")
+            assert "<!-- docket-contract: v6 -->" in text
+            assert "fill" not in text.lower()
+            assert mem.read_bytes() == before

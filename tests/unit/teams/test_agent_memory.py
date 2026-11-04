@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from docket.teams import agent_memory as _mem
+from docket.teams.identity import memory_has_content
 
 SUBJECT = "docket.teams.agent_memory"
 
@@ -17,7 +18,7 @@ SUBJECT = "docket.teams.agent_memory"
 
 def _ws(tmp_path: Path) -> Path:
     ws = tmp_path / "ws"
-    (ws / "memory").mkdir(parents=True)
+    ws.mkdir()
     return ws
 
 
@@ -283,22 +284,70 @@ class TestWorkflowAutoManualPathHeader:
         assert text.index("Manual-path contract") < text.index("## Your working directory")
 
 
-# ── MEMORY.md's seed follows the workspace kind ─────────────────────────────
+# ── MEMORY.md is the operator's: a header, never rewritten ──────────────────
+
+_SEED = (
+    "# MEMORY.md \u2014 demo\n\n"
+    "_Operator notes. docket composes this file into every prompt of this member when it "
+    "holds text beyond this line; docket never writes it._\n"
+)
 
 
-class TestMemorySeedFollowsTheWorkspaceKind:
-    def test_a_workdir_seed_asks_for_the_working_directory_not_a_codebase(
+class TestMemoryFileIsTheOperators:
+    def test_the_seed_is_the_two_line_header_for_either_workspace_kind(
+        self, tmp_path: Path
+    ) -> None:
+        for kind, kwargs in (
+            ("a", {"codebase": "/src/demo", "stack": "Python"}),
+            ("b", {"work_dir": "/w"}),
+        ):
+            ws = tmp_path / kind
+            ws.mkdir()
+            _mem.seed_contract(ws, project="demo", **kwargs)
+            assert _mem.memory_md_path(ws).read_text(encoding="utf-8") == _SEED
+
+    def test_the_seed_holds_nothing_to_compose(self) -> None:
+        assert not memory_has_content(_SEED)
+        assert memory_has_content(_SEED + "The billing service retries twice.\n")
+
+    def test_seeding_creates_no_memory_directory(self, tmp_path: Path) -> None:
+        ws = _ws(tmp_path)
+        _mem.seed_contract(ws, project="demo", codebase="/src/demo")
+        assert sorted(p.name for p in ws.iterdir()) == ["MEMORY.md", "WORKFLOW_AUTO.md"]
+
+    def test_an_operator_edited_memory_file_survives_a_reseed_byte_for_byte(
         self, tmp_path: Path
     ) -> None:
         ws = _ws(tmp_path)
-        _mem.seed_contract(ws, project="demo", work_dir="/tmp/demo")
-        text = _mem.memory_md_path(ws).read_text(encoding="utf-8")
-        assert "codebase" not in text and "## Architecture" not in text
-        assert "## Layout" in text and "working directory" in text
+        edited = "# mine\n\nThe billing service retries twice.\n"
+        _mem.memory_md_path(ws).write_text(edited, encoding="utf-8")
+        _mem.seed_contract(ws, project="demo", codebase="/src/demo")
+        assert _mem.memory_md_path(ws).read_text(encoding="utf-8") == edited
 
-    def test_a_codebase_seed_is_unchanged(self, tmp_path: Path) -> None:
+
+class TestAnsweringSectionNeverAsksToFillMemory:
+    def _text(self, tmp_path: Path, **kwargs: str) -> str:
         ws = _ws(tmp_path)
-        _mem.seed_contract(ws, project="demo", codebase="/src/demo", stack="Python")
-        text = _mem.memory_md_path(ws).read_text(encoding="utf-8")
-        assert "Fill from the codebase README on first run" in text
-        assert "## Architecture" in text and "## Layout" not in text
+        _mem.seed_contract(ws, project="demo", **kwargs)
+        return (ws / _mem.REQUIRED_STARTUP_FILE).read_text(encoding="utf-8")
+
+    def test_codebase_flavor_answers_from_memory_else_the_readme(self, tmp_path: Path) -> None:
+        text = self._text(tmp_path, codebase="/src/demo")
+        answering = text.split('## Answering "what is this project about"')[1].split("\n## ")[0]
+        assert "MEMORY.md" in answering and "README" in answering
+        assert "fill" not in text.lower()
+
+    def test_workdir_flavor_answers_from_memory_else_the_notes(self, tmp_path: Path) -> None:
+        text = self._text(tmp_path, work_dir="/w")
+        answering = text.split('## Answering "what is this project about"')[1].split("\n## ")[0]
+        assert "MEMORY.md" in answering and "notes" in answering
+        assert "fill" not in text.lower()
+
+    def test_the_contract_is_version_6_and_a_v5_file_is_stale(self, tmp_path: Path) -> None:
+        ws = _ws(tmp_path)
+        _mem.seed_contract(ws, project="demo", codebase="/src/demo")
+        wf = ws / _mem.REQUIRED_STARTUP_FILE
+        assert "<!-- docket-contract: v6 -->" in wf.read_text(encoding="utf-8")
+        assert _mem.contract_ok(ws)
+        wf.write_text("<!-- docket-contract: v5 -->\n", encoding="utf-8")
+        assert not _mem.contract_ok(ws)
