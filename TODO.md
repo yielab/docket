@@ -126,8 +126,9 @@ from `main`.
 >    maintainer's call; no corpus row is weakened (the payment rows are all commands).
 > 3. **Accepted 2026-11-04 by the maintainer.** The `writer` archetype denies `fetch`: it drafts from the analyst's handoff and cites the researcher's URLs,
 >    and asks with `consult` when a citation is missing.
-> 4. Search ships as a declared service in `web-research` (ADR 0036 decision 13) once the maintainer picks the
->    provider (Brave Search API or Tavily); P67-3 measured that no search site answers `fetch`.
+> 4. **Decided 2026-11-05 by the maintainer.** Search ships as a declared service in `web-research` (ADR 0036 decision 13):
+>    a local SearXNG is the default (P68-4), Brave Search API the option (P68-8), and the plan of record sees and sets the
+>    provider. P67-3 measured that no search site answers `fetch`; P68-4 measured SearXNG at 20 of 20.
 >
 > **Not doing:** a summarizer output cap (follow-up with its measurement), the `hosted` history share (Phase 66
 > keeps it deferred), per-host approval, re-running the researcher when a question is answered in a later hop (the
@@ -138,9 +139,10 @@ from `main`.
 > | Wave | Cards | File contention resolved |
 > | --- | --- | --- |
 > | 1 | P68-1 ∥ P68-2 ∥ P68-3 | P68-1 owns `agent/session_compaction.py`, `agent/loop_compaction.py`, `session-history.spec.md`, `agent-loop.spec.md` 37; P68-2 owns `governance/policy.py`, the policy templates, the corpus, `security-gates.spec.md`; P68-3 owns `teams/builtin_roles.py`, `role-archetypes.spec.md` |
-> | 2 | P68-4 (when the provider is chosen) ∥ P68-5 | P68-4 owns the `web-research` recipe and `services/`; P68-5 owns `agent/tools/capability_gap.py`, `hops/application/driver_support.py` `pod_offer`, `serve-read-api.spec.md` |
+> | 2 | P68-4 ∥ P68-5 | P68-4 owns the `web-research` recipe, `services/`, the `setup search` command and `teams/apply/needs.py`; P68-5 owns `agent/tools/capability_gap.py`, `hops/application/driver_support.py` `pod_offer`, `serve-read-api.spec.md` |
 > | 2b | P68-7 | `agent/session.py`, `session-history.spec.md` requirement 30; before P68-6 |
-| 3 | P68-6 | the integrator's real run, which also closes P67-5 |
+> | 2c | P68-8 | after P68-4: `needs.py`, the recipe, the pod report, `operator-api.spec.md`; Brave and the Tack surface |
+> | 3 | P68-6 | the integrator's real run, which also closes P67-5 |
 >
 > **Against Phase 66:** P68-1 edits `session_compaction.py`, `loop_compaction.py` and `session-history.spec.md`, which
 > P66-2, P66-3 and P66-4 also edit. Phase 68 wave 1 goes first (a live defect that fails every long research hop);
@@ -222,9 +224,9 @@ from `main`.
 - **Gate:** `test_builtin_roles.py`, `tests/integration/teams/test_fetch_reach.py`, the fixture tests;
   `validate-specs.sh`; the e2e lane (42 s: a tool set changes).
 
-### P68-4 — A research team searches through a declared service
+### P68-4 — A research team searches through a declared service; SearXNG by default
 
-**Status:** TODO (measured 2026-11-04, `internal-docs/baselines/phase-68/search.md`; the provider is the maintainer's yes: a local SearXNG is recommended, Brave Search API the fallback) · **Size:** M · **Model:** Sonnet · **Kind:** data + docs + measurement · **After:** —
+**Status:** TODO (D-89 choice 4 decided 2026-11-05 by the maintainer: SearXNG is the default, Brave Search API the option, P68-8; measured 2026-11-04, `internal-docs/baselines/phase-68/search.md`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + data + docs + measurement · **After:** —
 
 - **Trigger:** P67-3 (`internal-docs/baselines/phase-67/search.md`): DuckDuckGo html and lite answer a challenge to
   20 of 20 queries, Bing returns links unrelated to the query; the P67-5 run's two Bing searches returned
@@ -232,27 +234,78 @@ from `main`.
 - **Measured (the same 20 queries, 5 s apart, no tokens):** a local SearXNG (Docker, `127.0.0.1:8888`, JSON on):
   20 of 20 with 38-55 results, 0 errors, and a competitor, comparison or pricing page among the first three results
   of every query, English and Spanish (engines: `google cse`, `duckduckgo`, `brave`). Marginalia's public API: 1 of 20
-  (17 timeouts). Not measured: a burst or a week of use (upstream engines throttle heavy use).
+  (17 timeouts). Not measured: a burst or a week of use (upstream engines throttle heavy use). SearXNG's own limiter
+  allows 4 JSON calls per hour per IP and treats a client without `Accept-Language` as a bot, so the shipped
+  `settings.yml` turns the limiter off (the instance listens on loopback only).
 - **Provider constraint (service-client requirements 10-11):** an operation's access is `read` for `GET` and
   `send` for every other method, and a role that names a `send` tool cannot hold `fetch` (ADR 0036 decision 2).
   SearXNG's and Brave's search are a `GET`, so the operation is `read` and the researcher keeps `fetch`; Tavily's
-  search is a `POST`, so it would be `send`.
-- **Goal:** `services/search.yaml` in the `web-research` recipe (`kind: service`, ADR 0036 decision 13): `baseUrl`
-  `http://127.0.0.1:8888`, `hosts: [127.0.0.1]` (a loopback host must be listed, service-client requirement 29; the
-  call is docket's own, so a jail with network `none` reaches it), one `GET /search` operation with `q` and
-  `format=json`, access `read`. The recipe README says how to run it: the `docker run` line and the two lines of
-  `settings.yml` (`search.formats: [html, json]`, `server.limiter: false`), once per machine; with Brave instead, the
-  `baseUrl`, the `X-Subscription-Token` header from the home's secret store and the same operation. `needs.SEARCH_HOSTS`
-  stops promising a search site, so `search-host` is satisfied by the service only. Then the 20 queries again through
-  the declared service (not through urllib), spaced 5 s, judged by reading.
-- **Non-goals:** docket starting or supervising the container; a native search tool (ADR 0034, ADR 0036 decision 17).
-- **Change:** the recipe directory, `teams/apply/needs.py` (`SEARCH_HOSTS`, `_search_line`), `pod-blueprints.spec.md`
-  requirement 16, `tests/integration/teams/test_recipe_needs.py`, `docs/recipes.md` (generated).
+  and Exa's are a `POST`, so they would be `send`.
+- **Goal (easy to set up, and the choice is in front of the operator):**
+  1. The `web-research` recipe ships `services/search.yaml` (`kind: service`, ADR 0036 decision 13): `baseUrl`
+     `http://127.0.0.1:8888`, `hosts: [127.0.0.1]` (a loopback host must be listed, service-client requirement 29;
+     the call is docket's own, so a jail with network `none` reaches it), one `GET /search` operation with `q` and
+     `format=json`, access `read`, and a description that tells the model to read the pages it picks with `fetch`.
+  2. The recipe ships `searxng/settings.yml` (JSON on, limiter off, the three measured engines), so nothing is edited
+     by hand. `docket setup search searxng [--pod P]` writes that file under the home, writes the pod's
+     `services/search.yaml`, and prints the one `docker run` line with the real path. docket does not start or
+     supervise the container.
+  3. `search-host` is satisfied only by a declared search service whose endpoint answers (a `GET` of the base URL
+     with a 2 s timeout; informational, never blocks an apply). Unmet, its line names both options and one command
+     each: `needs search-host: no search service -> docket setup search searxng (free, runs in Docker) | docket setup
+     search brave (API key)`. `SEARCH_HOSTS` stops promising a search site.
+  4. The recipe README leads with the search section: the two options side by side, then the three commands.
+  5. The 20 queries again through the declared service (not urllib), spaced 5 s, judged by reading.
+- **Non-goals:** docket starting or supervising the container; a native search tool (ADR 0034, ADR 0036 decision 17);
+  Brave (P68-8).
+- **Change:** the recipe directory, `interfaces/cli/commands/` (a `setup search` command), `teams/apply/needs.py`
+  (`SEARCH_HOSTS`, `_search_line`), `pod-blueprints.spec.md` requirement 16, `cli-interface.spec.md`,
+  `tests/integration/teams/test_recipe_needs.py`, `docs/recipes.md` (generated), generated CLI docs.
 - **Acceptance:** with a stub service, `init --recipe web-research` reports `search-host` ready only once the service
-  resolves; under open read without the service, `search-host` is not satisfied (today it is, by the `*` reach). The
-  measurement: at least 18 of 20 queries with five relevant links through the service, judged by reading.
-- **Gate:** the recipe tests; `validate-specs.sh`; `gen_recipe_docs.py --check`; the measurement spends no model
-  tokens.
+  answers; under open read without the service, `search-host` is not satisfied (today it is, by the `*` reach); the
+  unmet line names both commands; `setup search searxng` is idempotent. The measurement: at least 18 of 20 queries
+  with five relevant links through the service, judged by reading.
+- **Gate:** the recipe and command tests; `validate-specs.sh`; `gen_recipe_docs.py --check`; `gen_cli_docs.py
+  --check`; the measurement spends no model tokens.
+
+### P68-8 — Brave Search API as the option, and Tack sees and sets the provider
+
+**Status:** TODO (decided 2026-11-05; after P68-4: both edit `needs.py`, the recipe and `pod-blueprints.spec.md`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** P68-4
+
+- **Trigger:** the maintainer's choice 4: Brave is the optional provider, and the plan of record (Tack) must see
+  which provider a pod searches through and be able to change it.
+- **Constraint to read first:** Brave's terms (updated 2026-09-01, third-party reading, unverified against brave.com)
+  bar storing or caching results beyond transient use; docket keeps tool results in the session and the trace. Read
+  the terms before shipping, and say in the README what docket keeps. Brave's free plan appears to have become a
+  monthly credit of about 1,000 searches; give no number in the docs without reading the pricing page.
+- **Goal:**
+  1. `docket setup search brave [--pod P]` reads the key from stdin (never an argument; same rule as `setup secret
+     set`), stores it as the secret `brave-search`, and writes the pod's `services/search.yaml` for Brave (`baseUrl`
+     `https://api.search.brave.com/res/v1/web`, `hosts: [api.search.brave.com]`, `auth {header:
+     X-Subscription-Token, value: ${secret:brave-search}}`, one `GET /search`, access `read`). Switching provider is
+     the same file replaced, so one service named `search` exists at a time.
+  2. `search-host` is satisfied by Brave only when the secret resolves (`resolve_auth` is the check), and its line
+     names the provider: `needs search-host: ready (brave)` or `ready (searxng at 127.0.0.1:8888)`.
+  3. The pod report (`GET /pods/<pod>` and `pod show --json`) carries `search {provider, ready, reason, fix, options}`
+     (`provider`: `searxng`, `brave`, `custom` for any other declared search service, or `none`; `options` lists each
+     provider with its one command), and `/health` lists the feature `search`. Additive on API 6, same shape as
+     `webRead`. Tack renders the options; it sets the provider by applying a directory whose `services/search.yaml`
+     is the chosen one (`POST /pods/<pod>/apply` already replaces a pod service by bytes). The key is never sent over
+     HTTP: for Brave the `fix` names the one command to run on the machine (`docket setup secret set brave-search
+     --stdin`), and the report says so.
+  4. One real call through the Brave service with a throwaway key from the maintainer, 20 queries, to compare with
+     SearXNG's 20 of 20 (spends the maintainer's quota, no model tokens).
+- **Non-goals:** a key over HTTP; Exa or Tavily (a `POST`); two search services at once.
+- **Change:** `interfaces/cli/commands/` (`setup search`), `teams/apply/needs.py`, `hops/application/{report,capabilities}.py`,
+  `interfaces/http/routes/health.py` (FEATURES), `interfaces/cli/commands/pod_show.py`, the recipe README,
+  `operator-api.spec.md`, `pod-blueprints.spec.md`, `cli-json-shapes.spec.md`, `serve-read-api.spec.md`, the
+  `operator-v2` fixtures (re-recorded with `OPERATOR_RECORD_DIR`), CHANGELOG.
+- **Acceptance:** with a stub, a pod on SearXNG reports `search.provider: searxng`; after `setup search brave` and
+  a stored key it reports `brave` and ready; with the secret missing it reports not ready and the command; applying
+  a directory with the other `services/search.yaml` switches the provider with no other change; no response or trace
+  contains the key.
+- **Gate:** the focused files; the operator-v2 fixtures re-recorded and committed with the spec bump;
+  `validate-specs.sh`; `gen_cli_docs.py --check`; `comment_lint.py --check` on the touched files.
 
 ### P68-5 — The fix docket names for a missing `fetch` is the one that opens it
 
