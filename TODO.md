@@ -659,7 +659,7 @@ from `main`.
 
 ### P66-3 — A compaction leaves a record, its summary reads the same on every wire, and the request says what it condensed
 
-**Status:** TODO (after P66-2, P66-4) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P66-2 (both edit `loop_compaction.py`), P66-4 (the prompt it records the hash of)
+**Status:** DONE 2026-11-05 (`af2025ba` as cherry-picked; open: an orphan `compactions/<seq>.json` can remain if the `session.json` write fails after the record write, harmless, `seq` does not collide; `compacted=True` with zero rounds writes no record; the head rule of `plan_compaction` keeps its `system` prefix exclusion so an old `system` summary is body) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P66-2 (both edit `loop_compaction.py`), P66-4 (the prompt it records the hash of)
 
 - **Trigger:** the audit §6.13 and §6.5: `_plan_and_apply_compaction` (`agent/session_compaction.py` ~298)
   replaces the summarized messages in `session.json`, `platform/store.py` keeps one `.bak`, and
