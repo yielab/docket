@@ -16,13 +16,13 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> ## ▶ BOARD — Phase 67 ACTIVE (its real run, P67-5, re-runs as P68-6); Phases 68 (D-89 proposed) and 66 (D-87 proposed) planned
+> ## ▶ BOARD — Phase 67 ACTIVE (its real run, P67-5, re-runs as P68-6); Phases 68 (D-89 proposed) and 66 (D-87 accepted 2026-11-05) planned
 >
 > **Phase 67 is active** (D-88, accepted 2026-11-04): P67-1 to P67-4 are done and committed (`2ce62d69`, `3b32a2b4`,
 > not pushed): a folder pod under the jail reads any public host, the pod says how (`webRead`) and which need
 > blocks, and Tack reads both. Its real run (P67-5) read the web and failed in the writer hop on a compaction
 > defect, with no report. **Phase 68** (D-89, proposed) is that run's three defects plus search and runs first;
-> **Phase 66** (D-87, proposed) follows, since both edit `session_compaction.py`. Neither phase's cards are
+> **Phase 66** (D-87, accepted 2026-11-05) follows, since both edit `session_compaction.py`. Neither phase's cards are
 > claimable until the maintainer accepts its decision. Phases 63 (D-85) and 64 (D-86) closed 2026-11-04; their
 > sections are archived and what they leave open is under "Phases 63-64" in the follow-ups below.
 > Before them, Phases 60 (D-82), 61 (D-83) and 62 (D-84) closed 2026-11-03: a transient failure costs a request, a pod says what it can reach, and `fetch` keeps the perimeter. Their sections are archived and what they leave open is in the follow-ups below. Phase 59 (D-81, [ADR 0038](docs/adr/0038-a-step-budget-is-a-checkpoint-not-a-cliff.md)) closed 2026-11-03
@@ -525,7 +525,7 @@ from `main`.
   `internal-docs/baselines/phase-68/`. Closes P67-5.
 - **Gate:** the phase-close list; the full suite once at the last merge.
 
-## ○ PHASE 66 PLANNED — the context a turn sends is protected, reduced by what it carries, explained and recoverable (D-87, proposed 2026-11-04, awaiting the maintainer)
+## ○ PHASE 66 PLANNED — the context a turn sends is protected, reduced by what it carries, explained and recoverable (D-87, accepted 2026-11-05)
 
 > From the context-engineering audit of 2026-11-04 (`internal-docs/audits/context-engineering-2026-11-04.es.md`,
 > the maintainer's request; code read at `2462c872`, every locator re-checked there). Four measured facts drive
@@ -544,7 +544,7 @@ from `main`.
 > catalog, lifecycle condensation, the `hosted` history share, recitation of the objective, a JSONL session
 > store, a cheaper summarizer model, server-side compaction or `count_tokens` on the Anthropic dialect.
 >
-> **Decisions the plan takes (for the maintainer; D-87 is `Proposed` until accepted):**
+> **Decisions the plan takes (D-87 accepted 2026-11-05, all six as written):**
 > 1. Every line docket writes to steer the model and nothing else is request-only: the budget notice joins
 >    the landing ask and the closing ask as a trailing `user` message, never written to `session.json`.
 >    Requirement 108's "appended to the last tool result" becomes "appended to the next request". The
