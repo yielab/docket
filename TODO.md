@@ -329,7 +329,7 @@ from `main`.
 
 ### P68-11 — A turn condenses to fit the window, never to save tokens
 
-**Status:** TODO (measured 2026-11-05, `internal-docs/baselines/phase-68/real-run-searxng.md` run 3; analysis `internal-docs/design/limitar-consumo-tokens-2026-11-05.es.md` §2 and §5 A) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** DONE 2026-11-05 except the real run (`5789aebf`; session-history 1.16.0, model-profiles 7.2.0, agent-loop 4.9.0; the request projection condenses only when the request would not fit the window, synthetic fixture `tests/fixtures/research-turn/v1/shape.json`. Left: the `history` share stays because turn-start compaction reads it (decide whether `hosted` `BudgetShares(history=0.025)` goes, `catalog.py` `BudgetShares`, `driver_support.py:412`); the researcher's cache-read growth on a real run) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
 - **Trigger:** researcher `web-a`, 10 iterations on Haiku 5.5 (1M window): the cache read was 4,876 tokens on every
   iteration (the system prompt and tools, nothing else) and the history was rewritten each time (28k, 46k, 17k...
@@ -361,7 +361,7 @@ from `main`.
 
 ### P68-12 — A service operation returns the fields the model needs, not the whole document
 
-**Status:** TODO (measured 2026-11-05; analysis §2 and §5 B) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** —
+**Status:** DONE 2026-11-05 except the live queries (`66b16f90`; service-client 1.5.0, requirement 24a; `response: {items, fields}`. The card's 4,000-character figure does not hold with `content` in `fields` (about 9,300 of 25,000, 37%); the 20 live queries decide whether `content` stays) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** —
 
 - **Trigger:** one SearXNG answer is 23,000-30,000 characters (about 8k tokens) for 30 results, each with `engine`,
   `engines`, `score`, `positions`, `category`, `parsed_url`...; the model used five URLs and their titles. Two searches
@@ -386,7 +386,7 @@ from `main`.
 
 ### P68-13 — `fetch` returns a page's main content, not its chrome
 
-**Status:** TODO (measured 2026-11-05; analysis §2 and §5 B) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** DONE 2026-11-05 except the measurement on three run-3 pages (`8639e75a`; security-gates 3.17.0; `main`, else one `article`, else body. Known gap: an unclosed `nav`/`aside`/`form` outside any `main` drops the rest of the page) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
 - **Trigger:** a fetched store or vendor page is 25,000-30,000 characters of readable text (`web-a` held eight of them,
   about 33k tokens, resent on every later iteration); the text includes navigation, cookie banners, footers and
@@ -409,7 +409,7 @@ from `main`.
 
 ### P68-14 — The budget stops new work, never the report: the landing is always made
 
-**Status:** TODO (measured 2026-11-05, run 2; analysis §4 and §5 C) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** DONE 2026-11-05 except run 2 on the default budget (`7338c61b`; agent-loop 4.9.0, requirements 51, 52, 108; a tool-calling reply that crosses the budget (requirement 55) still stops without a landing, `loop.py` ~524, pinned by a test) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
 - **Trigger:** run 2, hops `web-b` and `repo`: `token budget: cannot start terminal finalization completion within
   token_budget=100000 (used 95251, estimated input 19229 + output reserve 8192, remaining 4749); no backend call
@@ -435,7 +435,7 @@ from `main`.
 
 ### P68-15 — A handoff names the sources it read, so the next hop reads the copy instead of fetching again
 
-**Status:** TODO (measured 2026-11-05, run 3; analysis §2 and §5 D) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + prompt · **After:** —
+**Status:** DONE 2026-11-05 except the analyst's fetch count against run 3's five (`ac7134a0`; pod-dispatch 12.9.0, role-archetypes 5.12.0; `sources` read from the task trace by hop role, so it is `[]` under DOCKET_NO_TRACE) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + prompt · **After:** —
 
 - **Trigger:** the analyst spent 172,942 input tokens, most of it re-fetching the five pages the researchers had read;
   those pages were already in the pod's `cache/artifacts/` (every over-cap `fetch` result is stored whole there).
