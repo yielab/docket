@@ -50,6 +50,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A research team searches through a SearXNG service.** The `web-research` recipe ships a `search` service
+  (`services/search.yaml`, a `GET` to a local SearXNG on loopback) and `docket setup search searxng [--pod P]`
+  writes the SearXNG settings under the home, the pod's service document, and prints the one `docker run` line;
+  docket does not run the container. Measured: 20 of 20 queries answered with 29-35 results. `search-host` is
+  met only by a declared `search` service whose address answers, and an unmet line names SearXNG and a Brave
+  Search API key. Allowing a search site in `fetchDomains` no longer satisfies it: DuckDuckGo answers a challenge
+  page and Bing returns unrelated links.
 - **A research team reads the web without a host list.** A pod that works in a folder, under an
   enforced jail, with no `fetchDomains` and no `FETCH_ALLOWED_DOMAINS`, reaches any public host with
   `fetch`; every other pod keeps its list, `*` stays a `--widen` grant, a private address stays refused

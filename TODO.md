@@ -139,7 +139,7 @@ from `main`.
 > | Wave | Cards | File contention resolved |
 > | --- | --- | --- |
 > | 1 | P68-1 ∥ P68-2 ∥ P68-3 | P68-1 owns `agent/session_compaction.py`, `agent/loop_compaction.py`, `session-history.spec.md`, `agent-loop.spec.md` 37; P68-2 owns `governance/policy.py`, the policy templates, the corpus, `security-gates.spec.md`; P68-3 owns `teams/builtin_roles.py`, `role-archetypes.spec.md` |
-> | 2 | P68-4 ∥ P68-5 | P68-4 owns the `web-research` recipe, `services/`, the `setup search` command and `teams/apply/needs.py`; P68-5 owns `agent/tools/capability_gap.py`, `hops/application/driver_support.py` `pod_offer`, `serve-read-api.spec.md` |
+> | 2 | P68-4 (done) ∥ P68-5 | P68-4 owns the `web-research` recipe, `services/`, the `setup search` command and `teams/apply/needs.py`; P68-5 owns `agent/tools/capability_gap.py`, `hops/application/driver_support.py` `pod_offer`, `serve-read-api.spec.md` |
 > | 2b | P68-7 (done) | `agent/session.py`, `session-history.spec.md` requirement 30; before P68-6 |
 > | 2c | P68-8 | after P68-4: `needs.py`, the recipe, the pod report, `operator-api.spec.md`; Brave and the Tack surface |
 > | 3 | P68-6 | the integrator's real run, which also closes P67-5 |
@@ -226,7 +226,7 @@ from `main`.
 
 ### P68-4 — A research team searches through a declared service; SearXNG by default
 
-**Status:** TODO (D-89 choice 4 decided 2026-11-05 by the maintainer: SearXNG is the default, Brave Search API the option, P68-8; measured 2026-11-04, `internal-docs/baselines/phase-68/search.md`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + data + docs + measurement · **After:** —
+**Status:** DONE 2026-11-05 (`31f52991`; pod-blueprints 4.10.0, cli-interface 5.15.0; D-89 choice 4 decided 2026-11-05: SearXNG is the default, Brave Search API the option, P68-8; measured through the service, `internal-docs/baselines/phase-68/search.md`: 20 of 20, 29-35 results each) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + data + docs + measurement · **After:** —
 
 - **Trigger:** P67-3 (`internal-docs/baselines/phase-67/search.md`): DuckDuckGo html and lite answer a challenge to
   20 of 20 queries, Bing returns links unrelated to the query; the P67-5 run's two Bing searches returned
@@ -284,7 +284,7 @@ from `main`.
 
 ### P68-8 — Brave Search API as the option, and Tack sees and sets the provider
 
-**Status:** TODO (decided 2026-11-05; after P68-4: both edit `needs.py`, the recipe and `pod-blueprints.spec.md`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** P68-4
+**Status:** TODO (decided 2026-11-05; P68-4 is done, so it can start: both edit `needs.py`, the recipe and `pod-blueprints.spec.md`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** P68-4
 
 - **Trigger:** the maintainer's choice 4: Brave is the optional provider, and the plan of record (Tack) must see
   which provider a pod searches through and be able to change it.
@@ -876,6 +876,15 @@ from `main`.
   `shape`; the word "adapters" in the `_execution.py` docstring and ADR 0006.
 
 **Phase 68 (2026-11-04).** Left out of the cards on purpose, or found while merging:
+- *One search answer is 23,000-30,000 characters.* Through the declared service (P68-4, 20 queries) SearXNG's JSON
+  carries engines, scores and positions per record and has no field filter; the default tool cap (30,000) cuts it
+  mid-record and the local 2,500 cap leaves about three results. A research turn that searches five times spends
+  roughly 35k tokens on results. Trigger: a real run (P68-6) where search results are a visible share of the turn's
+  input; then the operation's response is reduced to `title`, `url` and `content` (a service-client response
+  projection, which does not exist today) or the operation description asks for fewer.
+- *`setup search searxng` settings mount.* The command makes the settings directory 0755 and the file 0644 so the
+  container user can read them; the key in the file is random per machine. Trigger: an image change that stops
+  reading the mount.
 - *A turn that continues after a refused pre-turn compaction is tested at the unit, not through the model.*
   `test_loop_compaction.py` asserts `apply_initial_history_compaction() is None` and the `failed` event; an
   integration test that runs `run_agent_turn` to the model after a refusal is cheap. Trigger: any later
