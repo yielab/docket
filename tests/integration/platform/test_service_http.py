@@ -11,18 +11,22 @@ import threading
 import time
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
 
 from docket.kernel.home import current_home, use_home
+from docket.kernel.service import ResponseProjection
 from docket.platform.service_http import ServiceRequest, call_operation
+from docket.teams.services import load_service_document
 
 SUBJECT = "docket.platform.service_http"
 
 
 class _Handler(BaseHTTPRequestHandler):
     seen: ClassVar[list[dict[str, Any]]] = []
+    search_answer: ClassVar[bytes] = b"{}"
 
     def log_message(self, *args: object) -> None:
         pass
@@ -59,6 +63,8 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/slow"):
             time.sleep(1.5)
             self._reply(200, b"late", "text/plain")
+        elif self.path.startswith("/search"):
+            self._reply(200, type(self).search_answer)
         elif self.path.startswith("/text"):
             self._reply(200, b"plain words", "text/plain")
         else:
@@ -247,3 +253,55 @@ class TestTheRequestsOwnTimeout:
 
         assert not slow.ok and "timed out" in slow.error
         assert patient.ok and patient.content == "late"
+
+
+_ANSWER = Path(__file__).parents[2] / "fixtures" / "search-service" / "searxng-answer.json"
+
+
+_SHIPPED_SEARCH = (
+    Path(__file__).parents[3] / "src/docket/templates/recipes/web-research/services/search.yaml"
+)
+
+
+def _thirty_results() -> dict[str, Any]:
+    """A SearXNG answer of 30 results in the recorded shape, each with its own url."""
+    recorded = json.loads(_ANSWER.read_text())
+    results = [{**recorded["results"][n % len(recorded["results"])]} for n in range(30)]
+    for n, row in enumerate(results):
+        row["url"] = f"{row['url']}?page={n}"
+    return {**recorded, "results": results}
+
+
+class TestAProjectedAnswer:
+    def test_thirty_results_shrink_under_the_shipped_projection_with_every_url_in_order(
+        self, server: tuple[str, list]
+    ) -> None:
+        base, _ = server
+        answer = _thirty_results()
+        raw = json.dumps(answer, separators=(",", ":"))
+        _Handler.search_answer = raw.encode()
+        operation = load_service_document(_SHIPPED_SEARCH).operations[0]
+
+        out = call_operation(_request(base, path="/search", response=operation.response))
+
+        rows = json.loads(out.content)
+        assert out.ok and len(out.content) < len(raw) * 0.4
+        assert [row["url"] for row in rows] == [row["url"] for row in answer["results"]]
+        assert all(set(row) == {"title", "url", "content"} for row in rows)
+
+    def test_an_answer_without_the_path_is_returned_whole(self, server: tuple[str, list]) -> None:
+        base, _ = server
+        _Handler.search_answer = b'{ "error": "no results key" }'
+        shape = ResponseProjection(items="results", fields=["url"])
+
+        out = call_operation(_request(base, path="/search", response=shape))
+
+        assert out.ok and out.content == '{"error":"no results key"}'
+
+    def test_a_text_answer_is_returned_as_text(self, server: tuple[str, list]) -> None:
+        base, _ = server
+        shape = ResponseProjection(items="results", fields=["url"])
+
+        out = call_operation(_request(base, path="/text", response=shape))
+
+        assert out.ok and out.content == "plain words"

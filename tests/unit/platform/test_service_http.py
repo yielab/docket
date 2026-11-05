@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from docket.kernel.errors import InvalidInput
+from docket.kernel.service import ResponseProjection
 from docket.platform import service_http as _svc
 
 SUBJECT = "docket.platform.service_http"
@@ -73,3 +74,38 @@ class TestRedaction:
 
     def test_ignores_an_empty_value(self) -> None:
         assert _svc.redact("kept", ("",)) == "kept"
+
+
+_ROWS = {"results": [{"title": "a", "url": "u1", "score": 1}, {"title": "b", "url": "u2"}]}
+
+
+class TestProjectResponse:
+    def test_a_list_at_the_path_is_reduced_to_the_fields_in_order(self) -> None:
+        shape = ResponseProjection(items="results", fields=["url", "title"])
+
+        assert _svc.project_response(_ROWS, shape) == [
+            {"url": "u1", "title": "a"},
+            {"url": "u2", "title": "b"},
+        ]
+
+    def test_a_dotted_path_walks_objects(self) -> None:
+        shape = ResponseProjection(items="web.results", fields=["url"])
+
+        assert _svc.project_response({"web": _ROWS}, shape) == [{"url": "u1"}, {"url": "u2"}]
+
+    @pytest.mark.parametrize(
+        "body",
+        [{"other": 1}, {"results": {"url": "u"}}, {"results": "text"}, [1, 2], "words", 7],
+    )
+    def test_a_body_without_a_list_at_the_path_comes_back_whole(self, body: object) -> None:
+        shape = ResponseProjection(items="results", fields=["url"])
+
+        assert _svc.project_response(body, shape) is body
+
+    def test_an_element_that_is_not_an_object_is_kept(self) -> None:
+        shape = ResponseProjection(items="results", fields=["url"])
+
+        assert _svc.project_response({"results": ["x", {"url": "u", "t": 1}]}, shape) == [
+            "x",
+            {"url": "u"},
+        ]

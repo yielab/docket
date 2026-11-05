@@ -6,7 +6,7 @@ bound it; nothing here makes a call or resolves a secret (specs/functional/servi
 from __future__ import annotations
 
 import re
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -71,6 +71,16 @@ class OperationParam(BaseModel):
         return self
 
 
+class ResponseProjection(BaseModel):
+    """What of a JSON answer the model sees: the list at the dotted path *items*, each object cut
+    to *fields*."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: str = Field(pattern=r"^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$")
+    fields: list[Annotated[str, Field(min_length=1)]] = Field(min_length=1)
+
+
 class Operation(BaseModel):
     """One call a pod may make. ``access`` is resolved from the method when omitted."""
 
@@ -82,6 +92,7 @@ class Operation(BaseModel):
     params: list[OperationParam] = Field(default_factory=list)
     body: dict[str, Any] | None = None
     access: Literal["read", "send"] | None = None
+    response: ResponseProjection | None = None
     description: str = ""
 
     @field_validator("body")

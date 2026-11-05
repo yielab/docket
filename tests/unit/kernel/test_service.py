@@ -57,3 +57,39 @@ def test_tool_names_are_built_and_read_back_by_one_pair_of_functions() -> None:
 def test_a_name_that_is_not_a_service_operation_has_no_service() -> None:
     for name in ("svc__crm", "svc__", "mcp__crm__x", "read", "svc__crm__"):
         assert _service.service_of_tool(name) == ""
+
+
+def test_a_response_projection_loads_and_round_trips_by_alias() -> None:
+    config = _service.ServiceConfig.model_validate(
+        _config(method="GET", response={"items": "web.results", "fields": ["title", "url"]})
+    )
+
+    assert config.operations[0].response == _service.ResponseProjection(
+        items="web.results", fields=["title", "url"]
+    )
+    dumped = config.model_dump(mode="json", by_alias=True, exclude_defaults=True)
+    assert _service.ServiceConfig.model_validate(dumped) == config
+
+
+@pytest.mark.parametrize(
+    "response, key",
+    [
+        ({"items": "results", "fields": []}, "fields"),
+        ({"items": "results", "fields": ["url", ""]}, "fields"),
+        ({"items": "results", "fields": "url"}, "fields"),
+        ({"items": 3, "fields": ["url"]}, "items"),
+        ({"items": ["results"], "fields": ["url"]}, "items"),
+        ({"items": "a..b", "fields": ["url"]}, "items"),
+        ({"items": "", "fields": ["url"]}, "items"),
+        ({"fields": ["url"]}, "items"),
+        ({"items": "results"}, "fields"),
+        ({"items": "results", "fields": ["url"], "extra": 1}, "extra"),
+    ],
+)
+def test_a_bad_response_projection_is_refused_naming_the_key(
+    response: dict[str, Any], key: str
+) -> None:
+    with pytest.raises(ValidationError) as caught:
+        _service.ServiceConfig.model_validate(_config(method="GET", response=response))
+
+    assert any(key in error["loc"] for error in caught.value.errors())

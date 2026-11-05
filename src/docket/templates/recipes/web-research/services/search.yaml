@@ -6,6 +6,7 @@ operations:
   - name: search
     method: GET
     path: /search
+    response: {items: results, fields: [title, url, content]}
     description: >-
       Search the web. Pass q (the query) and always format=json. The answer lists results with a
       title, a url and a short content; it is not the pages themselves, so read the pages you pick

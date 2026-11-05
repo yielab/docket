@@ -64,6 +64,17 @@
           "default": null,
           "title": "Access"
         },
+        "response": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResponseProjection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "description": {
           "default": "",
           "title": "Description",
@@ -117,6 +128,32 @@
         "in"
       ],
       "title": "OperationParam",
+      "type": "object"
+    },
+    "ResponseProjection": {
+      "additionalProperties": false,
+      "description": "What of a JSON answer the model sees: the list at the dotted path *items*, each object cut\nto *fields*.",
+      "properties": {
+        "items": {
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*$",
+          "title": "Items",
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items",
+        "fields"
+      ],
+      "title": "ResponseProjection",
       "type": "object"
     },
     "ServiceAuth": {

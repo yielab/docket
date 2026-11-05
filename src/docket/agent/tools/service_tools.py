@@ -110,6 +110,7 @@ def _request(
         hosts=tuple(service.config.hosts),
         secrets=service.secrets,
         timeout=service.config.timeout,
+        response=operation.response,
     )
 
 

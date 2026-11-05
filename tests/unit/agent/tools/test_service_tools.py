@@ -8,7 +8,7 @@ from tests.support.registry import tool_named
 
 from docket.agent.tools import service_tools as _st
 from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry
-from docket.kernel.service import ServiceConfig
+from docket.kernel.service import ResponseProjection, ServiceConfig
 from docket.kernel.tool_outcome import ToolOutcome
 from docket.platform import ServiceRequest
 
@@ -311,3 +311,30 @@ def test_the_documents_timeout_reaches_the_request() -> None:
     tool_named(registry, "svc__crm__get").handler({}, _ctx())
 
     assert recorder.requests[0].timeout == 7.5
+
+
+def test_the_operations_response_projection_reaches_the_request() -> None:
+    config = ServiceConfig.model_validate(
+        {
+            "name": "find",
+            "baseUrl": "https://api.example.com",
+            "operations": [
+                {
+                    "name": "search",
+                    "method": "GET",
+                    "path": "/s",
+                    "response": {"items": "web.results", "fields": ["url"]},
+                },
+                {"name": "plain", "method": "GET", "path": "/p"},
+            ],
+        }
+    )
+    recorder = _Recorder()
+    registry = ToolRegistry()
+    _st.load_service_tools(registry, services=[_st.ResolvedService(config)], call=recorder)
+
+    _run(tool_named(registry, "svc__find__search"), {})
+    _run(tool_named(registry, "svc__find__plain"), {})
+
+    assert recorder.requests[0].response == ResponseProjection(items="web.results", fields=["url"])
+    assert recorder.requests[1].response is None

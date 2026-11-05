@@ -9,6 +9,7 @@ operations:
   - name: search
     method: GET
     path: /search
+    response: {items: web.results, fields: [title, url, description]}
     description: >-
       Search the web with the Brave Search API. Pass q (the query) and count (how many results, a
       handful is enough). The answer lists results with a title, a url and a description; it is not

@@ -1,6 +1,6 @@
 # Service Client Specification
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: Implemented in part: the document, its access rule, its registration, its scopes and
 its import from an OpenAPI 3 or 2 (Swagger) document (`kernel/service.py`, `teams/services.py`,
 `teams/services_openapi.py`, `docket setup service`, `docket pod update|export`), the call with its
@@ -9,7 +9,7 @@ names, loaded each turn: `agent/tools/service_tools.py`) and the handling of wri
 per service and the delete approval, `governance/`), and the task identity of a call (the
 `X-Docket-Task` header, the idempotency key of a `send` operation and the service's own `timeout`
 are carried into every call). Not shipped: nothing proves the whole path against a real service.
-**Last Updated**: 2026-10-30
+**Last Updated**: 2026-11-05
 
 ## Purpose
 
@@ -67,7 +67,7 @@ This specification does NOT cover:
    loaded, stored, listed or exported; no function of this specification resolves one, and a
    listing shows the header and the secret names a value references, never the value.
 4. An operation is `name`, `method` (`GET`, `POST`, `PUT`, `PATCH` or `DELETE`), `path`, `params`,
-   `body`, `access` and `description`. Operation names are unique within a service and contain
+   `body`, `access`, `response` (requirement 24a) and `description`. Operation names are unique within a service and contain
    only letters, digits, `-` and `_`.
 5. A `path` **MUST** begin with `/`. Each `{param}` placeholder in it **MUST** be a declared
    parameter with `in: path`, and each `in: path` parameter **MUST** appear in the path; either
@@ -139,6 +139,18 @@ This specification does NOT cover:
     replacement.
 25. A non-2xx response **MUST** return a failed outcome whose `error` names the status code, the method
     and the host and path (never the query), and the head of the body (at most 500 characters).
+24a. An operation **MAY** declare `response: {items, fields}`: `items` a dotted path of object keys
+    (letters, digits, `-` and `_`, separated by `.`) and `fields` a non-empty list of key names.
+    When a 2xx body parses as JSON and `items` resolves, through objects, to a list, the result
+    **MUST** be that list alone, each object reduced to the listed `fields` that it has (in the
+    order the list gives them; an element that is not an object is kept as it is), as compact JSON.
+    When the path is absent from the body, resolves to something that is not a list, or the body is
+    not JSON, the result **MUST** be requirement 24's, never an error. A `response` whose `items` is
+    not a string, whose `fields` is empty or holds a non-string or empty name, or that has another
+    key **MUST** be refused as requirement 8 says, naming the key. The shipped `search` documents
+    declare it: `items: results`, `fields: [title, url, content]` (SearXNG) and `items:
+    web.results`, `fields: [title, url, description]` (Brave). `ServiceRequest` carries it as
+    `response` and a service tool **MUST** pass the operation's.
 26. A connection error or a timeout **MUST** return a failed outcome naming the host; nothing raises.
 
 ### The perimeter
@@ -298,7 +310,7 @@ This specification does NOT cover:
 
 ### Python API
 
-- `docket.kernel.service`: `ServiceConfig`, `Operation`, `OperationParam`, `ServiceRegistry`,
+- `docket.kernel.service`: `ServiceConfig`, `Operation`, `OperationParam`, `ResponseProjection`, `ServiceRegistry`,
   `secret_names(value)`, `SERVICE_TOOL_PREFIX`, `service_tool_name(service, operation="")`,
   `service_of_tool(tool_name)`
 - `docket.agent.tools.service_tools`: `load_service_tools(registry, *, services)` (each service
@@ -326,6 +338,7 @@ class ServiceRequest:
     hosts: tuple[str, ...] = ()
     secrets: tuple[str, ...] = ()
     timeout: float = 0.0
+    response: ResponseProjection | None = None
 
 def call_operation(request: ServiceRequest) -> ToolOutcome: ...
 ```

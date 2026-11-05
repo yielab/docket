@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput, Refused
 from docket.kernel.home import current_home
+from docket.kernel.service import ResponseProjection
 from docket.kernel.tool_outcome import ToolOutcome, text_outcome
 from docket.platform.perimeter import build_opener, read_until_deadline
 
@@ -43,7 +44,8 @@ _BAD_REQUEST = "service_bad_request"
 @dataclass(frozen=True)
 class ServiceRequest:
     """One resolved operation call. *path* is a template whose `{name}` parts take *path_params*;
-    *timeout* bounds the whole call in seconds, ``0`` meaning ``Home.fetch_timeout_s``."""
+    *timeout* bounds the whole call in seconds, ``0`` meaning ``Home.fetch_timeout_s``; *response*
+    cuts a JSON answer to the fields the model needs."""
 
     method: str
     base_url: str
@@ -55,6 +57,7 @@ class ServiceRequest:
     hosts: tuple[str, ...] = ()
     secrets: tuple[str, ...] = ()
     timeout: float = 0.0
+    response: ResponseProjection | None = None
 
 
 def _split_base(base_url: str) -> urllib.parse.SplitResult:
@@ -138,14 +141,37 @@ def redact(text: str, values: tuple[str, ...]) -> str:
     return text
 
 
-def _success(status: int, content_type: str, raw: bytes, cap: int) -> ToolOutcome:
+def project_response(body: object, projection: ResponseProjection) -> object:
+    """The list at ``projection.items`` with each object cut to ``projection.fields``; *body*
+    itself when the path does not lead to a list."""
+    node = body
+    for key in projection.items.split("."):
+        if not isinstance(node, dict) or key not in node:
+            return body
+        node = node[key]
+    if not isinstance(node, list):
+        return body
+    return [
+        {name: item[name] for name in projection.fields if name in item}
+        if isinstance(item, dict)
+        else item
+        for item in node
+    ]
+
+
+def _success(
+    content_type: str, raw: bytes, cap: int, projection: ResponseProjection | None
+) -> ToolOutcome:
     truncated = len(raw) > cap
     text = raw[:cap].decode("utf-8", errors="replace")
     if truncated:
         return ToolOutcome(True, content=f"{text}\n\n[truncated: response exceeded {cap} bytes]")
     if "json" in content_type.lower() and text.strip():
         with contextlib.suppress(ValueError):
-            text = json.dumps(json.loads(text), separators=(",", ":"), ensure_ascii=False)
+            parsed = json.loads(text)
+            if projection is not None:
+                parsed = project_response(parsed, projection)
+            text = json.dumps(parsed, separators=(",", ":"), ensure_ascii=False)
     return text_outcome(text)
 
 
@@ -197,7 +223,6 @@ def _call(request: ServiceRequest, scrub: tuple[str, ...]) -> ToolOutcome:
         ) as resp:
             content_type = resp.headers.get("Content-Type", "")
             raw = read_until_deadline(resp, cap, deadline)
-            status = resp.status
     except urllib.error.HTTPError as ex:
         try:
             head = ex.read(2000).decode("utf-8", errors="replace").strip()
@@ -214,5 +239,5 @@ def _call(request: ServiceRequest, scrub: tuple[str, ...]) -> ToolOutcome:
         return ToolOutcome(False, error=redact(f"cannot reach {shown}: {ex}", scrub))
     if raw is None:
         return ToolOutcome(False, error=f"timed out after {timeout}s calling {shown}")
-    outcome = _success(status, content_type, raw, cap)
+    outcome = _success(content_type, raw, cap, request.response)
     return ToolOutcome(True, content=redact(outcome.content, scrub))
