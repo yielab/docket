@@ -28,9 +28,11 @@ from docket.agent.session_units import (
 )
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.platform import read_modify_write
+from docket.platform import mkdir_private, read_modify_write, write_json
 
 _COMPACTION_ACTIVE: ContextVar[bool] = ContextVar("docket_session_compaction_active", default=False)
+
+_COMPACTIONS_DIRNAME = "compactions"
 
 
 # ── compaction (I/O + driver) ──────────────────────────────────────────────────
@@ -74,7 +76,7 @@ def _summarization_message(
 def _is_compacted_summary_unit(unit: Sequence[ChatMessage]) -> bool:
     return (
         len(unit) == 1
-        and unit[0].role == "system"
+        and unit[0].role == "user"
         and unit[0].content.startswith(_COMPACTED_SUMMARY_PREFIX)
     )
 
@@ -153,6 +155,10 @@ class CompactionResult:
     max_summary_prompt_estimated_tokens: int = 0
     #: Hash of the prompt text the summarisation rounds were built from; ``""`` when none ran.
     prompt_sha256: str = ""
+    #: The compaction record, relative to the session directory; ``""`` when none was written.
+    record: str = ""
+    #: ``(start, end)`` of the replaced messages in the history before the call; ``None`` when none.
+    summarized_range: tuple[int, int] | None = None
     before_message_count: int = 0
     after_message_count: int = 0
     before_estimated_tokens: int = 0
@@ -201,12 +207,35 @@ class _RoundOutcome:
 
     ok: bool
     working: list[ChatMessage] = field(default_factory=list)
+    #: The input messages the summaries replaced, oldest first, and where the first one stood
+    #: in *working* (the head the plan keeps comes before it).
+    replaced: list[ChatMessage] = field(default_factory=list)
+    replaced_offset: int = 0
+    summary: str = ""
     rounds: int = 0
     groups_summarized: int = 0
     max_prompt_estimated: int = 0
     error: str = ""
     failure_kind: FailureKind | None = None
     refused_by_guard: bool = False
+
+
+def _candidate_refusal(
+    candidate: Sequence[ChatMessage], current: Sequence[ChatMessage]
+) -> tuple[str, bool] | None:
+    """Why *candidate* must not replace *current*, as ``(error, refused_by_guard)``, or ``None``:
+    it would orphan a tool call or result, or it is not smaller."""
+    if find_orphaned_tool_messages(candidate) or find_unanswered_tool_calls(candidate):
+        return "compaction produced an orphaned tool call or result -- refusing to persist", False
+    current_estimated = _messages_estimated_tokens(current)
+    candidate_estimated = _messages_estimated_tokens(candidate)
+    if candidate_estimated >= current_estimated:
+        return (
+            "compaction summary did not reduce estimated history size "
+            f"({current_estimated} -> {candidate_estimated})",
+            True,
+        )
+    return None
 
 
 def _run_compaction_rounds(
@@ -231,6 +260,9 @@ def _run_compaction_rounds(
     groups_summarized = 0
     max_prompt_estimated = 0
     round_cap = max(1, len(group_atomic_units(working)) + 1)
+    replaced: list[ChatMessage] = []
+    produced: list[ChatMessage] = []
+    replaced_offset = 0
 
     while True:
         plan = plan_compaction(working, budget, keep_latest_unit=keep_latest_unit)
@@ -307,7 +339,7 @@ def _run_compaction_rounds(
 
         summarized_count = sum(len(unit) for unit in batch)
         summary_message = ChatMessage(
-            role="system",
+            role="user",
             content=(
                 f"{_COMPACTED_SUMMARY_PREFIX}{len(batch)} earlier turn(s), "
                 f"{summarized_count} message(s)]\n{summary}"
@@ -317,35 +349,24 @@ def _run_compaction_rounds(
         candidate = [*plan.keep_head, summary_message, *remaining_old, *plan.keep_tail]
         full_candidate = [*preserved_prefix, *candidate, *preserved_suffix]
 
-        if find_orphaned_tool_messages(full_candidate) or find_unanswered_tool_calls(
-            full_candidate
-        ):
+        refusal = _candidate_refusal(
+            full_candidate, [*preserved_prefix, *working, *preserved_suffix]
+        )
+        if refusal is not None:
             return _RoundOutcome(
                 ok=False,
                 rounds=rounds,
                 groups_summarized=groups_summarized,
                 max_prompt_estimated=max_prompt_estimated,
-                error="compaction produced an orphaned tool call or result -- refusing to persist",
+                error=refusal[0],
                 failure_kind="invalid_output",
+                refused_by_guard=refusal[1],
             )
 
-        current_full = [*preserved_prefix, *working, *preserved_suffix]
-        current_estimated = _messages_estimated_tokens(current_full)
-        candidate_estimated = _messages_estimated_tokens(full_candidate)
-        if candidate_estimated >= current_estimated:
-            return _RoundOutcome(
-                ok=False,
-                rounds=rounds,
-                groups_summarized=groups_summarized,
-                max_prompt_estimated=max_prompt_estimated,
-                error=(
-                    "compaction summary did not reduce estimated history size "
-                    f"({current_estimated} -> {candidate_estimated})"
-                ),
-                failure_kind="invalid_output",
-                refused_by_guard=True,
-            )
-
+        if not produced:
+            replaced_offset = len(plan.keep_head)
+        replaced += [m for unit in batch for m in unit if all(m is not p for p in produced)]
+        produced.append(summary_message)
         working = candidate
         rounds += 1
         groups_summarized += len(batch)
@@ -353,15 +374,49 @@ def _run_compaction_rounds(
     return _RoundOutcome(
         ok=True,
         working=working,
+        replaced=replaced,
+        replaced_offset=replaced_offset,
+        summary=produced[-1].content if produced else "",
         rounds=rounds,
         groups_summarized=groups_summarized,
         max_prompt_estimated=max_prompt_estimated,
     )
 
 
+def _write_compaction_record(
+    session_dir: Path,
+    *,
+    session_key: str,
+    stamp: str,
+    span: tuple[int, int],
+    replaced: Sequence[ChatMessage],
+    summary: str,
+    prompt_sha256: str,
+) -> str:
+    """Write the next ``compactions/<seq>.json`` of *session_dir* and return its path relative to
+    it. ``seq`` is the count of records present plus one; the caller holds the session lock."""
+    directory = session_dir / _COMPACTIONS_DIRNAME
+    mkdir_private(directory)
+    seq = 1 + sum(1 for entry in directory.glob("*.json") if entry.stem.isdigit())
+    relative = f"{_COMPACTIONS_DIRNAME}/{seq}.json"
+    write_json(
+        session_dir / relative,
+        {
+            "sessionKey": session_key,
+            "at": stamp,
+            "range": list(span),
+            "replaced": [_encode(m).model_dump(by_alias=True) for m in replaced],
+            "summary": summary,
+            "promptSha256": prompt_sha256,
+        },
+    )
+    return relative
+
+
 def _plan_and_apply_compaction(
     current: dict[str, Any],
     *,
+    session_dir: Path,
     session_key: str,
     stamp: str,
     compact_range: tuple[int, int] | None,
@@ -445,6 +500,36 @@ def _plan_and_apply_compaction(
             refused_by_guard=round_result.refused_by_guard,
         )
 
+    span: tuple[int, int] | None = None
+    record_path = ""
+    if round_result.replaced:
+        first = start_index + round_result.replaced_offset
+        span = (first, first + len(round_result.replaced))
+        try:
+            record_path = _write_compaction_record(
+                session_dir,
+                session_key=session_key,
+                stamp=stamp,
+                span=span,
+                replaced=round_result.replaced,
+                summary=round_result.summary,
+                prompt_sha256=prompt_sha256,
+            )
+        except (OSError, RuntimeError) as exc:
+            return None, CompactionResult(
+                ok=False,
+                groups_summarized=round_result.groups_summarized,
+                summary_rounds=round_result.rounds,
+                max_summary_prompt_estimated_tokens=round_result.max_prompt_estimated,
+                prompt_sha256=prompt_sha256,
+                before_message_count=before_count,
+                after_message_count=before_count,
+                before_estimated_tokens=before_estimated,
+                after_estimated_tokens=before_estimated,
+                error=f"could not write the compaction record: {exc}",
+                failure_kind="daemon_error",
+            )
+
     final_messages = [*preserved_prefix, *round_result.working, *preserved_suffix]
     updated = record.model_copy(
         update={
@@ -460,6 +545,8 @@ def _plan_and_apply_compaction(
         summary_rounds=round_result.rounds,
         max_summary_prompt_estimated_tokens=round_result.max_prompt_estimated,
         prompt_sha256=prompt_sha256,
+        record=record_path,
+        summarized_range=span,
         before_message_count=before_count,
         after_message_count=len(final_messages),
         before_estimated_tokens=before_estimated,
@@ -527,6 +614,7 @@ def compact_session(
         nonlocal outcome
         payload, outcome = _plan_and_apply_compaction(
             current,
+            session_dir=path.parent,
             session_key=session_key,
             stamp=stamp,
             compact_range=compact_range,

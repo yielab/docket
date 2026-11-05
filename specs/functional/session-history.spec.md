@@ -1,6 +1,6 @@
 # Session History Specification
 
-**Version**: 1.18.0
+**Version**: 1.19.0
 **Status**: Implemented and live. The agent loop loads, compacts and appends this durable history
 on the production `DocketDriver` path; every pod-dispatch step has its own history key.
 **Last Updated**: 2026-11-05
@@ -72,7 +72,7 @@ This specification does NOT cover:
    toward the total only, never toward a day.
 8. Appending to the same session key concurrently **MUST NOT** be able to silently drop either
    append's messages.
-9. The turns of a conversation task (`pod-dispatch.spec.md` "A conversation task") share the key of
+9a. The turns of a conversation task (`pod-dispatch.spec.md` "A conversation task") share the key of
    its one step, so each turn's request carries the user and assistant messages of the turns before
    it.
 
@@ -86,13 +86,18 @@ This specification does NOT cover:
    (a call with no later answering tool-role message) — including the boundary case where a
    naive size-based cut would otherwise land in the middle of one atomic unit.
 11. When a session's estimated size exceeds its budget, compaction **MUST** replace the oldest
-    atomic units with a single summarising message rather than truncating or deleting them
-    outright.
+    atomic units with a single summary message rather than truncating or deleting them outright.
+    The summary message is stored with role `user` and its content begins `[compacted summary of `,
+    so every wire carries it in chronology (the Anthropic wire lifts each `system` message into the
+    `system` parameter, out of order, and puts the cache breakpoint on it). A session written
+    before this requirement, whose summary is a `system` message, is read as it is: that message is
+    one more body unit, summarized like any other message and never re-labelled.
 12. Whole-session compaction **MUST** always retain at least the single most-recent atomic unit,
     even if that unit alone exceeds the configured budget. A caller selecting a bounded message
     range **MAY** explicitly allow every unit in that range to be summarized only when at least one
     unselected message remains as the verbatim conversational anchor.
-13. Compaction **MUST** always retain any leading system-role messages verbatim.
+13. Compaction **MUST** always retain any leading system-role messages verbatim. The summary
+    message is not one of them: it is a `user` message and is never part of the retained head.
 
 ### Budgeting honesty
 
@@ -161,8 +166,8 @@ This specification does NOT cover:
     stored changes and the whole original unit is replaced by its summary. A degenerate target
     smaller than the irreducible summary marker plus the mandatory newest unit **MAY** finish above
     target rather than repeatedly re-summarizing the same summary without new information.
-25. A system message produced by compaction **MAY** be summarized again in a later round. Any real
-    leading system message that was not produced by compaction **MUST** remain byte-identical.
+25. The summary message produced by compaction **MAY** be summarized again in a later round. Any
+    real leading system message **MUST** remain byte-identical.
 26. Every round **MUST** reduce the candidate's estimated size and the operation **MUST** have a
     deterministic round cap. Failure to make progress, exceeding the cap, or finding one atomic
     unit whose projected summary prompt (requirement 24) still cannot fit **MUST** fail closed
@@ -180,6 +185,20 @@ This specification does NOT cover:
     that differs from the durable record sent after reload. On a range, `budget_tokens=0` with
     `keep_latest_unit=False` means "summarize the range whole": every atomic unit of the range is
     summarized, and only the messages outside it stay verbatim.
+28a. A compaction that replaces messages **MUST** leave a record. Inside the same locked mutation
+    that writes `session.json`, before the new history is returned, `compact_session` writes
+    `<session dir>/compactions/<seq>.json` with `platform/store.py::write_json`, where `seq` is the
+    count of existing records plus one. The record is
+    `{sessionKey, at, range: [start, end], replaced: [messages], summary, promptSha256}`: `range` is
+    the half-open span of the replaced messages in the history before the call, `replaced` those
+    messages in the stored message form (so `[*replaced, *kept]` reproduces the history before the
+    call when the kept messages stay in place), `summary` the stored text of the summary message,
+    `promptSha256` the hash of requirement 17. The directory is created 0700 and the file is 0600,
+    like `session.json`. A call that writes no history (no-op or any failure) writes no record, and
+    a record that cannot be written fails the compaction with the history unchanged. The result
+    **MUST** carry `record` (the path relative to the session directory, `""` when none) and
+    `summarized_range` (`(start, end)`, `None` when none). Records are state, not trace, and are
+    never read back or pruned by docket; they go with the session directory.
 
 ### Request projection
 
@@ -289,7 +308,7 @@ def append_messages(
 # the shape a caller's driver must satisfy
 SessionSummaryRunner = Callable[[str, str, str, int, dict[str, str] | None], TurnResult]
 
-class CompactionResult:                        # plus summary rounds/prompt max, prompt_sha256, before/after counts
+class CompactionResult:                        # plus summary rounds/prompt max, prompt_sha256, record, summarized_range, before/after counts
     ...
 
 def compact_session(
@@ -353,6 +372,7 @@ def compact_session(
 
 ```text
 $SESSIONS_DIR/<percent-encoded session key>/session.json
+$SESSIONS_DIR/<percent-encoded session key>/compactions/<seq>.json
 ```
 
 `$SESSIONS_DIR` defaults to `~/.docket/sessions` and is overridable via the `SESSIONS_DIR`
@@ -392,7 +412,7 @@ Given a session whose oldest content is `[user_msg, assistant_tool_call_msg, too
 followed by recent messages that alone fit the budget, `plan_compaction` either keeps
 `assistant_tool_call_msg` and `tool_result_msg` together in `keep_tail`, or folds both of them
 together into `to_summarize` — never one without the other. `compact_session` then either
-persists the pair verbatim or replaces both with one summarising `system` message; the resulting
+persists the pair verbatim or replaces both with one summary message (role `user`); the resulting
 history always passes `find_orphaned_tool_messages(...) == []` and
 `find_unanswered_tool_calls(...) == []`.
 
@@ -441,10 +461,12 @@ result = sess.compact_session(
 ## Implementation
 
 - `src/docket/agent/session.py`: `load_session`, `load_messages`, `append_messages`,
-  `group_atomic_units`, `find_orphaned_tool_messages`, `find_unanswered_tool_calls`,
-  `plan_compaction`, `compact_session`, `condense_history`, `SessionSummaryRunner`,
-  `HISTORY_KEEP_FULL_RESULTS`, `HISTORY_FULL_RESULTS_CHARS`, `HISTORY_SMALL_RESULT_CHARS`,
-  `window_results_budget`
+  `condense_history`, `SessionSummaryRunner`, `HISTORY_KEEP_FULL_RESULTS`,
+  `HISTORY_FULL_RESULTS_CHARS`, `HISTORY_SMALL_RESULT_CHARS`, `window_results_budget`
+- `src/docket/agent/session_units.py`: `group_atomic_units`, `find_orphaned_tool_messages`,
+  `find_unanswered_tool_calls`, `plan_compaction`
+- `src/docket/agent/session_compaction.py`: `compact_session`, `CompactionResult`, the compaction
+  record (requirement 28a)
 - `src/docket/agent/context.py`: `estimate_tokens`, `budget_for_role`
 - `src/docket/agent/loop_compaction.py`: the live caller (`run_compaction`,
   `summarize_without_reentry`, the request builder that applies `condense_history`)

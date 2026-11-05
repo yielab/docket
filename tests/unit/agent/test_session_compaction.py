@@ -7,8 +7,12 @@ alone, and the typed refusal when the guard (not the summarizer) stops a compact
 
 from __future__ import annotations
 
+import os
 import re
+import stat
+from pathlib import Path
 
+import pytest
 from tests.support import home as _support_home
 from tests.support.llm import summarizing_driver as _summarizing_driver
 
@@ -16,7 +20,18 @@ from docket.agent import ports as _ports
 from docket.agent import session as _sess
 from docket.agent import session_compaction as _session_compaction
 from docket.agent import session_units as _session_units
-from docket.agent.ports import ChatMessage, ToolCall, TurnResult, assistant, tool_result, user
+from docket.agent.ports import (
+    ChatMessage,
+    Endpoint,
+    ToolCall,
+    TurnResult,
+    assistant,
+    system,
+    tool_result,
+    user,
+)
+from docket.models.adapters import anthropic_wire, openai_wire
+from docket.platform import read_json
 
 _isolate_sessions_dir = _support_home.isolate_sessions_dir
 
@@ -282,3 +297,141 @@ class TestARangeSummarizedWhole:
         assert len(stored) == 3
         assert stored[0].content.startswith("[compacted summary of ")
         assert stored[1:] == [task, after]
+
+
+def _session_dir() -> Path:
+    return _sess._session_path(_KEY, None).parent
+
+
+def _stored() -> list[dict[str, object]]:
+    messages = read_json(_sess._session_path(_KEY, None))["messages"]
+    assert isinstance(messages, list)
+    return messages
+
+
+class TestACompactionLeavesARecord:
+    """Requirement 28a: the replaced messages and the summary are kept beside session.json."""
+
+    def test_the_record_holds_every_replaced_message_byte_for_byte(self) -> None:
+        _sess.append_messages(_KEY, _padded_history())
+        before = _stored()
+
+        result = _compact(_summarizing_driver("what happened"), budget_tokens=50)
+
+        assert result.ok and result.compacted
+        assert result.record == "compactions/1.json"
+        assert result.summarized_range == (0, 2)
+        record = read_json(_session_dir() / result.record)
+        after = _stored()
+        assert record["replaced"] == before[:2]
+        assert [*record["replaced"], *after[1:]] == before
+        assert record["range"] == [0, 2]
+        assert record["sessionKey"] == _KEY
+        assert record["promptSha256"] == _PROMPT_SHA
+        assert record["summary"] == after[0]["content"]
+        assert record["at"]
+
+    def test_the_directory_and_the_file_are_private_like_session_json(self) -> None:
+        _sess.append_messages(_KEY, _padded_history())
+
+        _compact(_summarizing_driver("what happened"), budget_tokens=50)
+
+        directory = _session_dir() / "compactions"
+        assert stat.S_IMODE(os.stat(directory).st_mode) == 0o700
+        assert stat.S_IMODE(os.stat(directory / "1.json").st_mode) == 0o600
+
+    def test_the_next_record_is_numbered_after_the_ones_present_and_replaces_the_old_summary(
+        self,
+    ) -> None:
+        _sess.append_messages(_KEY, _padded_history())
+        _compact(_summarizing_driver("first summary"), budget_tokens=50)
+        first_summary = _stored()[0]
+        _sess.append_messages(_KEY, _padded_history())
+        before = _stored()
+
+        result = _compact(_summarizing_driver("second summary"), budget_tokens=50)
+
+        assert result.record == "compactions/2.json"
+        record = read_json(_session_dir() / result.record)
+        assert record["replaced"][0] == first_summary
+        assert [*record["replaced"], *_stored()[1:]] == before
+
+    def test_a_failed_summary_writes_no_record(self) -> None:
+        _sess.append_messages(_KEY, _padded_history())
+
+        def _failing(
+            agent_id: str, session_key: str, message: str, timeout: int, env: object = None
+        ) -> TurnResult:
+            return TurnResult(False, "", {}, "boom", failure_kind="timeout")
+
+        result = _compact(_failing, budget_tokens=50)
+
+        assert not result.ok
+        assert result.record == "" and result.summarized_range is None
+        assert not (_session_dir() / "compactions").exists()
+
+    def test_a_compaction_that_needs_nothing_writes_no_record(self) -> None:
+        _sess.append_messages(_KEY, [user("short")])
+
+        result = _compact(_summarizing_driver("unused"), budget_tokens=10_000)
+
+        assert result.ok and not result.compacted
+        assert result.record == "" and result.summarized_range is None
+        assert not (_session_dir() / "compactions").exists()
+
+    def test_a_record_that_cannot_be_written_leaves_the_history_unchanged(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _sess.append_messages(_KEY, _padded_history())
+        path = _sess._session_path(_KEY, None)
+        before = path.read_bytes()
+
+        def _refuse(*args: object, **kwargs: object) -> None:
+            raise OSError("disk full")
+
+        monkeypatch.setattr(_session_compaction, "write_json", _refuse)
+        result = _compact(_summarizing_driver("what happened"), budget_tokens=50)
+
+        assert not result.ok
+        assert "record" in result.error
+        assert path.read_bytes() == before
+
+
+class TestTheSummaryIsAUserMessage:
+    """Requirement 11: both wires carry the summary in chronology, not in the system parameter."""
+
+    def test_the_stored_summary_is_a_user_message(self) -> None:
+        _sess.append_messages(_KEY, _padded_history())
+
+        _compact(_summarizing_driver("what happened"), budget_tokens=50)
+
+        summary = _sess.load_messages(_KEY)[0]
+        assert summary.role == "user"
+        assert summary.content.startswith("[compacted summary of ")
+
+    def test_both_wires_send_it_after_the_system_prompt_and_before_the_task(self) -> None:
+        _sess.append_messages(_KEY, _padded_history())
+        _compact(_summarizing_driver("what happened"), budget_tokens=50)
+        history = [system("the prompt"), *_sess.load_messages(_KEY)]
+        endpoint = Endpoint(base_url="http://127.0.0.1:1/v1", model_id="m", max_output_tokens=64)
+
+        anthropic = anthropic_wire.build_payload(endpoint, history)
+        openai = openai_wire.build_payload(endpoint, history)
+
+        assert [b["text"] for b in anthropic["system"]] == ["the prompt"]
+        assert [m["role"] for m in anthropic["messages"]] == ["user"]
+        blocks = anthropic["messages"][0]["content"]
+        assert blocks[0]["text"].startswith("[compacted summary of ")
+        assert blocks[1]["text"] == "UNIT-C ask"
+        assert [m["role"] for m in openai["messages"]] == ["system", "user", "user"]
+        assert openai["messages"][1]["content"].startswith("[compacted summary of ")
+
+    def test_an_old_system_summary_is_one_more_body_unit_never_relabelled(self) -> None:
+        old = ChatMessage(role="system", content="[compacted summary of 2 turn(s)]\nold")
+        _sess.append_messages(_KEY, [old, *_padded_history()])
+
+        _compact(_summarizing_driver("what happened"), budget_tokens=50)
+
+        record = read_json(_session_dir() / "compactions" / "1.json")
+        assert record["replaced"][0]["role"] == "system"
+        assert record["replaced"][0]["content"] == old.content

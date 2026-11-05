@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Sequence
 
 import pytest
@@ -32,6 +33,7 @@ from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import Tool as _Tool
 from docket.agent.tools.registry import ToolContext, ToolRegistry
 from docket.kernel.home import current_home
+from docket.platform import read_json
 
 SUBJECT = "docket.agent.loop"
 
@@ -182,6 +184,15 @@ class TestLiveSessionCompaction:
             compaction_events[0]["afterMessageCount"] < compaction_events[0]["beforeMessageCount"]
         )
         assert "summary" not in compaction_events[0]
+        assert compaction_events[0]["record"] == "compactions/1.json"
+        assert compaction_events[0]["summarizedRange"] == [0, 3]
+        assert re.fullmatch(r"[0-9a-f]{64}", str(compaction_events[0]["promptSha256"]))
+        record = read_json(_session._session_path(session_key, None).parent / "compactions/1.json")
+        assert record["promptSha256"] == compaction_events[0]["promptSha256"]
+        assert record["range"] == [0, 3]
+        assert [m["role"] for m in record["replaced"]] == ["user", "assistant", "tool"]
+        assert backend.calls[1][0].role == "user"
+        assert backend.calls[1][0].content.startswith("[compacted summary of ")
 
     def test_live_path_aggregates_usage_across_bounded_summary_rounds(
         self,
@@ -609,3 +620,46 @@ class TestHistoryCondensation:
         stored = [m for m in _session.load_messages(session_key) if m.role == "tool"]
         assert len(stored) == 6
         assert all(not m.content.startswith("[") for m in stored)
+
+    def test_the_first_task_request_names_what_the_projection_condensed(
+        self,
+        registry: ToolRegistry,
+        ctx: ToolContext,
+        real_tracer_except: Callable[..., None],
+    ) -> None:
+        session_key = "agent:projection:default"
+        history: list[ChatMessage] = [ChatMessage(role="user", content="earlier ask")]
+        for n in range(4):
+            call = ToolCall(id=f"r{n}", name="read", arguments=f'{{"path":"f{n}.py"}}')
+            history += [
+                assistant("", tool_calls=[call]),
+                ChatMessage(role="tool", content="x" * 1_600, tool_call_id=call.id, name="read"),
+            ]
+        history.append(assistant("read them all"))
+        append_session_messages(session_key, history)
+        llm_calls: list[dict[str, object]] = []
+
+        def _trace(
+            project: str,
+            traced_session: str,
+            role: str,
+            event_type: str,
+            payload: str,
+            *args: object,
+            **kwargs: object,
+        ) -> str:
+            if event_type == "llm_call":
+                llm_calls.append(json.loads(payload))
+            return "written"
+
+        real_tracer_except(trace_event=_trace)
+        result = _loop.run_agent_turn(
+            ScriptedBackend([_final("done")]), registry, ctx, session_key, "next ask"
+        )
+
+        assert result.ok, result.error
+        assert llm_calls[0]["projection"] == {
+            "condensedResults": 2,
+            "keptWholeResults": 2,
+            "budgetChars": _session.HISTORY_FULL_RESULTS_CHARS,
+        }

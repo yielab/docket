@@ -147,7 +147,7 @@ class TestRequestFitHelpers:
         self, make_turn_state: MakeState
     ) -> None:
         compaction = _compaction(make_turn_state(system_prompt="you are an agent"))
-        messages = compaction.messages_for_durable([user("hello")])
+        messages = compaction.messages_for_durable([user("hello")]).messages
         assert [m.role for m in messages] == ["system", "user"]
         assert messages[0] == system("you are an agent")
 
@@ -155,7 +155,25 @@ class TestRequestFitHelpers:
         self, make_turn_state: MakeState
     ) -> None:
         compaction = _compaction(make_turn_state(system_prompt=""))
-        assert [m.role for m in compaction.messages_for_durable([user("hello")])] == ["user"]
+        assert [m.role for m in compaction.messages_for_durable([user("hello")]).messages] == [
+            "user"
+        ]
+
+    def test_the_projection_reports_the_figures_of_the_request_it_built(
+        self, make_turn_state: MakeState
+    ) -> None:
+        durable: list[ChatMessage] = [user("the task")]
+        for n in range(6):
+            call = ToolCall(id=f"c{n}", name="read", arguments=f'{{"path":"f{n}"}}')
+            durable += [assistant("", tool_calls=[call]), tool_result(call, "x" * 2_000)]
+        compaction = _compaction(make_turn_state(context_window=None))
+
+        projection = compaction.messages_for_durable(durable)
+
+        assert projection.condensed_results == 4
+        assert projection.kept_whole_results == 2
+        assert projection.budget_chars == compaction.whole_results_budget(durable)
+        assert sum(m.role == "tool" for m in projection.messages) == 6
 
     def test_seed_task_message_records_its_durable_position(
         self, make_turn_state: MakeState
@@ -261,19 +279,19 @@ class TestTheRequestProjectionFollowsTheWindow:
         durable = self._results(6)
         wide = _compaction(make_turn_state(context_window=1_000_000, output_reserve=8_000))
 
-        assert wide.messages_for_durable(durable) == durable
+        assert wide.messages_for_durable(durable).messages == durable
 
     def test_the_history_share_does_not_widen_it(self, make_turn_state: MakeState) -> None:
         durable = self._results(6)
         state = make_turn_state(LoopConfig(history_budget_tokens=250_000))
 
-        assert self._condensed(_compaction(state).messages_for_durable(durable)) > 0
+        assert self._condensed(_compaction(state).messages_for_durable(durable).messages) > 0
 
     def test_a_window_the_results_overflow_condenses_them(self, make_turn_state: MakeState) -> None:
         durable = self._results(6)
         narrow = _compaction(make_turn_state(context_window=4_000, output_reserve=1_000))
 
-        assert self._condensed(narrow.messages_for_durable(durable)) > 0
+        assert self._condensed(narrow.messages_for_durable(durable).messages) > 0
 
     def test_an_unknown_window_projects_with_the_default_budget(
         self, make_turn_state: MakeState
@@ -281,7 +299,7 @@ class TestTheRequestProjectionFollowsTheWindow:
         kept = _compaction(make_turn_state(context_window=None)).messages_for_durable(
             self._results(6)
         )
-        assert self._condensed(kept) > 0
+        assert self._condensed(kept.messages) > 0
 
     def test_the_system_prompt_and_tools_take_their_room_first(
         self, make_turn_state: MakeState
@@ -292,8 +310,8 @@ class TestTheRequestProjectionFollowsTheWindow:
             make_turn_state(context_window=9_000, output_reserve=500, system_prompt="s" * 16_000)
         )
 
-        assert self._condensed(free.messages_for_durable(durable)) < self._condensed(
-            crowded.messages_for_durable(durable)
+        assert self._condensed(free.messages_for_durable(durable).messages) < self._condensed(
+            crowded.messages_for_durable(durable).messages
         )
 
 
@@ -369,7 +387,7 @@ class TestAResearchTurnOnAWideWindow:
                 tool_result(call, f"page {n}.{k} " + "filler " * (size // 7))
                 for k, (call, size) in enumerate(zip(calls, rnd["fetch_result_chars"], strict=True))
             ]
-            out.append(compaction.messages_for_durable(durable))
+            out.append(compaction.messages_for_durable(durable).messages)
         return out
 
     def test_a_million_token_window_condenses_nothing_and_keeps_the_prefix(

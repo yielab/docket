@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from docket.agent.ports import Endpoint, ToolSpec, user
+from docket.agent.ports import Endpoint, ToolSpec, system, user
 from docket.models.adapters import openai_wire
 
 SUBJECT = "docket.models.adapters.openai_wire"
@@ -22,6 +22,22 @@ class TestRequestBytes:
         measured = openai_wire.request_part_bytes(payload)["user"]
         assert measured == len(json.dumps(payload["messages"][0], ensure_ascii=False).encode())
         assert measured < len(json.dumps(payload["messages"][0]).encode())
+
+
+class TestASummaryInTheHistory:
+    def test_it_is_a_user_message_between_the_prompt_and_the_task(self) -> None:
+        endpoint = Endpoint(base_url="http://127.0.0.1:1/v1", model_id="m")
+        summary = user("[compacted summary of 2 earlier turn(s), 4 message(s)]\nwhat happened")
+
+        payload = openai_wire.build_payload(
+            endpoint, [system("the prompt"), summary, user("the task")]
+        )
+
+        assert [(m["role"], m["content"]) for m in payload["messages"]] == [
+            ("system", "the prompt"),
+            ("user", summary.content),
+            ("user", "the task"),
+        ]
 
 
 class TestUsageDecoding:

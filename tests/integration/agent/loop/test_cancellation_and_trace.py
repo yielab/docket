@@ -749,7 +749,9 @@ class TestLlmCallTrace:
             result = _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
         assert result.ok
         with_capture_path = [
-            json.dumps({k: v for k, v in e["payload"].items() if k != "request"})
+            json.dumps(
+                {k: v for k, v in e["payload"].items() if k not in ("request", "projection")}
+            )
             for e in events
             if e["event_type"] == "llm_call"
         ]

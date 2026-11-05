@@ -68,6 +68,24 @@ def covering_range(
     return None
 
 
+@dataclass(frozen=True)
+class RequestProjection:
+    """The messages of one task request and what the projection did to its tool results."""
+
+    messages: list[ChatMessage]
+    condensed_results: int
+    kept_whole_results: int
+    budget_chars: int
+
+    def figures(self) -> dict[str, int]:
+        """The trace form: the ``projection`` of an ``llm_call`` event."""
+        return {
+            "condensedResults": self.condensed_results,
+            "keptWholeResults": self.kept_whole_results,
+            "budgetChars": self.budget_chars,
+        }
+
+
 @dataclass
 class _FitStop:
     """Terminal outcome of one context-fit reduction attempt, returned verbatim."""
@@ -99,6 +117,8 @@ class TurnCompaction:
         self.compaction_failure_stop_reason: StopReason | None = None
         self.incoming: ChatMessage | None = None
         self.task_message_index = -1
+        #: The projection of the request most recently built; the next task call carries its figures.
+        self.projection: RequestProjection | None = None
 
     def summarize_without_reentry(
         self,
@@ -320,11 +340,23 @@ class TurnCompaction:
         fixed = _fallback_input_estimate(others, self.state.tool_specs, None, None)
         return window_results_budget(window - max(0, self.state.output_reserve) - fixed)
 
-    def messages_for_durable(self, durable: list[ChatMessage]) -> list[ChatMessage]:
-        return [
-            *([system(self.state.system_prompt)] if self.state.system_prompt else []),
-            *condense_history(durable, budget=self.whole_results_budget(durable)),
-        ]
+    def messages_for_durable(self, durable: list[ChatMessage]) -> RequestProjection:
+        """The request for *durable*: the system prompt, then the history as projected. Remembered
+        as ``self.projection``."""
+        budget = self.whole_results_budget(durable)
+        projected = condense_history(durable, budget=budget)
+        results = [(m, p) for m, p in zip(durable, projected, strict=True) if m.role == "tool"]
+        condensed = sum(1 for m, p in results if p.content != m.content)
+        self.projection = RequestProjection(
+            messages=[
+                *([system(self.state.system_prompt)] if self.state.system_prompt else []),
+                *projected,
+            ],
+            condensed_results=condensed,
+            kept_whole_results=len(results) - condensed,
+            budget_chars=budget,
+        )
+        return self.projection
 
     def context_fit_convergence_error(self, reason: str, estimated_input: int) -> str:
         registered_window = (
@@ -341,7 +373,7 @@ class TurnCompaction:
         self,
     ) -> tuple[list[ChatMessage], int, str, StopReason | None, FailureKind | None]:
         durable_revision = load_messages(self.state.session_key)
-        current_messages = self.messages_for_durable(durable_revision)
+        current_messages = self.messages_for_durable(durable_revision).messages
         current_revision = _segment_revision(durable_revision)
         attempts = 0
         attempt_cap = max(2, len(durable_revision) + 1)
@@ -370,7 +402,7 @@ class TurnCompaction:
                 attempts += 1
                 durable_revision = latest_durable
                 current_revision = latest_revision
-                current_messages = self.messages_for_durable(durable_revision)
+                current_messages = self.messages_for_durable(durable_revision).messages
                 continue
             if self.budget.prospective_budget_error(estimated_input, purpose="tool-enabled task"):
                 return current_messages, estimated_input, "", None, None
@@ -530,7 +562,7 @@ class TurnCompaction:
                 )
         durable_revision = durable
         current_revision = _segment_revision(durable_revision)
-        current_messages = self.messages_for_durable(durable_revision)
+        current_messages = self.messages_for_durable(durable_revision).messages
         return _FitOutcome(
             durable_revision=durable_revision,
             current_revision=current_revision,

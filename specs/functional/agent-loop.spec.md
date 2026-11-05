@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.13.0
+**Version**: 4.14.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -351,7 +351,11 @@ This specification does NOT cover:
     the preserved messages. A truncated partial summary **MUST NEVER** become durable history.
 37. Every pre-turn compaction check **MUST** emit one `session_compaction` trace event with status
     `no_op`, `succeeded`, or `failed`; before/after message counts; before/after estimated tokens;
-    and groups summarized. The payload **MUST NOT** contain raw history, prompts, summaries, or
+    and groups summarized. An event whose compaction replaced messages additionally carries
+    `record` (the path of its compaction record relative to the session directory, per
+    `session-history.spec.md` requirement 28a) and `summarizedRange` (`[start, end]` in the history
+    before the call); an event whose compaction ran summarization rounds carries `promptSha256`.
+    The payload **MUST NOT** contain raw history, prompts, summaries, or
     measured token counts mislabeled as estimates.
     When the check fails only because `compact_session` refused to make progress
     (`session-history.spec.md` requirement 26, `refused_by_guard`), the turn **MUST NOT** end: the
@@ -656,7 +660,11 @@ This specification does NOT cover:
     ordinary task request or `purpose: "compaction"` for the summarizer's call. It carries
     `cacheWriteTokens` only when that count is positive, `cacheMiss` only when the response named
     one and `cacheMissedTokens` only when positive, and `request` (per-part `bytes` and
-    `estTokens`) only when the adapter reported request bytes. It **MUST NOT** carry a cost
+    `estTokens`) only when the adapter reported request bytes. Every ordinary task or finalization
+    event also carries `projection`: `condensedResults` (tool results the request replaced with a
+    notice), `keptWholeResults` (tool results sent whole) and `budgetChars` (the whole-results
+    budget of `session-history.spec.md` requirement 30) of the request projection that call was
+    built from. It **MUST NOT** carry a cost
     value. Both call sites **MUST** also pass the exact `messages` sent for that call, so the payload
     **MAY** additionally carry `inputMessages`, `outputMessages`, `systemInstructions` and
     `systemInstructionsSha256` per `trace-store.spec.md`'s "Captured content" section — present only

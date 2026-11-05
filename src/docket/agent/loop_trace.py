@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from docket.agent.loop_types import LoopConfig
@@ -102,11 +102,13 @@ def _trace_llm_call(
     messages: Sequence[ChatMessage] | None = None,
     cfg: LoopConfig | None = None,
     tool_choice: str | None = None,
+    projection: Mapping[str, int] | None = None,
 ) -> None:
     """One backend chat-completions exchange, measured -- never a cost figure. ``request`` is the
     adapter's own byte count of the body it sent; the content of *messages* is captured only for
     classes an enabled exporter asked for. *cfg* adds the model profile's name and the sampling
-    it declares, *tool_choice* the tool a forced call named: each only when it was sent."""
+    it declares, *tool_choice* the tool a forced call named, *projection* the figures of the
+    request projection a task call was built from: each only when it was sent."""
     payload: dict[str, Any] = {
         "model": response.model,
         "provider": response.provider,
@@ -136,6 +138,8 @@ def _trace_llm_call(
             payload["topP"] = cfg.top_p
     if tool_choice:
         payload["toolChoice"] = tool_choice
+    if projection is not None:
+        payload["projection"] = dict(projection)
     if response.request_bytes:
         payload["request"] = {
             part: {"bytes": size, "estTokens": size // current_home().context_bytes_per_token}
@@ -269,6 +273,12 @@ def _trace_compaction(
     }
     if result.refused_by_guard:
         payload["reason"] = result.error
+    if result.record:
+        payload["record"] = result.record
+    if result.summarized_range is not None:
+        payload["summarizedRange"] = list(result.summarized_range)
+    if result.prompt_sha256:
+        payload["promptSha256"] = result.prompt_sha256
     tracer.trace_event(
         project,
         session_key,

@@ -63,6 +63,19 @@ class TestEncoding:
         assert [b["text"] for b in payload["system"]] == ["You are the lead.", "Second rule."]
         assert all(m["role"] != "system" for m in payload["messages"])
 
+    def test_a_summary_after_the_prompt_is_the_first_user_block_in_order(self) -> None:
+        summary = user("[compacted summary of 2 earlier turn(s), 4 message(s)]\nwhat happened")
+        history = [system("the prompt"), summary, user("the task")]
+
+        payload = wire.build_payload(_ENDPOINT, history)
+
+        assert [b["text"] for b in payload["system"]] == ["the prompt"]
+        assert [m["role"] for m in payload["messages"]] == ["user"]
+        assert [b["text"] for b in payload["messages"][0]["content"]] == [
+            summary.content,
+            "the task",
+        ]
+
     def test_the_turn_with_two_calls_and_two_results_encodes_to_alternating_roles(self) -> None:
         payload = wire.build_payload(_ENDPOINT, _conversation())
 

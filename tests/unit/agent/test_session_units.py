@@ -111,6 +111,17 @@ class TestPlanCompactionBasics:
         plan = _session_units.plan_compaction(msgs, budget_tokens=1)
         assert plan.keep_head == [system("s1"), system("s2")]
 
+    def test_a_summary_message_is_body_whatever_its_role(self) -> None:
+        summary = "[compacted summary of 2 earlier turn(s), 4 message(s)]\n" + "details " * 200
+        for role in ("user", "system"):
+            msgs = [system("s"), ChatMessage(role=role, content=summary), user("task")]
+
+            plan = _session_units.plan_compaction(msgs, budget_tokens=1)
+
+            assert plan.keep_head == [system("s")]
+            assert plan.to_summarize == [[ChatMessage(role=role, content=summary)]]
+            assert plan.keep_tail == [user("task")]
+
     def test_at_least_the_most_recent_unit_survives_a_tiny_budget(self) -> None:
         msgs = [user("a" * 5000), user("final question")]
         plan = _session_units.plan_compaction(msgs, budget_tokens=1)

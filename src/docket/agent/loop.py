@@ -480,6 +480,9 @@ class _TurnState(TurnState):
             messages=messages,
             cfg=self.cfg,
             tool_choice=forced,
+            projection=(
+                self.compaction.projection.figures() if self.compaction.projection else None
+            ),
         )
         self.last_raw = response.raw
         self.last_model, self.last_provider = response.model, response.provider
