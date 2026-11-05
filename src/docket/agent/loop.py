@@ -370,7 +370,8 @@ class _TurnState(TurnState):
     def enter_landing(
         self, messages: list[ChatMessage], normal_estimated_input: int
     ) -> tuple[list[ChatMessage], list[ToolSpec], bool, AgentLoopResult | None]:
-        """The landing request: the trailing ask naming the bound, no tools, fitted and budgeted."""
+        """The landing request: the trailing ask naming the bound, no tools, fitted to the window
+        and exempt from the token bound (requirement 51)."""
         assert self.landing is not None
         stop = self.budget_stop_for(self.landing)
         assert stop is not None
@@ -380,15 +381,9 @@ class _TurnState(TurnState):
             [],
             purpose="task",
         )
-        final_budget_error = self.budget.prospective_budget_error(
-            final_estimated_input, purpose="terminal finalization"
-        )
         if final_fit_error:
             final_status = "refused"
             final_reason = "finalization_context_fit_failed"
-        elif final_budget_error:
-            final_status = "refused"
-            final_reason = "finalization_exceeds_remaining_turn_budget"
         else:
             final_status = "entered"
             final_reason = (
@@ -421,13 +416,7 @@ class _TurnState(TurnState):
                     failure_kind="invalid_output",
                 ),
             )
-        if final_budget_error:
-            error = (
-                final_budget_error
-                if self.landing == "token_budget"
-                else f"{self.landing_error}; {final_budget_error}"
-            )
-            return [], [], False, self.landed(error=error)
+        self.call_max_tokens = self.request_max_tokens
         return terminal_messages, [], True, None
 
     # Returns the assistant message to dispatch tools for, or None with a

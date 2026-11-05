@@ -282,16 +282,14 @@ class TestTerminalResponseReservation:
         assert not _session_units.find_orphaned_tool_messages(stored.messages)
         assert not _session_units.find_unanswered_tool_calls(stored.messages)
 
-    def test_irreducible_budget_fails_without_a_second_transport(
+    def test_a_landing_is_made_though_the_budget_leaves_no_room_for_it(
         self, ctx: ToolContext, registry: ToolRegistry
     ) -> None:
         backend = self._backend(
             _tool_call_response(
                 "c1", "echo", '{"text": "done"}', TokenUsage(input_tokens=75, output_tokens=5)
             ),
-            _tool_call_response(
-                "poison", "echo", '{"text": "must not run"}', TokenUsage(input_tokens=30)
-            ),
+            _final("what is done and what is left", TokenUsage(input_tokens=30, output_tokens=5)),
             normal_estimate=75,
             finalization_estimate=15,
         )
@@ -307,17 +305,57 @@ class TestTerminalResponseReservation:
         )
 
         assert not result.ok
-        assert result.stop_reason == "token_budget"
-        assert result.failure_kind == "budget_exhausted"
-        assert "used 80" in result.error
-        assert "input 15 + output reserve 10" in result.error
-        assert "remaining 20" in result.error
-        assert len(backend.calls) == 1
+        assert (result.stop_reason, result.failure_kind) == ("token_budget", "budget_exhausted")
+        assert result.output == "what is done and what is left"
+        assert "terminal finalization" not in result.error
+        assert len(backend.calls) == 2
+        assert backend.tool_specs[1] == []
         assert [message.role for message in load_session(session_key).messages] == [
             "user",
             "assistant",
             "tool",
+            "assistant",
         ]
+
+    def test_a_round_that_reads_more_than_the_budget_left_still_ends_with_a_report(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        class ByteSizedBackend(ScriptedBackend):
+            def estimate_input_tokens(
+                self,
+                messages: Sequence[ChatMessage],
+                *,
+                tools: Sequence[ToolSpec] = (),
+                max_tokens: int | None = None,
+                temperature: float | None = None,
+            ) -> int:
+                return sum(len(message.content) for message in messages) // 4
+
+        backend = ByteSizedBackend(
+            [
+                _tool_call_response(
+                    "c1", "echo", json.dumps({"text": "x" * 8_000}), TokenUsage(60, 20)
+                ),
+                _final("read one page; the rest is unread", TokenUsage(2_500, 50)),
+            ]
+        )
+
+        result = _loop.run_agent_turn(
+            backend,
+            registry,
+            ctx,
+            "agent:budget-big-round:default",
+            "survey the pages",
+            config=_loop.LoopConfig(token_budget=1_000, max_tokens=256),
+        )
+
+        assert not result.ok
+        assert (result.stop_reason, result.failure_kind) == ("token_budget", "budget_exhausted")
+        assert result.output == "read one page; the rest is unread"
+        assert "cannot start terminal finalization" not in result.error
+        assert len(backend.calls) == 2
+        assert backend.tool_specs[1] == []
+        assert result.usage.counted_tokens > 1_000
 
     def test_finalization_context_window_failure_remains_context_fit(
         self, ctx: ToolContext, registry: ToolRegistry

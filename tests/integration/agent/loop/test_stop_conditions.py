@@ -708,7 +708,7 @@ class TestCountedTokenBudget:
     def test_a_backend_without_an_output_bound_reserves_the_default(
         self, ctx: ToolContext, registry: ToolRegistry
     ) -> None:
-        backend = _SizedBackend([_final()], estimate=50, window=100_000)
+        backend = _SizedBackend([_final("nothing done")], estimate=50, window=100_000)
         session_key = "agent:counted-reserve:default"
 
         result = _loop.run_agent_turn(
@@ -722,8 +722,9 @@ class TestCountedTokenBudget:
 
         assert not result.ok
         assert result.stop_reason == "token_budget"
-        assert "no backend call made" in result.error
-        assert not backend.calls
+        assert result.output == "nothing done"
+        assert len(backend.calls) == 1
+        assert backend.tool_specs == [[]]
         fits = _request_fits(ctx, session_key)
         assert fits
         assert {fit["outputReserveTokens"] for fit in fits} == {

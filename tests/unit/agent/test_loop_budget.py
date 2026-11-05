@@ -93,7 +93,7 @@ class TestCalibrate:
 
 
 class TestCheckIterationBounds:
-    """Rounds, wall clock and tool calls select the landing; spent tokens and cancellation stop."""
+    """Rounds, wall clock, tool calls and spent tokens select the landing; cancellation stops."""
 
     def test_the_iteration_ceiling_selects_the_landing(self, make_turn_state: MakeState) -> None:
         state = make_turn_state(LoopConfig(max_iterations=1))
@@ -153,13 +153,14 @@ class TestCheckIterationBounds:
         assert stop is None
         assert timeout == 30
 
-    def test_spent_counted_tokens_stop_the_turn(self, make_turn_state: MakeState) -> None:
+    def test_spent_counted_tokens_select_the_landing(self, make_turn_state: MakeState) -> None:
         state = make_turn_state(
             LoopConfig(token_budget=100), total_usage=TokenUsage(input_tokens=101)
         )
         _timeout, stop = TurnBudget(state).check_iteration_bounds()
-        assert stop is not None
-        assert stop.stop_reason == "token_budget"
+        assert stop is None
+        assert state.landing == "token_budget"
+        assert "token_budget=100" in state.landing_error
 
     def test_the_tool_call_ceiling_selects_the_landing(self, make_turn_state: MakeState) -> None:
         state = make_turn_state(LoopConfig(max_tool_calls=3), tool_calls_executed=3)
@@ -300,6 +301,14 @@ class TestBudgetNotice:
         assert notice.startswith("[docket] This step's budget is running out: ")
         assert figure in notice
         assert state.notice_sent
+
+    def test_the_notice_tells_the_model_to_stop_reading_and_finish(
+        self, make_turn_state: MakeState
+    ) -> None:
+        state = make_turn_state(LoopConfig(max_iterations=4), iteration=3)
+        assert "do not start new reads or searches; finish from what you have" in (
+            budget_notice(state).lower()
+        )
 
     def test_it_is_said_once(self, make_turn_state: MakeState) -> None:
         state = make_turn_state(LoopConfig(max_iterations=4), iteration=3)

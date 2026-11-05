@@ -1,10 +1,10 @@
 # Agent Loop Specification
 
-**Version**: 4.7.0
+**Version**: 4.8.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-05
 
 ## Purpose
 
@@ -485,7 +485,12 @@ This specification does NOT cover:
     `max_iterations`; a response's tool-call batch would pass `max_tool_calls` (the batch is
     refused and not persisted, requirement 8); the wall-clock budget is spent (requirement 9); or a
     normal tool-enabled task request would exceed the prospective cumulative token bound
-    (requirement 50). The landing **MUST** explicitly ask for a truthful terminal response from
+    (requirement 50), or the counted tokens already exceed the budget when a round would begin.
+    The token bound decides only that no more work starts: the landing is exempt from it. It is
+    made whatever the count, even with no budget left, because the report is what the turn's work
+    is worth; it is bounded by being one request with no tools, and the per-request
+    context-window check still applies. Its output cap is the request's own, never cut to the
+    budget left (requirement 46). The landing **MUST** explicitly ask for a truthful terminal response from
     work already completed, naming the bound that was reached (rounds, tool calls, time or the
     token budget) and asking what is done, what is left and whether the checks ran. It is a
     trailing `user` message appended after the complete current request (the request-only
@@ -493,7 +498,7 @@ This specification does NOT cover:
     **MUST** stay byte-identical to the preceding request so the cached prefix is reused). It
     advertises no tools, preserves the current durable representation of the complete task and
     whole assistant/tool-result atomic units, and itself passes both the per-request
-    context-window check and the cumulative turn-budget check before transport. A landing for
+    context-window check before transport. A landing for
     rounds or time is one grace request past that limit, with its own request timeout
     `min(request_timeout_s, 60)`. The token decision **MUST** be made on the complete current
     request before request-fit compaction; when it selects the landing, no raw current-turn unit
@@ -506,12 +511,9 @@ This specification does NOT cover:
     replacement when window-fit compaction was selected first. The wire above is unchanged for
     every bound: only the trailing instruction differs.
 52. If the landing fails the endpoint-window check, it **MUST** return `stop_reason="context_fit"`;
-    a context-window failure is never reported as cumulative spend. If the request fits that window
-    but cannot fit the cumulative turn budget, the loop **MUST** return `failure_kind=
-    "budget_exhausted"` without another backend call, with `stop_reason="token_budget"` when the
-    token bound selected the landing and the landing's own stop reason otherwise. Its error
-    **MUST** report the configured budget, measured usage, prospective input estimate, output
-    reserve, and remaining measured budget without exposing message content.
+    a context-window failure is never reported as cumulative spend. A landing is never refused for
+    the cumulative turn budget (requirement 51): the error `token budget: cannot start terminal
+    finalization completion` is not produced.
 53. The landing's answer is a report, never a success. A tool-free, non-truncated answer **MUST**
     be persisted normally and returned as `output` with `ok=False`, the `stop_reason` of the bound
     that selected the landing (`max_iterations`, `max_tool_calls`, `timeout` or `token_budget`),
@@ -949,9 +951,10 @@ This specification does NOT cover:
 
 108. The first time any bound has a quarter or less left, the loop **MUST** append one line to the
     last tool result of that round, before the round is persisted: `[docket] This step's budget is
-    running out: <what is left>. Finish the current change, run the checks, leave the tree
-    consistent; when it ends you will be asked for a report.` The four bounds are rounds, tool
-    calls, measured counted tokens (requirement 10) and the wall clock; `<what is left>` names each
+    running out: <what is left>. Do not start new reads or searches; finish from what you have,
+    run the checks, leave the tree consistent; when it ends you will be asked for a report.` The
+    four bounds are rounds, tool calls, measured counted tokens (requirement 10) and the wall
+    clock; `<what is left>` names each
     bound at or under a quarter as `<left> of <limit> <unit> left`. The notice **MUST** appear at
     most once per turn, **MUST NOT** be added to a round whose batch ends the turn through a closing
     tool, a cancellation or an unanswered approval, and **MUST** emit one

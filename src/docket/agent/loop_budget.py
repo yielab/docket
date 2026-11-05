@@ -21,8 +21,9 @@ MIN_OUTPUT_TOKENS = 256
 # The request timeout of a landing past the rounds or wall-clock limit (requirement 51).
 LANDING_TIMEOUT_S = 60
 _NOTICE = (
-    "[docket] This step's budget is running out: {left}. Finish the current change, run the "
-    "checks, leave the tree consistent; when it ends you will be asked for a report."
+    "[docket] This step's budget is running out: {left}. Do not start new reads or searches; "
+    "finish from what you have, run the checks, leave the tree consistent; when it ends you "
+    "will be asked for a report."
 )
 _NOTICE_UNITS = {"rounds": "rounds", "toolCalls": "tool calls", "tokens": "tokens", "time": "s"}
 
@@ -156,8 +157,7 @@ class TurnBudget:
     # this iteration's request timeout and a bound reached is on ``state.landing``.
     def check_iteration_bounds(self) -> tuple[int, AgentLoopResult | None]:
         """Cancellation, then the four per-iteration ceilings, in bound-check order. A bound
-        that would stop the turn selects the landing (requirement 51) instead, except spent
-        counted tokens, which leave no room for it."""
+        that would stop the turn selects the landing (requirement 51) instead."""
         if self.state.cancellation_requested():
             return 0, self.state.cancelled()
         self.state.iteration += 1
@@ -168,7 +168,7 @@ class TurnBudget:
         return self.request_timeout(), None
 
     def select_landing(self) -> AgentLoopResult | None:
-        """Select the first bound reached as the landing; a hard stop for spent tokens."""
+        """Select the first bound reached as the landing, spent tokens included."""
         cfg = self.state.cfg
         if self.state.iteration > cfg.max_iterations:
             self.state.land(
@@ -183,13 +183,10 @@ class TurnBudget:
                 + limit_origin("time", cfg.wall_clock_source),
             )
         elif self.state.total_usage.counted_tokens > cfg.token_budget:
-            return self.state.done(
-                ok=False,
-                stop_reason="token_budget",
-                error=(
-                    f"exceeded token_budget={cfg.token_budget} "
-                    f"(used {self.state.total_usage.counted_tokens})"
-                ),
+            self.state.land(
+                "token_budget",
+                f"exceeded token_budget={cfg.token_budget} "
+                f"(used {self.state.total_usage.counted_tokens})",
             )
         elif self.state.tool_calls_executed >= cfg.max_tool_calls:
             self.state.land(
