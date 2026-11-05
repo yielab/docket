@@ -617,7 +617,7 @@ from `main`.
 
 ### P66-2 — A request that does not fit is reduced by what the request carries, not by what the record holds
 
-**Status:** TODO (after P66-1) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P66-1 (both edit `agent/loop_request.py`)
+**Status:** DONE 2026-11-05 (`1f3fd01f`; fixed on the way: the task durable index after a prefix write is `task_index + (after_count - before_count)`; open: the summarizer input is bounded by the role budget, not the window, so a large covered overflow on a small window can fail its own preflight at `max_tokens` >= 2,300 on 8k; `condense_history` re-expands whole results once units are summarized, so an overflow of ~30 tokens can fail to converge; the audit's ">1 summarizer call" was not reproducible from a prefix, the old code made none) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P66-1 (both edit `agent/loop_request.py`)
 
 - **Trigger:** measured (c): `reduce_for_fit` (`agent/loop_compaction.py` ~347) computes
   `overflow` on the projected request and `target = selected_tokens - overflow - 32` on
@@ -779,7 +779,7 @@ from `main`.
 
 ### P66-6 — The first request of a turn is estimated with the ratio the model showed last time
 
-**Status:** TODO (after P66-1) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P66-1 (both edit `agent/loop.py`)
+**Status:** DONE 2026-11-05 (`3f7bb571`; `loop_state.py` gained `estimate_ratio`/`first_call_ratio`; `record_first_call_ratio` also records under a `DOCKET_LLM_BASE_URL` override, harmless; an `OSError` on the write loses one observation, not the turn) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P66-1 (both edit `agent/loop.py`)
 
 - **Trigger:** measured (b): first request of a hop 1.55x (median, n=75, p90 1.64, max 1.69, none under
   1.0), later requests 1.00x (median, n=173), live traces 2026-10-24 to 2026-11-04, Anthropic dialect.
