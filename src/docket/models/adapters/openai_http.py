@@ -34,6 +34,7 @@ from docket.agent.ports import ChatMessage, ChatResponse, Endpoint, ModelLimits,
 from docket.kernel import clock as _clock
 from docket.models.adapters import anthropic_wire as _anthropic_wire
 from docket.models.adapters import openai_wire as _openai_wire
+from docket.models.adapters.context_overflow import detect as _detect_context_overflow
 from docket.models.adapters.openai_wire import _classify_http_status, _retry_after_seconds
 from docket.platform import open_same_origin
 
@@ -194,11 +195,14 @@ class OpenAIChatClient:
             retry_after = (
                 _retry_after_seconds(ex.headers) if failure_kind == "daemon_error" else None
             )
+            overflow = _detect_context_overflow(ex.code, detail)
             return ChatResponse(
                 ok=False,
                 error=f"HTTP {ex.code} from {self.url}: {detail[:500] or ex.reason}",
                 failure_kind=failure_kind,
                 retry_after_s=retry_after,
+                context_overflow=overflow is not None,
+                overflow_input_tokens=overflow.input_tokens if overflow else None,
                 model=self.endpoint.model_id,
                 provider=self.endpoint.provider,
                 latency_ms=_elapsed_ms(),

@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 7.4.0
+**Version**: 7.5.0
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
 **Last Updated**: 2026-11-05
@@ -232,6 +232,14 @@ directly — see "Provider catalog" below.
    **MUST** produce a non-OK response. A numeric embedded status **MUST** use the same retry
    classification as that HTTP status; it **MUST NOT** become an empty successful answer. A
    top-level `error` object, or a body with no choices, is likewise a non-OK response.
+7. A refusal because the prompt exceeds the provider's context window **MUST** come back as a
+   non-OK response with `context_overflow=True` and `overflow_input_tokens` set to the provider's
+   own count of the refused prompt (`None` when the body does not state it). The adapter
+   **MUST** recognize, for both dialects and from the structured fields before the message text:
+   llama.cpp's `exceed_context_size_error` (`n_prompt_tokens`), OpenAI's `context_length_exceeded`
+   (the count in "resulted in N tokens") and Anthropic's "prompt is too long: N tokens > M maximum".
+   Any other error body **MUST** keep its failure classification and carry neither field. The loop
+   acts on the flag (`agent-loop.spec.md` requirement 48a).
 
 ### Provider readiness
 

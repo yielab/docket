@@ -31,6 +31,8 @@ from docket.models.application import endpoint as application_endpoint
 
 SUBJECT = "docket.models.adapters.openai_http"
 
+PROVIDER_ERRORS = Path(__file__).resolve().parents[3] / "fixtures" / "provider-errors"
+
 
 def _http_error(
     code: int, body: str = "", headers: dict[str, str] | None = None
@@ -293,6 +295,46 @@ class TestRetryVocabularyStaysAlignedWithDispatch:
         known = {"timeout", "daemon_error", "nonzero_exit", "invalid_output"}
         for status in (400, 401, 404, 408, 422, 429, 500, 502, 503, 504):
             assert _openai_wire._classify_http_status(status) in known
+
+
+class TestContextOverflowRefusal:
+    """A refusal because the prompt exceeds the provider's context is typed on the response, on
+    both dialects, and any other bad request is left as it was."""
+
+    @pytest.mark.parametrize(
+        ("dialect", "fixture", "tokens"),
+        [
+            ("openai-chat", "llamacpp-exceed-context", 98915),
+            ("openai-chat", "openai-context-length-exceeded", 130123),
+            ("anthropic-messages", "anthropic-prompt-too-long", 208000),
+        ],
+    )
+    def test_the_response_says_so_and_carries_the_providers_count(
+        self, monkeypatch: pytest.MonkeyPatch, dialect: str, fixture: str, tokens: int
+    ) -> None:
+        body = (PROVIDER_ERRORS / f"{fixture}.json").read_text(encoding="utf-8")
+        _raising_urlopen(monkeypatch, _http_error(400, body))
+        endpoint = Endpoint(base_url="http://x/v1", model_id="m", max_output_tokens=64)
+        res = adapter.OpenAIChatClient(endpoint, dialect).complete([ports.user("x")])
+        assert res.ok is False
+        assert res.context_overflow is True
+        assert res.overflow_input_tokens == tokens
+        assert res.failure_kind == "nonzero_exit"
+        assert res.failure_kind not in _RETRYABLE_REQUEST_KINDS
+
+    @pytest.mark.parametrize("dialect", ["openai-chat", "anthropic-messages"])
+    def test_an_unrelated_bad_request_is_unchanged(
+        self, monkeypatch: pytest.MonkeyPatch, dialect: str
+    ) -> None:
+        body = (PROVIDER_ERRORS / "anthropic-invalid-request.json").read_text(encoding="utf-8")
+        _raising_urlopen(monkeypatch, _http_error(400, body))
+        endpoint = Endpoint(base_url="http://x/v1", model_id="m", max_output_tokens=64)
+        res = adapter.OpenAIChatClient(endpoint, dialect).complete([ports.user("x")])
+        assert res.ok is False
+        assert res.context_overflow is False
+        assert res.overflow_input_tokens is None
+        assert res.failure_kind == "nonzero_exit"
+        assert "Input should be a valid list" in res.error
 
 
 class TestEndpointResolution:

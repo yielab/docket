@@ -632,6 +632,11 @@ class ChatResponse:
     #: while its comparison ran); empty when it reported none. The token count is its estimate.
     cache_miss: str = ""
     cache_missed_tokens: int = 0
+    #: The provider refused the prompt because it exceeds its context window, and
+    #: ``overflow_input_tokens`` is its own count of that prompt (``None`` when its body states
+    #: none). Read from the error body by the adapter, never inferred from an estimate.
+    context_overflow: bool = False
+    overflow_input_tokens: int | None = None
 
     @property
     def tool_calls(self) -> list[ToolCall]:
