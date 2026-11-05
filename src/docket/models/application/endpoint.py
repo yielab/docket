@@ -68,6 +68,16 @@ def resolve_endpoint(model: str) -> Endpoint | None:
     )
 
 
+def handoff_window(model: str) -> tuple[int | None, int | None]:
+    """The window and output cap of *model* as a handoff's receiver; ``None`` when unknown or ``local``."""
+    provider, _, model_id = model.partition("/")
+    spec = _catalog_row(provider) if model_id else None
+    if spec is None or _prov.profile_of(spec, model_id).name == "local":
+        return None, None
+    limits = _prov.resolve_limits(spec, model_id)
+    return limits.context_window, limits.max_output
+
+
 def resolve_profile(model: str) -> ModelProfile:
     """The model profile of the catalog row *model* (``provider/model-id``) names. A provider
     absent from the catalog, and every model while ``DOCKET_LLM_BASE_URL`` overrides the endpoint,

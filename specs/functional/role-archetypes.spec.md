@@ -1,9 +1,9 @@
 # Role Archetypes Specification
 
-**Version**: 5.10.0
+**Version**: 5.11.0
 **Status**: Implemented. Three built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-05
 
 ## Purpose
 
@@ -404,8 +404,13 @@ This specification does NOT cover:
 2. `budget_for_role(role)` **MUST** resolve *role* against the live archetype registry and return
    its `tokenBudget`; a role absent from the registry **MUST** fall back to `DEFAULT_TOKEN_BUDGET`
    (`6000`) rather than raise or return zero. When the caller passes a model window
-   (`context_window_tokens`, `max_output_tokens`), the fallback is the larger of `6000` and a
-   share of that window; the live callers pass none.
+   (`context_window_tokens`, `max_output_tokens`), the budget is the larger of the role's
+   `tokenBudget` (`6000` for a role absent from the registry) and half of the window left after
+   the output reserve, with no other ceiling: a 16k-32k local endpoint resolves to the role's own
+   value, a large hosted window to a share of it. A `tokenBudget` that an operator or pod role file
+   sets to a value other than `6000` is exact and is never widened; the value a built-in or starter
+   archetype ships is the floor. The hop-message builder passes the window of the model that
+   receives the handoff; other callers pass none and get the role's own value.
 3. A `tokenBudget` of zero or a negative value **MUST** be rejected by `RoleArchetype`'s own
    validation (`ArchetypeError`) for any archetype built through the constructor or `from_wire`.
    `tokenBudget` is an open positive integer, not a member of a closed set, but follows the same

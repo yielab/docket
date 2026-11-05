@@ -27,6 +27,9 @@ from docket.agent import ports as _rd
 from docket.hops.application import compose as _compose
 from docket.hops.application import sweep as _sweep
 from docket.kernel.home import current_home
+from docket.models import catalog as _catalog
+from docket.models import provider_lifecycle as _lifecycle
+from docket.models.application.probe import ProbeResult
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain.task import TaskRecord
 
@@ -164,6 +167,75 @@ class TestHopMessageCap:
         assert message == expected
         assert comp.truncated is False
         assert all(not s["truncated"] for s in comp.sections)
+
+
+def _observe(provider: str, model_id: str, window: int, out: int) -> None:
+    spec = _catalog.load_catalog().get(provider)
+    assert spec is not None
+    _lifecycle.record_observed_models(
+        spec,
+        ProbeResult(
+            status=200, model_ids=[model_id], limits={model_id: _rd.ModelLimits(window, out)}
+        ),
+    )
+
+
+def _research_handoff() -> list[Any]:
+    return [
+        _hop("lead", "L" * 2700),
+        _hop("researcher", "A" * 5000),
+        _hop("researcher", "B" * 5000),
+        _hop("researcher", "C" * 5000),
+    ]
+
+
+class TestHandoffFitsTheReceivingModel:
+    def test_a_hosted_window_carries_three_researcher_replies_whole(self) -> None:
+        _observe("anthropic", "claude-haiku-4-5-20251001", 200_000, 64_000)
+        message, comp = _compose._hop_message(
+            TaskRecord(description="task"),
+            "analyst",
+            _research_handoff(),
+            model="anthropic/claude-haiku-4-5-20251001",
+        )
+        assert comp.truncated is False
+        assert all(s["sent_bytes"] == s["original_bytes"] for s in comp.sections)
+        assert comp.budget_tokens == (200_000 - 64_000) // 2
+        assert "A" * 5000 in message
+
+    def test_a_local_window_keeps_today_s_cut_byte_for_byte(self) -> None:
+        _observe("local", "qwen", 16_384, 8_192)
+        task = TaskRecord(description="task")
+        plain, plain_comp = _compose._hop_message(task, "analyst", _research_handoff())
+        local, local_comp = _compose._hop_message(
+            task, "analyst", _research_handoff(), model="local/qwen"
+        )
+        assert local == plain
+        assert local_comp.budget_tokens == plain_comp.budget_tokens == 8000
+        assert local_comp.truncated is True
+
+    def test_a_model_with_no_known_window_keeps_the_role_budget(self) -> None:
+        _message, comp = _compose._hop_message(
+            TaskRecord(description="task"),
+            "analyst",
+            _research_handoff(),
+            model="anthropic/never-observed",
+        )
+        assert comp.budget_tokens == 8000
+        assert comp.truncated is True
+
+    def test_the_composed_event_reports_the_budget(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path) as oc_dir:
+            _queue.enqueue_task_once("demo", "Trace the budget", channel="cli")
+            _sweep.dispatch_pod("demo", runner=_BigOutputRunner(size=100))
+            trace_file = next((oc_dir / "state" / "traces" / "demo").glob("*.jsonl"))
+            composed = [
+                json.loads(line)["payload"]
+                for line in trace_file.read_text().splitlines()
+                if json.loads(line)["event_type"] == "context_composed"
+            ]
+        assert composed[0]["budget_tokens"] is None
+        assert composed[1]["budget_tokens"] == 8000
 
 
 # ── integration: context_composed trace event ─────────────────────────────────────

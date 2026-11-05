@@ -18,6 +18,7 @@ from docket.kernel import brief as _brief
 from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
 from docket.kernel.home import current_home
+from docket.models.application import endpoint as _endpoint
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application.actions import (
@@ -61,6 +62,8 @@ class _HopComposition:
     sections: list[dict[str, Any]] = field(default_factory=list)
     total_bytes: int = 0
     truncated: bool = False
+    #: The token budget the carryover was fit to; ``None`` for the Lead, whose message has none.
+    budget_tokens: int | None = None
     #: The prompt layers this hop's message was composed from, in order (``manifest.py``).
     layers: list[_manifest.Layer] = field(default_factory=list)
 
@@ -352,6 +355,7 @@ def _hop_message(
     project: str = "",
     verify_cmd: str = "",
     model_class: str | None = None,
+    model: str = "",
 ) -> tuple[str, _HopComposition]:
     """Build one role's message via ``agent/context.py``'s token-budget compiler (see
     pod-dispatch.spec.md, "Bounded hop prompts"). The task description is never truncated;
@@ -365,7 +369,7 @@ def _hop_message(
     ``instructions`` (pipeline-format.spec.md) -- it replaces whatever instruction text the
     target role would otherwise carry, for every role including the Lead (a built-in's own
     instruction text, or a custom role's own ``hopInstruction``/generated fallback, see
-    role-archetypes.spec.md). *verify_cmd* is named in the Implementer's instruction."""
+    role-archetypes.spec.md). *verify_cmd* is the Implementer's check; *model* the receiver."""
     desc = task.description.strip()
     worktree = "" if role == "lead" else claimed_worktree_dir(task)
     root = _repo_map.resolve_root(worktree, project, role)
@@ -405,10 +409,14 @@ def _hop_message(
     # sheddable is given a share.
     task_section = _task_section(task, desc, root, prior, workdir=workdir)
     reserved_tokens = sum(_rd.estimate_tokens(t) for t in (task_section, instructions, root_line))
-    carryover_budget = max(_ctx.budget_for_role(role, project=project) - reserved_tokens, 0)
+    window, max_output = _endpoint.handoff_window(model)
+    role_budget = _ctx.budget_for_role(
+        role, project=project, context_window_tokens=window, max_output_tokens=max_output
+    )
+    carryover_budget = max(role_budget - reserved_tokens, 0)
 
     lines = [task_section, "", "## Hop"] + ([root_line, ""] if root_line else [])
-    comp = _HopComposition(description_bytes=len(desc.encode("utf-8")))
+    comp = _HopComposition(description_bytes=len(desc.encode("utf-8")), budget_tokens=role_budget)
     comp.layers = _layers_of(role, project, hop_prompt, task_section)
 
     gate_failed_hop = rework_hop if is_gate_failure_carryover(rework_hop) else None
@@ -564,6 +572,7 @@ def _compose_hop(
     implementation worktree, when allocated -- see pod-dispatch.spec.md ("Downstream worktree continuity")."""
     step_override = ctx.step_instructions.get(node.step_id, "")
     verify_plan = None if role == "lead" else _verify.plan_for_hop(ctx, node, member_id)
+    receiver = hop_model(node, member_id)
     message, composition = _hop_message(
         ctx.task,
         role,
@@ -572,7 +581,8 @@ def _compose_hop(
         step_instructions=step_override,
         project=ctx.project,
         verify_cmd=verify_plan.command if verify_plan is not None else "",
-        model_class=_models.model_class_of(hop_model(node, member_id)),
+        model_class=_models.model_class_of(receiver),
+        model=receiver,
     )
     message += consult_note(ctx.task, node.step_id) + _approval_note(ctx.task_id, role)
     pipeline_worktree = ""
@@ -600,6 +610,7 @@ def _compose_hop(
                 "sections": composition.sections,
                 "total_bytes": composition.total_bytes,
                 "truncated": composition.truncated,
+                "budget_tokens": composition.budget_tokens,
             }
         ),
     )

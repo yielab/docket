@@ -35,9 +35,15 @@ class TeamsRoleComposer:
             registry, role, project, surface=surface, allow=allow
         )
 
-    def declared_token_budget(self, role: str, project: str) -> int | None:
-        found = _roles.load_registry(project).get(role)
-        return None if found is None else found.token_budget
+    def token_budget(self, role: str, project: str) -> tuple[int, bool] | None:
+        registry = _roles.load_registry(project)
+        found = registry.get(role)
+        if found is None:
+            return None
+        # A role file's 6000 is the schema default (the file writer omits it), so only another
+        # value is a budget someone wrote on purpose.
+        authored = registry.source_of(role) not in ("built-in", "starter", "")
+        return found.token_budget, authored and found.token_budget != 6000
 
     def compose_prompt(
         self,

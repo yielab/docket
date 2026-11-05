@@ -56,14 +56,48 @@ class TestBudgetForRole:
         finally:
             object.__setattr__(arch, "token_budget", 8000)
 
-    def test_a_registered_archetype_budget_ignores_any_window_argument(self) -> None:
-        """An archetype's own declared token_budget is data set on purpose -- a resolved
-        model window must never override it, unlike the unregistered-role fallback below."""
+    def test_a_shipped_budget_is_the_floor_of_a_window_share(self) -> None:
+        """A built-in's own `tokenBudget` is the floor: a large hosted window widens it to half
+        of what the window leaves after the output reserve, and nothing else caps the result."""
+        shipped = _builtin_roles.STARTER_ARCHETYPES["researcher"].token_budget
+        budget = _ctx.budget_for_role(
+            "researcher", context_window_tokens=200_000, max_output_tokens=64_000
+        )
+        assert budget == (200_000 - 64_000) // 2
+        assert budget > shipped
+
+    def test_a_local_sized_window_keeps_the_shipped_budget(self) -> None:
         assert (
             _ctx.budget_for_role(
-                "implementer", context_window_tokens=1_000_000, max_output_tokens=8_192
+                "researcher", context_window_tokens=16_384, max_output_tokens=8_192
             )
-            == _builtin_roles.BUILTIN_ARCHETYPES["implementer"].token_budget
+            == _builtin_roles.STARTER_ARCHETYPES["researcher"].token_budget
+        )
+
+    def test_a_budget_an_operator_role_file_sets_is_exact(self) -> None:
+        """A `tokenBudget` written on purpose in a pod's role file is never widened by a window."""
+        _arch.add_user_archetype(
+            {
+                "name": "researcher",
+                "version": 1,
+                "scope": "pod",
+                "modelClass": "cheap",
+                "soulTemplate": "x",
+                "agentsTemplate": "y",
+                "gateContract": {"kind": "none"},
+                "toolProfile": "read-only",
+                "tokenBudget": 3000,
+            },
+            "mypod",
+        )
+        assert (
+            _ctx.budget_for_role(
+                "researcher",
+                project="mypod",
+                context_window_tokens=1_000_000,
+                max_output_tokens=128_000,
+            )
+            == 3000
         )
 
     def test_unregistered_role_with_no_window_still_falls_back_to_the_default(self) -> None:
@@ -76,8 +110,7 @@ class TestBudgetForRole:
 
     def test_unregistered_role_with_a_large_window_gets_a_window_share(self) -> None:
         """Once a caller does supply a window, the unregistered-role fallback may exceed
-        DEFAULT_TOKEN_BUDGET -- this capability is added but not wired into any existing
-        caller (dispatch.py's hop composition, session.py's compaction default)."""
+        DEFAULT_TOKEN_BUDGET."""
         budget = _ctx.budget_for_role(
             "no-such-role-anywhere", context_window_tokens=200_000, max_output_tokens=8_192
         )

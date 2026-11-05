@@ -122,26 +122,22 @@ def budget_for_role(
     context_window_tokens: int | None = None,
     max_output_tokens: int | None = None,
 ) -> int:
-    """The token budget the named role's archetype declares.
+    """The token budget for the named role's carryover.
 
-    Falls back to a window-share of ``DEFAULT_TOKEN_BUDGET`` when *role* isn't
-    in the live archetype registry, or resolves a non-positive ``token_budget``.
-    When *project* is provided, resolves via the project-scoped registry first
-    (same nearest-wins layering as ``teams.roles.load_registry(project)``);
-    otherwise uses the global registry only.
+    An archetype ``token_budget`` an operator or pod role file sets is exact; a shipped one (or
+    ``DEFAULT_TOKEN_BUDGET`` for no archetype) is the floor of a share of the receiving model's
+    window, and the result without a window. *project* resolves the pod's registry first.
     """
-    # An archetype's own declared token_budget always wins -- data set on purpose,
-    # like an explicit CONTEXT_TOKEN_BUDGET override elsewhere -- so the window
-    # arguments below can never widen or shrink it. Every existing caller omits
-    # both keyword-only window arguments, so they keep resolving plain
-    # DEFAULT_TOKEN_BUDGET, byte-for-byte, exactly as before this fallback existed.
-    declared = role_composer.declared_token_budget(role, project)
-    if declared is not None and declared > 0:
-        return declared
+    found = role_composer.token_budget(role, project)
+    floor = DEFAULT_TOKEN_BUDGET
+    if found is not None and found[0] > 0:
+        if found[1]:
+            return found[0]
+        floor = found[0]
     return resolve_window_share_tokens(
         context_window_tokens=context_window_tokens,
         max_output_tokens=max_output_tokens,
-        floor_tokens=DEFAULT_TOKEN_BUDGET,
+        floor_tokens=floor,
     )
 
 

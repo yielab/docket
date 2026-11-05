@@ -6,9 +6,12 @@ from pathlib import Path
 
 import pytest
 
+from docket.agent.ports import ModelLimits
 from docket.kernel.home import current_home
 from docket.models import catalog as _provider
+from docket.models import provider_lifecycle as _lifecycle
 from docket.models.application import endpoint
+from docket.models.application.probe import ProbeResult
 
 SUBJECT = "docket.models.catalog"
 
@@ -101,6 +104,32 @@ class TestResolveProfile:
     def test_a_provider_absent_from_the_catalog_is_hosted(self) -> None:
         assert endpoint.resolve_profile("nowhere/model").name == "hosted"
         assert endpoint.resolve_profile("bare-model-id").name == "hosted"
+
+
+def _observe(provider: str, model_id: str, window: int | None, out: int | None) -> None:
+    spec = _provider.load_catalog().get(provider)
+    assert spec is not None
+    _lifecycle.record_observed_models(
+        spec,
+        ProbeResult(status=200, model_ids=[model_id], limits={model_id: ModelLimits(window, out)}),
+    )
+
+
+class TestHandoffWindow:
+    def test_a_hosted_model_gives_its_window_and_output_cap(self) -> None:
+        _observe("anthropic", "claude-haiku-4-5-20251001", 200_000, 64_000)
+
+        assert endpoint.handoff_window("anthropic/claude-haiku-4-5-20251001") == (200_000, 64_000)
+
+    def test_a_local_model_claims_no_window(self) -> None:
+        _observe("local", "qwen", 32_768, 4_096)
+
+        assert endpoint.handoff_window("local/qwen") == (None, None)
+
+    def test_a_model_with_no_known_window_gives_none(self) -> None:
+        assert endpoint.handoff_window("anthropic/never-seen") == (None, None)
+        assert endpoint.handoff_window("nowhere/model") == (None, None)
+        assert endpoint.handoff_window("") == (None, None)
 
 
 class TestBudgets:

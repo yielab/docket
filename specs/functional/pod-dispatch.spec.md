@@ -1,10 +1,10 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 12.7.0
+**Version**: 12.8.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
-**Last Updated**: 2026-11-03
+**Last Updated**: 2026-11-05
 
 ## Purpose
 
@@ -2124,7 +2124,13 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    budget** (`RoleArchetype.token_budget`, resolved via `budget_for_role`) that halves for each step
    further into the past (`hop_share`: `total_budget >> (rank + 1)`, rank 0 = the most recent prior
    hop) -- a partial geometric series that never sums past the configured total no matter how many
-   prior hops exist, while the most recent (most relevant) hop is squeezed the least.
+   prior hops exist, while the most recent (most relevant) hop is squeezed the least. The budget is
+   sized for the model that **receives** the handoff: the composer resolves the hop's model
+   (the step's own, else the member's) in the provider catalog and passes its context window and
+   output cap to `budget_for_role` ("Context-compiler token budget" of `role-archetypes.spec.md`),
+   so a large hosted window carries more of each prior reply than a 16k-32k local endpoint does.
+   A model whose window is not known (not declared, not observed, or a provider outside the catalog)
+   keeps the role's own budget.
 2. The role's total token budget **MUST** first be reduced by the (approximate) token cost of the
    task's own description, the `## Task` section's map and `## Hop` working-directory line
    (requirements 10-11) and that role's fixed instruction text -- what remains funds the carryover budget requirement 1 describes. The task's
@@ -2157,7 +2163,9 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
 6. Every hop **MUST** emit a `context_composed` trace event recording, per section (the rework or
    gate-failed note if present, and each prior hop carried forward): the role, original byte count,
    sent byte count, whether it was truncated, and which fields (if any) were dropped -- plus the task
-   description's byte count, the composed message's total size and whether anything was truncated.
+   description's byte count, the composed message's total size and whether anything was truncated,
+   and the token budget the role's carryover was fit to (`budget_tokens`, `null` for the Lead, whose
+   message is not budgeted).
 7. No tokenizer dependency **MUST** be introduced for any of the above -- `estimate_tokens` uses the
    project's documented `CONTEXT_BYTES_PER_TOKEN` bytes-per-token approximation (default 4,
    env-overridable), not a second, independently tunable one. This is an approximation, not an exact

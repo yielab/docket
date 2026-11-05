@@ -416,8 +416,9 @@ class RoleComposer(Protocol):
         (else the role's own), minus the tools *role* may never call."""
         ...
 
-    def declared_token_budget(self, role: str, project: str) -> int | None:
-        """The context budget *role*'s archetype declares, or ``None`` when it declares none."""
+    def token_budget(self, role: str, project: str) -> tuple[int, bool] | None:
+        """*role*'s archetype budget and whether it is exact (written on purpose in an operator or
+        pod role file) rather than the value a built-in or starter ships; ``None`` for no archetype."""
         ...
 
     def compose_prompt(
