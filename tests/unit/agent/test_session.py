@@ -287,12 +287,12 @@ class TestCompactSessionFailClosed:
 
         result = _session_compaction.compact_session(
             "agent:x:default",
-            role="lead",
             agent_id="x-lead",
             summarizer=_failing_driver,
             prompt_text=_PROMPT,
             prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
+            summary_input_budget_tokens=6_000,
         )
 
         assert not result.ok
@@ -305,12 +305,12 @@ class TestCompactSessionFailClosed:
 
         result = _session_compaction.compact_session(
             "agent:x:default",
-            role="lead",
             agent_id="x-lead",
             summarizer=_empty_reply_driver,
             prompt_text=_PROMPT,
             prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
+            summary_input_budget_tokens=6_000,
         )
 
         assert not result.ok
@@ -330,12 +330,12 @@ class TestCompactSessionFailClosed:
         # The real implementation must not match the buggy behaviour above.
         result = _session_compaction.compact_session(
             "agent:x:default",
-            role="lead",
             agent_id="x-lead",
             summarizer=_failing_driver,
             prompt_text=_PROMPT,
             prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
+            summary_input_budget_tokens=6_000,
         )
         assert not result.ok
         assert len(_sess.load_messages("agent:x:default")) == len(messages)
@@ -351,12 +351,12 @@ class TestCompactSessionSuccess:
 
         result = _session_compaction.compact_session(
             "agent:x:default",
-            role="lead",
             agent_id="x-lead",
             summarizer=_summarizing_driver("tool outcome retained"),
             prompt_text=_PROMPT,
             prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
+            summary_input_budget_tokens=6_000,
             compact_range=(1, 3),
             keep_latest_unit=False,
         )
@@ -378,12 +378,12 @@ class TestCompactSessionSuccess:
 
         result = _session_compaction.compact_session(
             "agent:x:default",
-            role="lead",
             agent_id="x-lead",
             summarizer=_summarizing_driver(),
             prompt_text=_PROMPT,
             prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
+            summary_input_budget_tokens=6_000,
             compact_range=(2, 3),
             keep_latest_unit=False,
         )
@@ -398,12 +398,12 @@ class TestCompactSessionSuccess:
 
         result = _session_compaction.compact_session(
             "agent:x:default",
-            role="lead",
             agent_id="x-lead",
             summarizer=driver,
             prompt_text=_PROMPT,
             prompt_sha256=_PROMPT_SHA,
             budget_tokens=100_000,
+            summary_input_budget_tokens=6_000,
         )
 
         assert result.ok
@@ -426,12 +426,12 @@ class TestCompactSessionSuccess:
 
         result = _session_compaction.compact_session(
             "agent:x:default",
-            role="lead",
             agent_id="x-lead",
             summarizer=_driver,
             prompt_text=_PROMPT,
             prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
+            summary_input_budget_tokens=6_000,
         )
 
         assert result.ok
@@ -454,24 +454,24 @@ class TestCompactSessionSuccess:
             nested.append(
                 _session_compaction.compact_session(
                     "agent:y:default",
-                    role="lead",
                     agent_id="y-lead",
                     summarizer=_driver,
                     prompt_text=_PROMPT,
                     prompt_sha256=_PROMPT_SHA,
                     budget_tokens=1,
+                    summary_input_budget_tokens=6_000,
                 )
             )
             return TurnResult(True, "summary", {})
 
         result = _session_compaction.compact_session(
             "agent:x:default",
-            role="lead",
             agent_id="x-lead",
             summarizer=_driver,
             prompt_text=_PROMPT,
             prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
+            summary_input_budget_tokens=6_000,
         )
 
         assert result.ok
@@ -486,12 +486,12 @@ class TestCompactSessionSuccess:
         )
         result = _session_compaction.compact_session(
             "agent:x:default",
-            role="lead",
             agent_id="x-lead",
             summarizer=_summarizing_driver("the gist of it"),
             prompt_text=_PROMPT,
             prompt_sha256=_PROMPT_SHA,
             budget_tokens=5,
+            summary_input_budget_tokens=6_000,
         )
 
         assert result.ok
@@ -535,7 +535,6 @@ class TestCompactSessionSuccess:
 
         result = _session_compaction.compact_session(
             key,
-            role="lead",
             agent_id="large-lead",
             summarizer=_driver,
             prompt_text=_PROMPT,
@@ -581,7 +580,6 @@ class TestCompactSessionSuccess:
 
         result = _session_compaction.compact_session(
             key,
-            role="lead",
             agent_id="late-failure-lead",
             summarizer=_driver,
             prompt_text=_PROMPT,
@@ -604,7 +602,6 @@ class TestCompactSessionSuccess:
 
         result = _session_compaction.compact_session(
             key,
-            role="lead",
             agent_id="oversized-lead",
             summarizer=driver,
             prompt_text=_PROMPT,
@@ -626,12 +623,12 @@ class TestCompactSessionSuccess:
         )
         _session_compaction.compact_session(
             "agent:x:default",
-            role="lead",
             agent_id="x-lead",
             summarizer=_summarizing_driver(),
             prompt_text=_PROMPT,
             prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
+            summary_input_budget_tokens=6_000,
         )
         record = _sess.load_session("agent:x:default")
         assert record.usage.input_tokens == 999
@@ -644,30 +641,15 @@ class TestCompactSessionSuccess:
         driver, calls = _recording_driver()
         _session_compaction.compact_session(
             "agent:x:default",
-            role="lead",
             agent_id="x-lead",
             summarizer=driver,
             prompt_text=_PROMPT,
             prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
+            summary_input_budget_tokens=6_000,
         )
         assert calls
         assert "very important old context" in calls[0]
-
-    def test_explicit_budget_overrides_role_resolution(self) -> None:
-        """A role with no archetype entry still works when budget_tokens is given explicitly -- compact_session must not require a real role registry."""
-        _sess.append_messages("agent:x:default", [user("a" * 4000), user("keep")])
-        result = _session_compaction.compact_session(
-            "agent:x:default",
-            role="not-a-real-role",
-            agent_id="x-lead",
-            summarizer=_summarizing_driver(),
-            prompt_text=_PROMPT,
-            prompt_sha256=_PROMPT_SHA,
-            budget_tokens=1,
-        )
-        assert result.ok
-        assert result.compacted
 
 
 # ── request projection: condense_history ──────────────────────────────────────

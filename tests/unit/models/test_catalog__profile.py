@@ -79,8 +79,8 @@ class TestProfileOfARow:
             ("sampling: {temperature: 3}\n", "sampling.temperature"),
             ("toolChoice: always\n", "toolChoice"),
             ("budgets: {readWindow: 1.5}\n", "budgets.readWindow"),
-            ("budgets: {history: 0}\n", "budgets.history"),
-            ("budgets: {history: 1.5}\n", "budgets.history"),
+            # A share the profile does not know (the deleted history share) is refused, not ignored.
+            ("budgets: {history: 0.5}\n", "budgets.history"),
         ],
     )
     def test_a_bad_value_names_its_field(self, tmp_path: Path, line: str, field: str) -> None:
@@ -150,53 +150,14 @@ class TestBudgets:
         assert budgets.read_window_chars == 500 * current_home().context_bytes_per_token
         assert budgets.tool_output_chars is None
 
-    def test_a_hosted_row_budgets_only_the_history(self, tmp_path: Path) -> None:
+    def test_a_hosted_row_budgets_nothing(self, tmp_path: Path) -> None:
+        """No share sizes the history: a session is compacted only when a request does not fit."""
         spec = _load(tmp_path, _HOSTED + "models: [{id: m, contextWindow: 32768}]\n")
 
-        assert _provider.profile_of(spec, "m").budgets == _provider.ProfileBudgets(
-            history_tokens=int(32768 * 0.025)
-        )
+        assert _provider.profile_of(spec, "m").budgets == _provider.ProfileBudgets()
 
     def test_an_unknown_window_gives_no_budget_rather_than_a_guess(self, tmp_path: Path) -> None:
         spec = _load(tmp_path, _LOCAL + "models: [{id: m}]\n")
 
         assert _provider.profile_of(spec, "m").budgets == _provider.ProfileBudgets()
         assert _provider.profile_of(spec).budgets == _provider.ProfileBudgets()
-
-
-class TestHistoryBudget:
-    """The tokens of kept history a turn gets: the role's budget, widened by a window share."""
-
-    @staticmethod
-    def _profile(tmp_path: Path, text: str, window: int) -> _provider.ModelProfile:
-        return _provider.profile_of(
-            _load(tmp_path, text + f"models: [{{id: m, contextWindow: {window}}}]\n"), "m"
-        )
-
-    def test_hosted_widens_the_role_budget_on_a_large_window(self, tmp_path: Path) -> None:
-        profile = self._profile(tmp_path, _HOSTED, 1_000_000)
-
-        assert profile.budgets.history_tokens == 25_000
-        assert profile.history_budget_tokens(8_000) == 25_000
-
-    def test_hosted_on_a_small_window_keeps_the_role_budget(self, tmp_path: Path) -> None:
-        assert self._profile(tmp_path, _HOSTED, 200_000).history_budget_tokens(8_000) == 8_000
-
-    def test_the_role_budget_wins_when_it_is_larger_than_the_share(self, tmp_path: Path) -> None:
-        assert self._profile(tmp_path, _HOSTED, 1_000_000).history_budget_tokens(40_000) == 40_000
-
-    def test_local_declares_no_share_and_keeps_the_role_budget(self, tmp_path: Path) -> None:
-        profile = self._profile(tmp_path, _LOCAL, 32_768)
-
-        assert profile.budgets.history_tokens is None
-        assert profile.history_budget_tokens(8_000) == 8_000
-
-    def test_an_unknown_window_keeps_the_role_budget(self, tmp_path: Path) -> None:
-        profile = _provider.profile_of(_load(tmp_path, _HOSTED + "models: [{id: m}]\n"), "m")
-
-        assert profile.history_budget_tokens(8_000) == 8_000
-
-    def test_a_row_declares_its_own_history_share(self, tmp_path: Path) -> None:
-        profile = self._profile(tmp_path, _LOCAL + "budgets: {history: 0.5}\n", 100_000)
-
-        assert profile.history_budget_tokens(8_000) == 50_000

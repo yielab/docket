@@ -548,12 +548,14 @@ from `main`.
 > 1. Every line docket writes to steer the model and nothing else is request-only: the budget notice joins
 >    the landing ask and the closing ask as a trailing `user` message, never written to `session.json`.
 >    Requirement 108's "appended to the last tool result" becomes "appended to the next request". The
->    pre-turn compaction keeps its order: the task is appended after it and is never summarized by it.
+>    task message is appended before any model call; the fit path (2) summarizes around it, never it.
 > 2. A request that does not fit is reduced by what the request carries. The range to summarize is chosen
 >    by the projected size of its atomic units (the same `condense_history` the request uses), oldest first,
 >    until the overflow is covered, and that range is summarized whole (`budget_tokens=0` on a range means
->    the whole range; `plan_compaction` already does that for a range with an anchor). The budget-driven
->    pre-turn compaction keeps its budget semantics.
+>    the whole range; `plan_compaction` already does that for a range with an anchor). **Amended 2026-11-05**
+>    (the maintainer: no duplicate mechanisms): the budget-driven pre-turn compaction and the `hosted`
+>    `history` share are deleted; this is the one compaction, and the summarizer's input is bounded by the
+>    window, not the role's carryover budget.
 > 3. A compaction leaves a record. The replaced messages and the summary are written to
 >    `<session dir>/compactions/<seq>.json` by `platform/store.py`, same permissions as `session.json`, in
 >    the same locked mutation; the `session_compaction` event names the record and the summarized range.

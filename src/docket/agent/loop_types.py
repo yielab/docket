@@ -97,8 +97,6 @@ class LoopConfig:
     max_tool_calls_source: str = ""
     wall_clock_source: str = ""
     token_budget_source: str = ""
-    history_budget_tokens: int | None = None
-    summary_input_budget_tokens: int | None = None
     context_window_tokens: int | None = None
 
 

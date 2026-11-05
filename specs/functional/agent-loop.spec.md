@@ -1,9 +1,9 @@
 # Agent Loop Specification
 
-**Version**: 4.14.0
+**Version**: 4.15.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
-compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
+reduces a request that does not fit, and gates every tool call through `dispatch_tool` until a typed stop fires.
 **Last Updated**: 2026-11-05
 
 ## Purpose
@@ -118,9 +118,9 @@ This specification does NOT cover:
 
 ### Durability
 
-13. The incoming user message **MUST** be persisted after the pre-turn compaction check and before
-    the first task-completion model call. The compaction summarizer is the sole model call allowed
-    before that append; if it fails, the incoming message is not accepted into durable history.
+13. The incoming user message **MUST** be persisted before any model call of the turn. A
+    compaction (requirement 47) happens only once a task request does not fit, around that
+    persisted message; its summarizer is the one model call that may precede a task request.
 14. Each iteration that dispatches tool calls **MUST** persist the assistant message and every tool
     result answering it in one call to `append_messages` — never split across two calls, which
     could leave an orphaned `tool_calls` entry durable if the process died between them.
@@ -329,10 +329,14 @@ This specification does NOT cover:
 
 ### Live session compaction
 
-32. Before loading replay history or appending the incoming message, `run_agent_turn` **MUST** call
-    `compact_session` with the role's history budget (or the explicit test/operator override). The
-    compaction check and any required summary completion **MUST** finish before the first
-    task-completion `ChatBackend.complete` call.
+32. A session **MUST** be compacted for one reason: a task request did not fit the registered
+    window (requirement 47). `run_agent_turn` makes no compaction check at the start of a turn and
+    no profile, role or setting sizes the history (`session-history.spec.md` requirement 14); the
+    history a turn loads is sent as the request projection (requirement 84) until a request
+    overflows. The summarizer's input is bounded by the registered window less the output reserve
+    (`TurnCompaction.run_compaction`), never by the role's carryover budget, and a required
+    summary completion **MUST** finish before the task-completion `ChatBackend.complete` call it
+    makes room for.
 33. The live summarizer **MUST** be one direct, tool-free call through the `ChatBackend` instance
     already supplied to `run_agent_turn`. It **MUST NOT** call `run_agent_turn`, advertise tools,
     resolve another backend, or persist its prompt/output as a conversation. This structural path,
@@ -349,7 +353,7 @@ This specification does NOT cover:
     precedence when that same response's measured usage also crosses the cumulative turn budget;
     endpoint-reported usage, when non-zero, is still recorded as usage metadata and does not alter
     the preserved messages. A truncated partial summary **MUST NEVER** become durable history.
-37. Every pre-turn compaction check **MUST** emit one `session_compaction` trace event with status
+37. Every compaction **MUST** emit one `session_compaction` trace event with status
     `no_op`, `succeeded`, or `failed`; before/after message counts; before/after estimated tokens;
     and groups summarized. An event whose compaction replaced messages additionally carries
     `record` (the path of its compaction record relative to the session directory, per
@@ -357,12 +361,12 @@ This specification does NOT cover:
     before the call); an event whose compaction ran summarization rounds carries `promptSha256`.
     The payload **MUST NOT** contain raw history, prompts, summaries, or
     measured token counts mislabeled as estimates.
-    When the check fails only because `compact_session` refused to make progress
-    (`session-history.spec.md` requirement 26, `refused_by_guard`), the turn **MUST NOT** end: the
-    stored history stays byte-identical, the event keeps status `failed` and carries the reason,
-    and the turn proceeds, with request-fit as the one stop for a request over the window.
-    Requirement 36's summarizer failures, cancellation and the `token_budget` stop still end the
-    turn.
+    When a compaction fails only because `compact_session` refused to make progress
+    (`session-history.spec.md` requirement 26, `refused_by_guard`), the stored history stays
+    byte-identical, the event keeps status `failed` and carries the reason, and the turn ends on
+    the request-fit stop (`context_fit`, requirement 47: the request is irreducible), never on
+    `compaction_failed`, which is a summarizer failure (requirement 36). Cancellation and the
+    `token_budget` stop end the turn as their own stops.
 38. A live compaction **MAY** make multiple bounded summary completions. Every completion **MUST**
     stay on the same non-recursive, tool-free adapter; its endpoint-reported usage **MUST** be
     accumulated into turn/session measured usage, and its timeout **MUST** be capped by the turn's
@@ -1024,8 +1028,6 @@ class LoopConfig:                              # frozen
     tool_surface: Literal["full", "minimal"] = "full"   # the profile's surface (103)
     tool_allow: tuple[str, ...] | None = None           # the hop's allow-list (103)
     profile: str = ""
-    history_budget_tokens: int | None = None # None resolves through budget_for_role
-    summary_input_budget_tokens: int | None = None # None follows resolved history budget
     context_window_tokens: int | None = None # selected endpoint's registered input+output window
 
 class BudgetStop:                # frozen; agent/ports.py (requirement 107)

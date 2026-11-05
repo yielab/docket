@@ -231,33 +231,45 @@ class TestASummaryRequestIsRetried:
         assert compaction.compaction_failure_stop_reason == "timeout"
 
 
-class TestTurnStartCompactionUsesTheHistoryBudget:
-    """A session of 21,000 tokens fits a 25,000-token history budget and not the role's 8,000."""
+class TestOnlyARequestThatDoesNotFitCompactsTheSession:
+    """A session of about 5,000 tokens is left alone by a wide window and compacted by a narrow one."""
 
     @staticmethod
     def _session(state: TurnState) -> None:
-        for n in range(6):
-            append_messages(state.session_key, [user(f"ask {n} " + "x" * 14_000), assistant("ok")])
+        for n in range(3):
+            append_messages(state.session_key, [user(f"ask {n} " + "x" * 6_000), assistant("ok")])
 
-    def test_a_wide_history_budget_leaves_the_session_alone(
-        self, make_turn_state: MakeState
-    ) -> None:
-        state = make_turn_state(LoopConfig(history_budget_tokens=25_000))
-        self._session(state)
-        before = load_messages(state.session_key)
-
-        assert _compaction(state).apply_initial_history_compaction() is None
-        assert load_messages(state.session_key) == before
-
-    def test_the_role_budget_compacts_it(self, make_turn_state: MakeState) -> None:
+    def test_a_request_that_fits_leaves_the_session_alone(self, make_turn_state: MakeState) -> None:
         backend = _OneReply(ChatResponse(ok=True, message=assistant("the summary")))
-        state = make_turn_state(LoopConfig(history_budget_tokens=8_000), backend=backend)
+        state = make_turn_state(backend=backend, context_window=100_000, output_reserve=1_000)
         self._session(state)
         before = load_messages(state.session_key)
+        compaction = _compaction(state)
+        compaction.seed_task_message("the task")
 
-        assert _compaction(state).apply_initial_history_compaction() is None
+        *_, error, stop, _kind = compaction.fit_task_request()
+
+        assert (error, stop) == ("", None)
+        assert backend.calls == []
+        assert load_messages(state.session_key)[: len(before)] == before
+
+    def test_a_request_that_does_not_fit_compacts_it(self, make_turn_state: MakeState) -> None:
+        backend = _OneReply(ChatResponse(ok=True, message=assistant("the summary")))
+        state = make_turn_state(backend=backend, context_window=4_000, output_reserve=100)
+        self._session(state)
+        before = load_messages(state.session_key)
+        compaction = _compaction(state)
+        compaction.seed_task_message("the task")
+
+        *_, error, stop, _kind = compaction.fit_task_request()
+
+        assert (error, stop) == ("", None)
         assert len(backend.calls) >= 1
-        assert len(load_messages(state.session_key)) < len(before)
+        stored = load_messages(state.session_key)
+        assert stored[0].content.startswith("[compacted summary of ")
+        assert stored[0].content.endswith("the summary")
+        assert before[0] not in stored
+        assert stored[-1].content == "the task"
 
 
 class TestTheRequestProjectionFollowsTheWindow:
@@ -280,12 +292,6 @@ class TestTheRequestProjectionFollowsTheWindow:
         wide = _compaction(make_turn_state(context_window=1_000_000, output_reserve=8_000))
 
         assert wide.messages_for_durable(durable).messages == durable
-
-    def test_the_history_share_does_not_widen_it(self, make_turn_state: MakeState) -> None:
-        durable = self._results(6)
-        state = make_turn_state(LoopConfig(history_budget_tokens=250_000))
-
-        assert self._condensed(_compaction(state).messages_for_durable(durable).messages) > 0
 
     def test_a_window_the_results_overflow_condenses_them(self, make_turn_state: MakeState) -> None:
         durable = self._results(6)
@@ -411,8 +417,8 @@ class TestAResearchTurnOnAWideWindow:
         assert 1 <= moved <= 3
 
 
-class TestAPreTurnCompactionTheGuardRefuses:
-    """A compaction that gains nothing leaves the history alone and lets the turn run."""
+class TestAFitCompactionTheGuardRefuses:
+    """A compaction that gains nothing, or fails, leaves the stored history exactly as it was."""
 
     @staticmethod
     def _session(state: TurnState) -> None:
@@ -425,36 +431,44 @@ class TestAPreTurnCompactionTheGuardRefuses:
         records = [json.loads(line) for line in trace.read_text().splitlines()]
         return [r["payload"] for r in records if r["event_type"] == "session_compaction"]
 
-    def test_a_summary_that_gains_nothing_does_not_end_the_turn(
+    def test_a_summary_that_gains_nothing_leaves_the_session_unchanged(
         self, make_turn_state: MakeState
     ) -> None:
         backend = _OneReply(ChatResponse(ok=True, message=assistant("S" * 40_000)))
-        state = make_turn_state(LoopConfig(history_budget_tokens=1_000), backend=backend)
+        state = make_turn_state(backend=backend, context_window=4_000, output_reserve=100)
         self._session(state)
+        compaction = _compaction(state)
+        compaction.seed_task_message("the task")
         path = _session_path(state.session_key, None)
         before = path.read_bytes()
 
-        assert _compaction(state).apply_initial_history_compaction() is None
+        *_, error, stop, kind = compaction.fit_task_request()
 
+        assert (stop, kind) == ("context_fit", "invalid_output")
+        assert "irreducible durable request" in error and "did not reduce" in error
         assert len(backend.calls) == 1
         assert path.read_bytes() == before
         [event] = self._events(state)
         assert event["status"] == "failed"
         assert "did not reduce" in event["reason"]
 
-    def test_a_summarizer_timeout_still_ends_the_turn(self, make_turn_state: MakeState) -> None:
+    def test_a_summarizer_timeout_stops_the_turn_with_the_history_untouched(
+        self, make_turn_state: MakeState
+    ) -> None:
         response = ChatResponse(ok=False, error="slow", failure_kind="timeout")
         state = make_turn_state(
-            LoopConfig(history_budget_tokens=1_000), backend=_OneReply(response)
+            backend=_OneReply(response), context_window=4_000, output_reserve=100
         )
         self._session(state)
-        before = load_messages(state.session_key)
+        compaction = _compaction(state)
+        compaction.seed_task_message("the task")
+        path = _session_path(state.session_key, None)
+        before = path.read_bytes()
 
-        result = _compaction(state).apply_initial_history_compaction()
+        *_, stop, _kind = compaction.fit_task_request()
 
-        assert result is not None and not result.ok
-        assert result.stop_reason == "compaction_failed"
-        assert load_messages(state.session_key) == before
+        assert stop == "compaction_failed"
+        assert path.read_bytes() == before
         assert self._events(state)[0]["status"] == "failed"
 
 
@@ -474,7 +488,7 @@ class TestRunCompactionAsksThePortForThePrompt:
 
     def test_the_prompt_text_and_hash_come_from_the_port(self, make_turn_state: MakeState) -> None:
         backend = _OneReply(ChatResponse(ok=True, message=assistant("the summary")))
-        state = make_turn_state(backend=backend)
+        state = make_turn_state(backend=backend, context_window=32_768, output_reserve=4_096)
         append_messages(
             state.session_key,
             [user("first ask " + "detail " * 200), assistant("reply " * 200), user("second")],
@@ -482,7 +496,7 @@ class TestRunCompactionAsksThePortForThePrompt:
         composer = _OverlayComposer()
 
         with role_composer_port.use(composer):
-            result, stop = _compaction(state).run_compaction(budget_tokens=1)
+            result, stop = _compaction(state).run_compaction((0, 2))
 
         assert result.compacted, result.error
         assert stop is None

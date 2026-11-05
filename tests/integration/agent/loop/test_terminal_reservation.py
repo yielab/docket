@@ -188,7 +188,8 @@ class TestTerminalResponseReservation:
         raw_unit = "CURRENT_TOOL_UNIT " * 600
 
         class WindowThenBudgetBackend:
-            context_window_tokens = 100
+            # The summarizer's prompt is bounded by this window, so it must hold the raw unit.
+            context_window_tokens = 30_000
             max_output_tokens = 10
 
             def __init__(self) -> None:
@@ -211,11 +212,11 @@ class TestTerminalResponseReservation:
                 ):
                     return 5
                 if any(message.role == "tool" for message in messages):
-                    return 150
+                    return 30_050
                 if any(
                     message.content.startswith("[compacted summary of ") for message in messages
                 ):
-                    return 90
+                    return 29_990
                 return 45
 
             def complete(
@@ -264,7 +265,7 @@ class TestTerminalResponseReservation:
             ctx,
             session_key,
             "finish after the diagnostic",
-            config=_loop.LoopConfig(token_budget=210, max_tokens=10),
+            config=_loop.LoopConfig(token_budget=30_115, max_tokens=10),
         )
 
         assert not result.ok

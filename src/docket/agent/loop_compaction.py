@@ -1,9 +1,9 @@
 """Compaction for the turn loop: the tool-free summariser and the request-fit reduction.
 
 ``TurnCompaction`` owns the compaction summariser (one tool-free backend call, no loop
-recursion, no session writes), the initial history compaction, the incoming task message's
-durable position, and the request-fit loop that compacts around that message until the task
-request fits the registered context window.
+recursion, no session writes), the incoming task message's durable position, and the request-fit
+loop that compacts around that message until the task request fits the registered context window.
+A session is compacted for that one reason; nothing compacts it at the start of a turn.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from docket.agent.loop_request import (
 )
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_compaction, _trace_llm_call
-from docket.agent.loop_types import AgentLoopResult, StopReason
+from docket.agent.loop_types import StopReason
 from docket.agent.ports import (
     ChatMessage,
     FailureKind,
@@ -263,12 +263,10 @@ class TurnCompaction:
         return TurnResult(True, response.message.content, response.raw)
 
     def run_compaction(
-        self,
-        *,
-        budget_tokens: int | None,
-        compact_range: tuple[int, int] | None = None,
-        keep_latest_unit: bool = True,
+        self, compact_range: tuple[int, int]
     ) -> tuple[CompactionResult, StopReason | None]:
+        """Summarize *compact_range* of the session whole, in batches the summarizer's own request
+        can carry: its input is bounded by what passes the fit preflight, like any request."""
         self.compaction_failure_stop_reason = None
         elapsed_now = self.state.clock() - self.state.started
         remaining_now = max(1, int(self.state.cfg.wall_clock_timeout_s - elapsed_now))
@@ -277,19 +275,17 @@ class TurnCompaction:
         )
         result = compact_session(
             self.state.session_key,
-            role=self.state.ctx.role,
             agent_id=self.state.ctx.agent_id,
             summarizer=self.summarize_without_reentry,
             prompt_text=prompt_text,
             prompt_sha256=prompt_sha256,
             summarizer_session_key=f"{self.state.session_key}:compaction",
-            budget_tokens=budget_tokens,
-            summary_input_budget_tokens=self.state.cfg.summary_input_budget_tokens,
+            budget_tokens=0,
+            summary_input_budget_tokens=self.budget.request_text_budget(),
             compact_range=compact_range,
-            keep_latest_unit=keep_latest_unit,
+            keep_latest_unit=False,
             timeout=min(self.state.cfg.request_timeout_s, remaining_now),
             label=f"{self.state.ctx.role} session",
-            project=self.state.project,
         )
         usage_delta = _usage_delta(self.state.summary_usage, self.state.accounted_summary_usage)
         self.state.total_usage = _accumulate(self.state.total_usage, usage_delta)
@@ -304,25 +300,6 @@ class TurnCompaction:
             task_id=self.state.trace_task_id,
         )
         return result, self.compaction_failure_stop_reason
-
-    def apply_initial_history_compaction(self) -> AgentLoopResult | None:
-        """Compact durable history to the turn's budget before the incoming message is seeded."""
-        if self.state.cancellation_requested():
-            return self.state.cancelled()
-        compaction, compaction_stop_reason = self.run_compaction(
-            budget_tokens=self.state.cfg.history_budget_tokens
-        )
-        if not compaction.ok:
-            if compaction.refused_by_guard and compaction_stop_reason is None:
-                # The history is untouched and the request-fit path still guards the window.
-                return None
-            return self.state.done(
-                ok=False,
-                stop_reason=compaction_stop_reason or "compaction_failed",
-                error=compaction.error,
-                failure_kind=compaction.failure_kind or "invalid_output",
-            )
-        return None
 
     def seed_task_message(self, message: str) -> None:
         """Append the incoming user message and record its durable position."""
@@ -487,25 +464,29 @@ class TurnCompaction:
             )
             if selected_range is None:
                 continue
-            fit_compaction, fit_compaction_stop_reason = self.run_compaction(
-                budget_tokens=0,
-                compact_range=selected_range,
-                keep_latest_unit=False,
-            )
+            fit_compaction, fit_compaction_stop_reason = self.run_compaction(selected_range)
+            if fit_compaction.refused_by_guard and fit_compaction_stop_reason is None:
+                # The summary gained nothing and the history is as it was: the request is
+                # irreducible, which is the fit stop, not a summarizer failure.
+                return _FitOutcome(
+                    stop=_FitStop(
+                        current_messages,
+                        estimated_input,
+                        f"{fit_error}; irreducible durable request: {fit_compaction.error}",
+                        "context_fit",
+                        "invalid_output",
+                    )
+                )
             if not fit_compaction.ok:
-                failure_stop_reason = fit_compaction_stop_reason or "compaction_failed"
+                # The summarizer's own stop (a timeout on the clock, a cancellation, the token
+                # budget) and its typed kind are the turn's; a plain failure is compaction_failed.
                 return _FitOutcome(
                     stop=_FitStop(
                         current_messages,
                         estimated_input,
                         fit_compaction.error or "request-fit compaction failed",
-                        failure_stop_reason,
-                        (
-                            fit_compaction.failure_kind
-                            if failure_stop_reason == "compaction_failed"
-                            else "invalid_output"
-                        )
-                        or "invalid_output",
+                        fit_compaction_stop_reason or "compaction_failed",
+                        fit_compaction.failure_kind or "invalid_output",
                     )
                 )
             if fit_compaction.compacted:

@@ -183,7 +183,6 @@ class TestLiveSessionCompaction:
             config=_loop.LoopConfig(
                 context_window_tokens=8_000,
                 max_tokens=2_100,
-                history_budget_tokens=1_000_000,
             ),
         )
 
@@ -324,8 +323,9 @@ class TestLiveSessionCompaction:
         self, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         session_key = "agent:request-fit-concurrent-revision:demo"
-        suffix = "ORIGINAL_SUFFIX " * 600
-        concurrent = "CONCURRENT_REVISION " * 600
+        suffix = "ORIGINAL_SUFFIX " * 120
+        # Sized so the unit and the compaction prompt fit the summarizer's 1,000-token window.
+        concurrent = "CONCURRENT_REVISION " * 100
         registry = ToolRegistry()
 
         def _lookup(args: dict[str, object], tool_ctx: ToolContext) -> ToolOutcome:
@@ -438,7 +438,7 @@ class TestLiveSessionCompaction:
             ),
         )
 
-        assert result.ok
+        assert result.ok, result.error
         assert result.output == "done after the new revision"
         assert injected
         assert ranged_calls == [(1, 3), (2, 3)]
@@ -459,7 +459,7 @@ class TestLiveSessionCompaction:
         registry = ToolRegistry()
 
         def _lookup(args: dict[str, object], tool_ctx: ToolContext) -> ToolOutcome:
-            return ToolOutcome(True, content="INITIAL_SUFFIX " * 600)
+            return ToolOutcome(True, content="INITIAL_SUFFIX " * 120)
 
         registry.register(
             _Tool(
@@ -538,7 +538,7 @@ class TestLiveSessionCompaction:
                     [
                         ChatMessage(
                             role="user",
-                            content=f"CONCURRENT_APPEND_{len(ranged_calls)} " * 500,
+                            content=f"CONCURRENT_APPEND_{len(ranged_calls)} " * 100,
                         )
                     ],
                 )

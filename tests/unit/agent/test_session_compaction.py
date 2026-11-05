@@ -95,7 +95,6 @@ def _compact(
 ) -> _session_compaction.CompactionResult:
     return _session_compaction.compact_session(
         _KEY,
-        role="writer",
         agent_id="reader",
         summarizer=summarizer,
         prompt_text=_PROMPT,
@@ -233,7 +232,6 @@ class TestThePromptIsTheCallersDocument:
 
         result = _session_compaction.compact_session(
             _KEY,
-            role="writer",
             agent_id="reader",
             summarizer=driver,
             prompt_text="LONG RULES " * 2_000 + "${turns}",
@@ -253,12 +251,12 @@ class TestThePromptIsTheCallersDocument:
 
         result = _session_compaction.compact_session(
             _KEY,
-            role="writer",
             agent_id="reader",
             summarizer=driver,
             prompt_text="Summarize the history.",
             prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
+            summary_input_budget_tokens=6_000,
         )
 
         assert (result.ok, result.failure_kind) == (False, "invalid_output")
@@ -281,12 +279,12 @@ class TestARangeSummarizedWhole:
 
         result = _session_compaction.compact_session(
             _KEY,
-            role="lead",
             agent_id="x-lead",
             summarizer=_summarizing_driver("everything read so far"),
             prompt_text=_PROMPT,
             prompt_sha256=_PROMPT_SHA,
             budget_tokens=0,
+            summary_input_budget_tokens=6_000,
             compact_range=(0, len(units)),
             keep_latest_unit=False,
         )

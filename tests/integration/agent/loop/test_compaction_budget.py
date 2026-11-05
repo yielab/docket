@@ -10,7 +10,6 @@ import pytest
 from tests.support.loop_harness import (
     ScriptedBackend,
     _final,
-    _SizedBackend,
     _tool_call_response,
     _truncated,
 )
@@ -36,6 +35,29 @@ from docket.kernel.home import current_home
 from docket.platform import read_json
 
 SUBJECT = "docket.agent.loop"
+
+# A window the history below does not fit, so the first task request is compacted: the oldest
+# units are summarized, in rounds whose prompts stay inside window - reserve - 16.
+_NARROW_WINDOW = _loop.LoopConfig(context_window_tokens=700, max_tokens=100)
+
+
+def _append_history_that_does_not_fit(session_key: str) -> list[dict[str, object]]:
+    """Eight user messages of about 105 tokens each; returns them as stored, for byte comparison."""
+    append_session_messages(
+        session_key,
+        [ChatMessage(role="user", content=f"old-{n} " * 60) for n in range(8)],
+    )
+    return [message.model_dump(by_alias=True) for message in load_session(session_key).messages]
+
+
+def _assert_history_untouched(
+    session_key: str, original_messages: list[dict[str, object]], task: str
+) -> None:
+    """A failed summary left the earlier history as it was; only the task message was appended."""
+    stored = load_session(session_key).messages
+    assert [message.model_dump(by_alias=True) for message in stored[:-1]] == original_messages
+    assert stored[-1].content == task
+    assert not (_session._session_path(session_key, None).parent / "compactions").exists()
 
 
 class TestLiveSessionCompaction:
@@ -110,11 +132,10 @@ class TestLiveSessionCompaction:
         assert backend.estimate_calls == 3
         assert backend.complete_calls == 0
 
-    def test_over_budget_history_is_compacted_before_task_completion(
+    def test_a_history_whose_request_does_not_fit_is_compacted_before_the_task_call(
         self,
         registry: ToolRegistry,
         ctx: ToolContext,
-        monkeypatch: pytest.MonkeyPatch,
         real_tracer_except: Callable[..., None],
     ) -> None:
         session_key = "agent:demo-agent:demo"
@@ -122,12 +143,13 @@ class TestLiveSessionCompaction:
         append_session_messages(
             session_key,
             [
-                ChatMessage(role="user", content="old context " * 100),
+                ChatMessage(role="user", content="old context " * 25),
                 assistant("", tool_calls=[call]),
                 ChatMessage(
                     role="tool", content="old result", tool_call_id=call.id, name=call.name
                 ),
-                ChatMessage(role="user", content="recent context"),
+                ChatMessage(role="user", content="middle context " * 40),
+                ChatMessage(role="user", content="recent context " * 100),
             ],
         )
         events: list[tuple[str, dict[str, object]]] = []
@@ -158,17 +180,20 @@ class TestLiveSessionCompaction:
             ctx,
             session_key,
             "new request",
-            config=_loop.LoopConfig(history_budget_tokens=1),
+            config=_loop.LoopConfig(context_window_tokens=600, max_tokens=60),
         )
 
-        assert result.ok
+        assert result.ok, result.error
         assert len(backend.calls) == 2
         assert len(backend.calls[0]) == 1
         assert backend.calls[0][0].role == "user"
         assert backend.tool_specs[0] == []
         assert backend.tool_specs[1]
         assert "old context" in backend.calls[0][0].content
+        assert "middle context" in backend.calls[0][0].content
+        assert "recent context" not in backend.calls[0][0].content
         assert any("old decision preserved" in m.content for m in backend.calls[1])
+        assert any("recent context" in m.content for m in backend.calls[1])
         stored = load_session(session_key)
         stored_messages = _session.load_messages(session_key)
         assert not _session_units.find_orphaned_tool_messages(stored_messages)
@@ -185,26 +210,26 @@ class TestLiveSessionCompaction:
         )
         assert "summary" not in compaction_events[0]
         assert compaction_events[0]["record"] == "compactions/1.json"
-        assert compaction_events[0]["summarizedRange"] == [0, 3]
+        assert compaction_events[0]["summarizedRange"] == [0, 4]
         assert re.fullmatch(r"[0-9a-f]{64}", str(compaction_events[0]["promptSha256"]))
         record = read_json(_session._session_path(session_key, None).parent / "compactions/1.json")
         assert record["promptSha256"] == compaction_events[0]["promptSha256"]
-        assert record["range"] == [0, 3]
-        assert [m["role"] for m in record["replaced"]] == ["user", "assistant", "tool"]
+        assert record["range"] == [0, 4]
+        assert [m["role"] for m in record["replaced"]] == ["user", "assistant", "tool", "user"]
         assert backend.calls[1][0].role == "user"
         assert backend.calls[1][0].content.startswith("[compacted summary of ")
+        assert [m.content for m in backend.calls[1][-1:]] == ["new request"]
 
     def test_live_path_aggregates_usage_across_bounded_summary_rounds(
         self,
         registry: ToolRegistry,
         ctx: ToolContext,
-        monkeypatch: pytest.MonkeyPatch,
         real_tracer_except: Callable[..., None],
     ) -> None:
         session_key = "agent:hierarchical:demo"
         append_session_messages(
             session_key,
-            [ChatMessage(role="user", content=f"old-{index} " * 30) for index in range(10)],
+            [ChatMessage(role="user", content=f"old-{index} " * 90) for index in range(20)],
         )
         events: list[dict[str, object]] = []
 
@@ -252,16 +277,17 @@ class TestLiveSessionCompaction:
             ctx,
             session_key,
             "new request",
-            config=_loop.LoopConfig(
-                history_budget_tokens=80,
-                summary_input_budget_tokens=250,
-            ),
+            config=_loop.LoopConfig(context_window_tokens=1_000, max_tokens=50),
         )
 
         rounds = len(backend.summary_prompts)
-        assert result.ok
+        summary_input_bound = 1_000 - 50 - 16
+        assert result.ok, result.error
         assert rounds > 1
-        assert all(_ports.estimate_tokens(prompt) <= 250 for prompt in backend.summary_prompts)
+        assert all(
+            _ports.estimate_tokens(prompt) <= summary_input_bound
+            for prompt in backend.summary_prompts
+        )
         assert result.usage == TokenUsage(
             input_tokens=rounds * 10 + 5,
             output_tokens=rounds * 2 + 1,
@@ -269,8 +295,10 @@ class TestLiveSessionCompaction:
         stored = load_session(session_key)
         assert stored.usage.input_tokens == result.usage.input_tokens
         assert stored.usage.output_tokens == result.usage.output_tokens
-        assert events[0]["summaryRounds"] == rounds
-        assert events[0]["maxSummaryPromptEstimatedTokens"] <= 250
+        assert sum(int(event["summaryRounds"]) for event in events) == rounds
+        assert all(
+            event["maxSummaryPromptEstimatedTokens"] <= summary_input_bound for event in events
+        )
 
     def test_successive_compaction_preflights_include_prior_summary_usage(
         self, registry: ToolRegistry, ctx: ToolContext
@@ -285,7 +313,7 @@ class TestLiveSessionCompaction:
         ]
 
         class _Backend:
-            context_window_tokens = 1_000
+            context_window_tokens = 300
             max_output_tokens = 10
 
             def __init__(self) -> None:
@@ -299,7 +327,9 @@ class TestLiveSessionCompaction:
                 max_tokens: int | None = None,
                 temperature: float | None = None,
             ) -> int:
-                return 10
+                if len(messages) == 1 and "compacting durable turn history" in messages[0].content:
+                    return 10
+                return 900
 
             def complete(
                 self,
@@ -317,7 +347,7 @@ class TestLiveSessionCompaction:
                 self.summary_prompts.append(messages[0].content)
                 return _final(
                     f"bounded summary {len(self.summary_prompts)}",
-                    TokenUsage(input_tokens=25, output_tokens=5),
+                    TokenUsage(input_tokens=480, output_tokens=20),
                 )
 
         backend = _Backend()
@@ -326,25 +356,21 @@ class TestLiveSessionCompaction:
             registry,
             ctx,
             session_key,
-            "must not be appended",
-            config=_loop.LoopConfig(
-                token_budget=70,
-                max_tokens=10,
-                history_budget_tokens=80,
-                summary_input_budget_tokens=250,
-            ),
+            "task request that does not fit",
+            config=_loop.LoopConfig(token_budget=1_000, max_tokens=10),
         )
 
         assert not result.ok
         assert result.stop_reason == "token_budget"
-        assert result.usage.total_tokens == 60
+        assert result.usage.total_tokens == 1_000
         assert len(backend.summary_prompts) == 2
         stored = load_session(session_key)
         assert [
-            message.model_dump(by_alias=True) for message in stored.messages
+            message.model_dump(by_alias=True) for message in stored.messages[:-1]
         ] == original_messages
-        assert stored.usage.input_tokens == 50
-        assert stored.usage.output_tokens == 10
+        assert stored.messages[-1].content == "task request that does not fit"
+        assert stored.usage.input_tokens == 960
+        assert stored.usage.output_tokens == 40
         tracefile = (
             current_home().traces_dir / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
         )
@@ -359,14 +385,13 @@ class TestLiveSessionCompaction:
         assert records[-1]["event_type"] == "session_compaction"
         assert records[-1]["payload"]["status"] == "failed"
 
-    def test_no_op_uses_one_backend_call_and_emits_bounded_trace(
+    def test_a_history_that_fits_makes_no_compaction_event(
         self,
         registry: ToolRegistry,
         ctx: ToolContext,
-        monkeypatch: pytest.MonkeyPatch,
         real_tracer_except: Callable[..., None],
     ) -> None:
-        events: list[dict[str, object]] = []
+        events: list[str] = []
 
         def _trace(
             project: str,
@@ -377,46 +402,39 @@ class TestLiveSessionCompaction:
             *args: object,
             **kwargs: object,
         ) -> str:
-            if event_type == "session_compaction":
-                events.append(json.loads(payload))
+            events.append(event_type)
             return "written"
 
         real_tracer_except(trace_event=_trace)
-        backend = ScriptedBackend([_final("done")])
-        result = _loop.run_agent_turn(backend, registry, ctx, "agent:demo-agent:demo", "hello")
-
-        assert result.ok
-        assert len(backend.calls) == 1
-        assert events == [
-            {
-                "status": "no_op",
-                "beforeMessageCount": 0,
-                "afterMessageCount": 0,
-                "beforeEstimatedTokens": 0,
-                "afterEstimatedTokens": 0,
-                "groupsSummarized": 0,
-                "summaryRounds": 0,
-                "maxSummaryPromptEstimatedTokens": 0,
-            }
-        ]
-
-    def test_summary_failure_aborts_turn_and_preserves_history_bytes(
-        self,
-        registry: ToolRegistry,
-        ctx: ToolContext,
-        monkeypatch: pytest.MonkeyPatch,
-        real_tracer_except: Callable[..., None],
-    ) -> None:
         session_key = "agent:demo-agent:demo"
         append_session_messages(
             session_key,
-            [
-                ChatMessage(role="user", content="old " * 200),
-                ChatMessage(role="user", content="keep"),
-            ],
+            [ChatMessage(role="user", content="earlier ask " * 20), assistant("earlier answer")],
         )
-        path = _session._session_path(session_key, None)
-        before = path.read_bytes()
+        backend = ScriptedBackend([_final("done")])
+        result = _loop.run_agent_turn(
+            backend,
+            registry,
+            ctx,
+            session_key,
+            "hello",
+            config=_loop.LoopConfig(context_window_tokens=8_000, max_tokens=500),
+        )
+
+        assert result.ok
+        assert len(backend.calls) == 1
+        assert backend.tool_specs[0]
+        assert "session_compaction" not in events
+        assert not (_session._session_path(session_key, None).parent / "compactions").exists()
+
+    def test_summary_failure_aborts_turn_and_preserves_history(
+        self,
+        registry: ToolRegistry,
+        ctx: ToolContext,
+        real_tracer_except: Callable[..., None],
+    ) -> None:
+        session_key = "agent:demo-agent:demo"
+        original_messages = _append_history_that_does_not_fit(session_key)
         events: list[dict[str, object]] = []
 
         def _trace(
@@ -441,40 +459,30 @@ class TestLiveSessionCompaction:
             registry,
             ctx,
             session_key,
-            "must not be appended",
-            config=_loop.LoopConfig(history_budget_tokens=1),
+            "task request",
+            config=_NARROW_WINDOW,
         )
 
         assert not result.ok
         assert result.stop_reason == "compaction_failed"
         assert result.failure_kind == "timeout"
         assert len(backend.calls) == 1
-        assert path.read_bytes() == before
+        _assert_history_untouched(session_key, original_messages, "task request")
         assert events[0]["status"] == "failed"
 
     def test_truncated_summary_is_never_accepted_with_budget_remaining(
         self, registry: ToolRegistry, ctx: ToolContext
     ) -> None:
         session_key = "agent:summary-truncated:demo"
-        append_session_messages(
-            session_key,
-            [
-                ChatMessage(role="user", content="old " * 200),
-                ChatMessage(role="user", content="keep verbatim"),
-            ],
-        )
-        original_messages = [
-            message.model_dump(by_alias=True) for message in load_session(session_key).messages
-        ]
-        backend = _SizedBackend(
+        original_messages = _append_history_that_does_not_fit(session_key)
+        backend = ScriptedBackend(
             [
                 _truncated(
                     "partial summary must never become durable",
                     usage=TokenUsage(input_tokens=4, output_tokens=1),
                 ),
                 _final("task completion must not be called"),
-            ],
-            estimate=5,
+            ]
         )
 
         result = _loop.run_agent_turn(
@@ -482,8 +490,10 @@ class TestLiveSessionCompaction:
             registry,
             ctx,
             session_key,
-            "must not be appended",
-            config=_loop.LoopConfig(history_budget_tokens=1, token_budget=100, max_tokens=5),
+            "task request",
+            config=_loop.LoopConfig(
+                context_window_tokens=700, max_tokens=100, token_budget=100_000
+            ),
         )
 
         assert not result.ok
@@ -491,10 +501,8 @@ class TestLiveSessionCompaction:
         assert result.failure_kind == "invalid_output"
         assert result.usage == TokenUsage(input_tokens=4, output_tokens=1)
         assert len(backend.calls) == 1
+        _assert_history_untouched(session_key, original_messages, "task request")
         stored = load_session(session_key)
-        assert [
-            message.model_dump(by_alias=True) for message in stored.messages
-        ] == original_messages
         assert stored.usage.input_tokens == 4
         assert stored.usage.output_tokens == 1
 
@@ -515,17 +523,8 @@ class TestLiveSessionCompaction:
         expected_failure_kind: str,
     ) -> None:
         session_key = f"agent:summary-precedence-{case}:demo"
-        append_session_messages(
-            session_key,
-            [
-                ChatMessage(role="user", content="old " * 200),
-                ChatMessage(role="user", content="keep verbatim"),
-            ],
-        )
-        original_messages = [
-            message.model_dump(by_alias=True) for message in load_session(session_key).messages
-        ]
-        usage = TokenUsage(input_tokens=25, output_tokens=5)
+        original_messages = _append_history_that_does_not_fit(session_key)
+        usage = TokenUsage(input_tokens=2_500, output_tokens=500)
         if case == "backend_timeout":
             response = ChatResponse(
                 ok=False,
@@ -539,15 +538,15 @@ class TestLiveSessionCompaction:
             response = _final("   ", usage)
         else:
             response = _tool_call_response("summary-tool", "echo", '{"text": "no"}', usage)
-        backend = _SizedBackend([response], estimate=5)
+        backend = ScriptedBackend([response])
 
         result = _loop.run_agent_turn(
             backend,
             registry,
             ctx,
             session_key,
-            "must not be appended",
-            config=_loop.LoopConfig(history_budget_tokens=1, token_budget=20, max_tokens=5),
+            "task request",
+            config=_loop.LoopConfig(context_window_tokens=700, max_tokens=100, token_budget=2_000),
         )
 
         assert not result.ok
@@ -555,12 +554,10 @@ class TestLiveSessionCompaction:
         assert result.failure_kind == expected_failure_kind
         assert result.usage == usage
         assert len(backend.calls) == 1
+        _assert_history_untouched(session_key, original_messages, "task request")
         stored = load_session(session_key)
-        assert [
-            message.model_dump(by_alias=True) for message in stored.messages
-        ] == original_messages
-        assert stored.usage.input_tokens == 25
-        assert stored.usage.output_tokens == 5
+        assert stored.usage.input_tokens == 2_500
+        assert stored.usage.output_tokens == 500
         assert stored.usage.turns == 1
 
 

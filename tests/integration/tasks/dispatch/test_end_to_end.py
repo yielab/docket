@@ -441,7 +441,8 @@ class TestEndToEnd:
             trace_events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
             assert trace_events[0]["session_id"] == f"agent:demo:{task.id}"
             assert all(e["session_id"] == f"agent:demo:{task.id}" for e in trace_events)
-            assert sum(e["event_type"] == "session_compaction" for e in trace_events) == 2
+            # Nothing compacts a session at the start of a turn; a fitting request leaves no event.
+            assert not any(e["event_type"] == "session_compaction" for e in trace_events)
             assert {path.name for path in (home / "state" / "traces").iterdir()} == {"demo"}
 
     def test_step_history_key_encodes_custom_step_ids_without_collisions(self) -> None:

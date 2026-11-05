@@ -7,7 +7,6 @@ from pathlib import Path
 from string import Template
 from typing import Any
 
-from docket.agent import context as _context
 from docket.agent import ports as _ports
 from docket.agent.ports import ChatMessage, FailureKind
 from docket.agent.session import (
@@ -568,25 +567,23 @@ def _plan_and_apply_compaction(
 def compact_session(
     session_key: str,
     *,
-    role: str,
     agent_id: str,
     summarizer: SessionSummaryRunner,
     prompt_text: str,
     prompt_sha256: str,
+    budget_tokens: int,
+    summary_input_budget_tokens: int,
     summarizer_session_key: str | None = None,
-    budget_tokens: int | None = None,
-    summary_input_budget_tokens: int | None = None,
     compact_range: tuple[int, int] | None = None,
     keep_latest_unit: bool = True,
     timeout: int | None = None,
     label: str = "",
-    project: str = "",
     now: str | None = None,
     sessions_dir: Path | None = None,
 ) -> CompactionResult:
-    """Compact *session_key*'s history in place if over budget (locking/range/nesting rules:
-    session-history.spec.md). Fail-closed: any summarisation failure, or an orphaned tool
-    call/result, leaves the record unchanged and returns ``ok=False`` -- never a partial write."""
+    """Compact *session_key*'s history in place to *budget_tokens* (``0`` on a range: the whole
+    range), each summarizer prompt within *summary_input_budget_tokens* (session-history.spec.md).
+    Fail-closed: any failure leaves the record unchanged and returns ``ok=False``."""
     summary_session_key = summarizer_session_key or f"{session_key}:compaction"
     if summary_session_key == session_key:
         return CompactionResult(
@@ -607,11 +604,6 @@ def compact_session(
             failure_kind="invalid_output",
         )
 
-    role_budget = _context.budget_for_role(role, project=project)
-    budget = budget_tokens if budget_tokens is not None else role_budget
-    summary_input_budget = (
-        summary_input_budget_tokens if summary_input_budget_tokens is not None else role_budget
-    )
     turn_timeout = timeout if timeout is not None else current_home().distill_timeout_s
     stamp = now or _clock.stamp()
     display_label = label or session_key
@@ -629,8 +621,8 @@ def compact_session(
             stamp=stamp,
             compact_range=compact_range,
             keep_latest_unit=keep_latest_unit,
-            budget=budget,
-            summary_input_budget=summary_input_budget,
+            budget=budget_tokens,
+            summary_input_budget=summary_input_budget_tokens,
             turn_timeout=turn_timeout,
             prompt_text=prompt_text,
             prompt_sha256=prompt_sha256,

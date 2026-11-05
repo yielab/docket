@@ -103,12 +103,11 @@ the same fail-closed posture ``agent/session.py``'s compaction and
 
 ## Durability: persisted per iteration, not only at the end
 
-The incoming user message is appended to the session before the turn's own
-first model call -- but ``apply_initial_history_compaction`` runs first, and
-when it decides compaction is needed its summariser (``summarize_without_reentry``)
-makes a model call of its own to produce the summary, so "before any model
-call" is not quite true: at most one compaction-summary call can precede the
-append. Each iteration that produces tool calls appends the
+The incoming user message is appended to the session before any model call of
+the turn. A session is compacted only when a task request does not fit the
+window (``TurnCompaction.fit_task_request``), around that persisted message,
+and its summariser (``summarize_without_reentry``) is the one model call that
+can precede a task request. Each iteration that produces tool calls appends the
 assistant message *and every tool result answering it* in one
 ``agent.session.append_messages`` call — one atomic unit, matching
 ``agent/session.py``'s own atomicity contract, and never split across two
@@ -645,10 +644,6 @@ def run_agent_turn(
         trace_session_key=trace_session_key,
         trace_task_id=trace_task_id,
     )
-
-    initial_compaction_stop = state.compaction.apply_initial_history_compaction()
-    if initial_compaction_stop is not None:
-        return initial_compaction_stop
 
     state.compaction.seed_task_message(message)
 

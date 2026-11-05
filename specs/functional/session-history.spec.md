@@ -1,6 +1,6 @@
 # Session History Specification
 
-**Version**: 1.19.0
+**Version**: 1.20.0
 **Status**: Implemented and live. The agent loop loads, compacts and appends this durable history
 on the production `DocketDriver` path; every pod-dispatch step has its own history key.
 **Last Updated**: 2026-11-05
@@ -35,9 +35,9 @@ This specification does NOT cover:
   `ChatMessage`/`ToolCall`/`TokenUsage` shapes they define
 - The hop-to-hop context compiler used by the pod-dispatch pipeline (`compile_artifact`,
   `HandoffArtifact.DROP_ORDER`, see `pod-dispatch.spec.md`'s "Bounded hop prompts"); session
-  compaction reuses its token-estimation and per-role budget primitives (`estimate_tokens`,
-  `budget_for_role`) but has its own compaction strategy, documented below, because a list of chat
-  messages is not a `HandoffArtifact`
+  compaction reuses its token-estimation primitive (`estimate_tokens`) but has its own compaction
+  strategy, documented below, because a list of chat messages is not a `HandoffArtifact`; the
+  role's carryover `token_budget` (`budget_for_role`) sizes a hop's handoff and nothing here
 - Pod memory, a separate store with its own rules (`workspace-structure.spec.md` "Pod memory").
   Compaction follows the fail-closed call pattern of decision D-18
 
@@ -101,15 +101,14 @@ This specification does NOT cover:
 
 ### Budgeting honesty
 
-14. A session's compaction budget **MUST** be resolved via the same per-role token-budget
-    mechanism the hop-to-hop context compiler uses, not a second, independently-tunable table.
-    `budget_for_role` **MAY** additionally accept a resolved model context window to
-    compute a documented window-share default for a role with no positive archetype `token_budget`
-    (`resolve_window_share_tokens`, see `agent-loop.spec.md`'s requirement 30); neither
-    `compact_session` nor the agent loop passes that window, so a session's default compaction
-    budget **MUST** be exactly `budget_for_role(role, project=project)` with no window argument,
-    byte-for-byte unchanged by this option existing. A caller-supplied `budget_tokens` (the loop's
-    configured history budget, or a request-fit target) replaces it.
+14. A session is compacted for one reason: a task request did not fit the receiving model's
+    window (`agent-loop.spec.md` requirements 32 and 47). Nothing compacts it at the start of a
+    turn and no profile, role or setting sizes its history. `compact_session` takes its two
+    budgets from its caller, never from a role: `budget_tokens`, the size the range is planned to
+    (`0` on a range: the whole range, requirement 28), and `summary_input_budget_tokens`, the most
+    one summarizer prompt may estimate to; the live caller (`TurnCompaction.run_compaction`) passes
+    the registered window less the output reserve, so a summarizer request is bounded like any
+    other request to that model.
 15. Token counts used to decide whether to compact **MUST** be computed via the existing
     bytes/divisor approximation and **MUST NOT** be described as an exact count.
 16. Measured usage (real counts from the completion endpoint) and estimated size (the
@@ -320,13 +319,12 @@ def compact_session(
     prompt_text: str,                          # the resolved compaction prompt; uses ${turns}, may use ${label}
     prompt_sha256: str,                        # its hash, reported on the result
     summarizer_session_key: str | None = None, # default: derived key distinct from session_key
-    budget_tokens: int | None = None,          # default: context.budget_for_role(role)
-    summary_input_budget_tokens: int | None = None, # default: context.budget_for_role(role)
+    budget_tokens: int,                        # the size the range is planned to; 0 on a range: the whole range
+    summary_input_budget_tokens: int,          # the most one summarizer prompt may estimate to
     compact_range: tuple[int, int] | None = None, # half-open; boundaries must be atomic
     keep_latest_unit: bool = True, # False requires a non-empty unselected anchor
     timeout: int | None = None,               # default: the DISTILL_TIMEOUT_S setting
     label: str = "",
-    project: str = "",                         # resolves the role budget in the pod's registry
     now: str | None = None,
     sessions_dir: Path | None = None,
 ) -> CompactionResult: ...
@@ -467,7 +465,7 @@ result = sess.compact_session(
   `find_unanswered_tool_calls`, `plan_compaction`
 - `src/docket/agent/session_compaction.py`: `compact_session`, `CompactionResult`, the compaction
   record (requirement 28a)
-- `src/docket/agent/context.py`: `estimate_tokens`, `budget_for_role`
+- `src/docket/agent/context.py`: `estimate_tokens`
 - `src/docket/agent/loop_compaction.py`: the live caller (`run_compaction`,
   `summarize_without_reentry`, the request builder that applies `condense_history`)
 - `src/docket/agent/ports.py`: `ChatMessage`, `ToolCall`, `TokenUsage` (the Examples import `docket.agent.session` and `docket.agent.ports`)

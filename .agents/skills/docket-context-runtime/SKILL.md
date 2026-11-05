@@ -66,8 +66,8 @@ Parallel context work is safe only when the lanes have independent history/trace
 not touch the same compiler, loop, session, handoff, budget, or live endpoint state.
 
 Preflight every imminent model request, including compaction calls and later tool-loop iterations;
-include advertised tools and an output reserve. A pre-turn compaction does not bound messages added
-during the active turn. When reduction is required, preserve assistant tool calls with every
+include advertised tools and an output reserve. Nothing compacts a session at the start of a turn: a
+request that does not fit the window is reduced then, around the task message. When reduction is required, preserve assistant tool calls with every
 answering result as atomic units keyed by tool-call ID, reload the accepted compacted state, and
 retry the fit check. Do not compact the same stored revision repeatedly: after one accepted summary
 and recheck, use another bounded reduction or fail locally. If the irreducible request cannot fit,

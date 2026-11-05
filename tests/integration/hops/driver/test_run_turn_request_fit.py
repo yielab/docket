@@ -33,8 +33,9 @@ class TestRunTurn:
     def test_request_fit_rechecks_an_append_completed_during_the_fit_check(self) -> None:
         _write_meta("fit-refresh-agent")
         session_key = "agent:fit-refresh-agent:default"
-        task_message = "CONCURRENT_REVISION " * 600
-        original = "ORIGINAL_SUFFIX " * 600
+        # Sized so each unit and the compaction prompt fit the summarizer's 1,000-token window.
+        task_message = "CONCURRENT_REVISION " * 100
+        original = "ORIGINAL_SUFFIX " * 120
         dispatches = 0
         registry = ToolRegistry()
 
@@ -220,9 +221,10 @@ class TestRunTurn:
     def test_request_fit_may_compact_suffix_then_an_independent_prefix(self) -> None:
         _write_meta("two-segment-agent")
         session_key = "agent:two-segment-agent:default"
-        prefix_drop = "PREFIX_DROP_SENTINEL " * 250
-        prefix_anchor = "PREFIX_ANCHOR " * 250
-        suffix = "SUFFIX_SENTINEL " * 500
+        # Sized so each unit and the compaction prompt fit the summarizer's 1,000-token window.
+        prefix_drop = "PREFIX_DROP_SENTINEL " * 100
+        prefix_anchor = "PREFIX_ANCHOR " * 100
+        suffix = "SUFFIX_SENTINEL " * 120
         _session.append_messages(
             session_key,
             [

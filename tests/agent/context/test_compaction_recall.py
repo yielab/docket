@@ -87,12 +87,12 @@ def test_the_summary_names_the_decision_the_fix_the_file_and_the_open_item() -> 
 
     result = compact_session(
         _KEY,
-        role="implementer",
         agent_id="recall",
         summarizer=summarizer,
         prompt_text=prompt.text,
         prompt_sha256=prompt.sha256,
         budget_tokens=1,
+        summary_input_budget_tokens=24_000,
         timeout=300,
     )
 

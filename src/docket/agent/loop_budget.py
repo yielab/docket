@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import math
 
-from docket.agent.loop_request import _estimate_input_tokens, _usage_delta
+from docket.agent.loop_request import _estimate_input_tokens, _fallback_input_estimate, _usage_delta
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_budget_notice, _trace_request_fit
 from docket.agent.loop_types import AgentLoopResult, StopReason, limit_origin
-from docket.agent.ports import ChatBackend, ChatMessage, ChatResponse, ToolSpec
+from docket.agent.ports import ChatBackend, ChatMessage, ChatResponse, ToolSpec, user
 
 _TOKEN_BUDGET_ERROR_PREFIX = "token budget:"
 # The fewest output tokens a budget-clamped request may keep (agent-loop requirement 46).
@@ -127,6 +127,17 @@ class TurnBudget:
             task_id=self.state.trace_task_id,
         )
         return estimated_input, error
+
+    def request_text_budget(self) -> int:
+        """The most text a one-message tool-free request may carry and pass the fit preflight: the
+        window less the output reserve, under the calibration, less the scaffold of one message as
+        docket's own estimate counts it. The summarizer's prompt is bounded by it."""
+        assert self.state.context_window is not None
+        scaffold = _fallback_input_estimate(
+            [user("")], [], self.state.request_max_tokens, self.state.cfg.temperature
+        )
+        room = (self.state.context_window - self.state.output_reserve) / self.calibration
+        return max(1, math.floor(room) - scaffold)
 
     def effective_measured_tokens(self) -> int:
         pending = _usage_delta(self.state.summary_usage, self.state.accounted_summary_usage)

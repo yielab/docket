@@ -212,12 +212,12 @@ class TestPlanCompactionAtomicityBoundary:
         budget = _tok(m4) + _tok(m3) + _tok(m2)
         result = _session_compaction.compact_session(
             "agent:x:default",
-            role="lead",
             agent_id="x-lead",
             summarizer=_summarizing_driver(),
             prompt_text=_PROMPT,
             prompt_sha256=_PROMPT_SHA,
             budget_tokens=budget,
+            summary_input_budget_tokens=6_000,
         )
 
         assert result.ok

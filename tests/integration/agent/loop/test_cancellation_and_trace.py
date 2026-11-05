@@ -236,9 +236,12 @@ class TestCooperativeRunCancellation:
         append_session_messages(
             session_key,
             [
-                ChatMessage(role="user", content="old context " * 100),
-                ChatMessage(role="assistant", content="old complete answer"),
-                ChatMessage(role="user", content="recent context"),
+                message
+                for n in range(6)
+                for message in (
+                    ChatMessage(role="user", content=f"old context {n} " * 40),
+                    ChatMessage(role="assistant", content="old complete answer"),
+                )
             ],
         )
         before = load_session(session_key)
@@ -254,7 +257,7 @@ class TestCooperativeRunCancellation:
             ctx,
             session_key,
             "new request",
-            config=_loop.LoopConfig(history_budget_tokens=1),
+            config=_loop.LoopConfig(context_window_tokens=700, max_tokens=100),
         )
         try:
             assert backend.entered.wait(timeout=5)
@@ -271,7 +274,9 @@ class TestCooperativeRunCancellation:
         assert results[0].failure_kind == "run_cancelled"
         assert len(backend.calls) == 1
         after = load_session(session_key)
-        assert after.messages == before.messages
+        # The task message is persisted before any model call; the rest is as it was.
+        assert after.messages[:-1] == before.messages
+        assert after.messages[-1].content == "new request"
         assert not any("cancelled summary" in message.content for message in after.messages)
 
     def test_cancellation_after_concurrent_approval_grant_never_runs_handler(
@@ -472,7 +477,6 @@ class TestTracing:
         records = [json.loads(line) for line in tracefile.read_text().splitlines()]
         assert all(record["session_id"] == trace_key for record in records)
         assert {record["event_type"] for record in records} >= {
-            "session_compaction",
             "tool_call",
             "tool_result",
         }
