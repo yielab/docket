@@ -64,6 +64,13 @@ def _tool_call_response(
     )
 
 
+def _echo_rounds(count: int) -> list[ChatResponse]:
+    return [
+        _tool_call_response(f"c{n}", "echo", json.dumps({"text": f"round {n}"}))
+        for n in range(count)
+    ]
+
+
 def _truncated(
     content: str = "",
     tool_calls: Sequence[ToolCall] = (),

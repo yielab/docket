@@ -587,7 +587,7 @@ from `main`.
 
 ### P66-1 — The one steering line docket stores is sent with the request instead
 
-**Status:** TODO (after P68-1: both amend `agent-loop.spec.md`) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P68-1
+**Status:** DONE 2026-11-05 (`256e3ec6`; the rounds-left figure in `budget_notice` counts the round in flight, so P66-6, which edits `loop_budget.py`, must keep `max_iterations - iteration + 1`; the notice is added after `fit_task_request` and the token preflight, which do not count its ~50 tokens: P66-2's fit loop) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P68-1
 
 - **Trigger:** the audit §6.6: the budget notice of requirement 108 is written into the last tool result that
   `dispatch_tool_batch` persists (`agent/loop_steps.py` ~142-160), so it lands in `session.json` and in every
@@ -708,7 +708,7 @@ from `main`.
 
 ### P66-4 — The compaction prompt is a shipped prompt document with sections, reached through the port
 
-**Status:** TODO (after P68-1: both edit `session_compaction.py` and `session-history.spec.md`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** P68-1
+**Status:** DONE 2026-11-05 (`28934292`; the recall test `tests/agent/context/test_compaction_recall.py` is written and runs at phase close; `compaction_prompt(role, project)` has no `RepoView`, so a repository override is unreachable from the live compaction path until a card passes a view; `prompt_sha256` is on `CompactionResult`, P66-3 puts it on the event) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** P68-1
 
 - **Trigger:** the audit §6.3: `_summarization_message` (`agent/session_compaction.py` ~38) is a fixed
   string asking for "a concise summary"; no plantilla, no scope override, no hash on the trace, no recall
@@ -756,7 +756,7 @@ from `main`.
 
 ### P66-5 — Prose that says what the code no longer does
 
-**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** docs · **After:** —
+**Status:** DONE 2026-11-05 (`d379a7e3`) · **Size:** S · **Model:** Haiku · **Kind:** docs · **After:** —
 
 - **Trigger:** the audit §6.12, verified with `rg`: `agent/context.py`'s docstrings say the drop order is
   `diff_ref -> files_changed -> verdict` (`kernel/handoff.py` :231 starts at `diff` and includes

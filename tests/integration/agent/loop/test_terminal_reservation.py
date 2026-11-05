@@ -8,6 +8,7 @@ from collections.abc import Sequence
 import pytest
 from tests.support.loop_harness import (
     ScriptedBackend,
+    _echo_rounds,
     _final,
     _tool_call_response,
     _truncated,
@@ -533,13 +534,6 @@ class TestTerminalResponseReservation:
 
 
 _NOTICE = "[docket] This step's budget is running out:"
-
-
-def _echo_rounds(count: int) -> list[ChatResponse]:
-    return [
-        _tool_call_response(f"c{n}", "echo", json.dumps({"text": f"round {n}"}))
-        for n in range(count)
-    ]
 
 
 class TestTheBudgetNotice:

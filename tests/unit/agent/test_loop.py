@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 from tests.support import llm as _support_llm
-from tests.support.loop_harness import ScriptedBackend, _final, _tool_call_response
+from tests.support.loop_harness import ScriptedBackend, _echo_rounds, _final
 
 from docket.agent import loop as _loop
 from docket.agent.ports import (
@@ -248,13 +248,6 @@ class _TimedBackend(ScriptedBackend):
         self.timeouts.append(kwargs["timeout"])
         self.clock[0] += self.step
         return super().complete(messages, **kwargs)
-
-
-def _echo_rounds(count: int) -> list[ChatResponse]:
-    return [
-        _tool_call_response(f"c{n}", "echo", json.dumps({"text": f"round {n}"}))
-        for n in range(count)
-    ]
 
 
 def _stored(session_key: str) -> list[ChatMessage]:
