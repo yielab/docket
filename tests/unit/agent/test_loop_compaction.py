@@ -409,6 +409,45 @@ class TestTheRangeAReductionSummarizes:
 
         assert covering_range(durable, projected, (5, len(durable)), need=1) == (5, 7)
 
+    def test_it_frees_the_headroom_beyond_the_need_when_the_range_holds_it(self) -> None:
+        durable = self._history(6)
+        projected = self._projection(durable)
+        bounds = (1, len(durable))
+
+        bare = covering_range(durable, projected, bounds, need=1)
+        roomy = covering_range(durable, projected, bounds, need=1, headroom=300)
+
+        assert bare == (1, 3)
+        assert roomy == covering_range(durable, projected, bounds, need=301)
+        assert roomy is not None and roomy[1] > bare[1]
+
+    def test_it_takes_the_whole_range_when_only_the_headroom_is_out_of_reach(self) -> None:
+        durable = self._history(6)
+        projected = self._projection(durable)
+        bounds = (1, len(durable))
+
+        assert covering_range(durable, projected, bounds, need=1, headroom=2_000) == bounds
+        assert covering_range(durable, projected, bounds, need=2_000, headroom=1) is None
+
+    def test_it_counts_each_unit_as_scaled_by_the_calibration(self) -> None:
+        durable = self._history(6)
+        projected = self._projection(durable)
+        bounds = (1, len(durable))
+
+        plain = covering_range(durable, projected, bounds, need=300)
+        scaled = covering_range(durable, projected, bounds, need=300, calibration=2.0)
+
+        assert plain is not None and scaled is not None
+        assert scaled[1] < plain[1]
+
+    def test_it_extends_a_range_of_earlier_summaries_to_the_first_raw_unit(self) -> None:
+        summary = user("[compacted summary of 2 earlier turn(s), 4 message(s)]\n" + "s" * 4_000)
+        durable = [user("the task"), summary, *self._history(3)[1:]]
+        bounds = (1, len(durable))
+
+        assert covering_range(durable, durable, bounds, need=1) == (1, 4)
+        assert covering_range(durable, durable, (1, 2), need=1) is None
+
 
 class TestAResearchTurnOnAWideWindow:
     """A ten-iteration research turn replayed iteration by iteration through the projection."""

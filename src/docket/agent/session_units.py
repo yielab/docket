@@ -9,6 +9,15 @@ from docket.agent.ports import ChatMessage
 _COMPACTED_SUMMARY_PREFIX = "[compacted summary of "
 
 
+def is_compacted_summary_unit(unit: Sequence[ChatMessage]) -> bool:
+    """Whether *unit* is one earlier compaction summary (a ``user`` message with the prefix)."""
+    return (
+        len(unit) == 1
+        and unit[0].role == "user"
+        and unit[0].content.startswith(_COMPACTED_SUMMARY_PREFIX)
+    )
+
+
 # ── atomic grouping ───────────────────────────────────────────────────────────
 
 

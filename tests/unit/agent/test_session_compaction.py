@@ -198,7 +198,7 @@ class TestTheGuardRefusesWithoutWriting:
         result = _compact(driver, budget_tokens=10, summary_input_budget_tokens=1_000)
 
         assert not result.ok
-        assert result.refused_by_guard
+        assert result.refused_by_guard and result.unit_too_large
         assert result.failure_kind == "invalid_output"
         assert prompts == []
         assert path.read_bytes() == before
@@ -212,7 +212,7 @@ class TestTheGuardRefusesWithoutWriting:
         result = _compact(driver, budget_tokens=10, summary_input_budget_tokens=1_000)
 
         assert not result.ok
-        assert result.refused_by_guard
+        assert result.refused_by_guard and not result.unit_too_large
         assert "did not reduce" in result.error
         assert path.read_bytes() == before
 
@@ -413,6 +413,36 @@ class TestACompactionLeavesARecord:
 
         assert result.ok and not result.compacted
         assert result.record == "" and result.summarized_range is None
+        assert not (_session_dir() / "compactions").exists()
+
+    def test_a_range_of_earlier_summaries_alone_runs_no_round_and_reports_none(self) -> None:
+        summary = user("[compacted summary of 2 earlier turn(s), 4 message(s)]\nold")
+        history = [user("the task"), summary, assistant("a later answer")]
+        _sess.append_messages(_KEY, history)
+        calls: list[str] = []
+
+        def _summarizer(
+            agent_id: str, key: str, message: str, timeout: int, env: dict[str, str] | None = None
+        ) -> TurnResult:
+            calls.append(message)
+            return TurnResult(True, "never wanted", {})
+
+        result = _session_compaction.compact_session(
+            _KEY,
+            agent_id="x-lead",
+            summarizer=_summarizer,
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
+            budget_tokens=0,
+            summary_input_budget_tokens=6_000,
+            compact_range=(1, 2),
+            keep_latest_unit=False,
+        )
+
+        assert result.ok and not result.compacted
+        assert calls == [] and result.summary_rounds == 0
+        assert result.record == "" and result.summarized_range is None
+        assert _sess.load_messages(_KEY) == history
         assert not (_session_dir() / "compactions").exists()
 
     def test_a_record_that_cannot_be_written_leaves_the_history_unchanged(

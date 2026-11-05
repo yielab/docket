@@ -442,12 +442,25 @@ This specification does NOT cover:
     **MUST NOT** be folded into `TokenUsage`.
 47. When a task request is estimated over-window, the loop **MUST** invoke the durable, fail-closed
     session compactor on the oldest atomic units of a candidate range whose size in the request
-    (the projection `condense_history` makes, not the stored size) covers the overflow plus a
-    32-token margin, and **MUST** have it summarize that sub-range whole. It **MUST** preserve
-    complete assistant-tool/result atomic units, reload the accepted messages, and retry the
-    estimate before transport. A range whose units together do not cover the overflow is skipped
-    as irreducible. Every compactor completion is subject to the same request preflight with
-    tools disabled.
+    covers the overflow plus headroom, and **MUST** have it summarize that sub-range whole. A
+    unit's size is what the preflight counts: the projection `condense_history` makes (not the
+    stored size), scaled by the turn's calibration (requirement 46a). The headroom is a quarter of
+    the request room (the registered window less the output reserve), so that the summary the
+    compactor writes does not leave the next round of the loop over the window again and several
+    rounds fit before the next compaction; it is a share of the window, never a token constant,
+    and there is no second margin. When the candidate range cannot reach the overflow plus the
+    headroom but its units together cover the overflow, the whole range is summarized: a reducible
+    request is never refused because the headroom is not available; likewise a range that
+    includes the headroom and that the compactor refuses (a unit no summarizer prompt carries) is
+    followed by the range that covers the overflow alone. The range **MUST** hold at
+    least one unit that is not an earlier compaction summary: summary units still count toward the
+    size and are summarized again with it, but a range made only of summaries is extended, never
+    returned. It **MUST** preserve complete assistant-tool/result atomic units, reload the
+    accepted messages, and retry the estimate before transport. A range whose units together do
+    not cover the overflow, or hold no unit but summaries, is skipped as irreducible. A compactor
+    call that ran no summarisation round is not progress (`session-history.spec.md` "Return
+    values"): the loop tries the next range. Every compactor completion is subject to the same
+    request preflight with tools disabled.
 48. If every eligible range is locally irreducible or the accepted summary plus output reserve
     still exceeds the registered window, the loop **MUST** make no task HTTP call and return
     `stop_reason="context_fit"`, `failure_kind="invalid_output"`, and an actionable error

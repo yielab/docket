@@ -8,6 +8,7 @@ A session is compacted for that one reason; nothing compacts it at the start of 
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 from docket.agent.loop_budget import _TOKEN_BUDGET_ERROR_PREFIX, TurnBudget
@@ -39,11 +40,11 @@ from docket.agent.session import (
     window_results_budget,
 )
 from docket.agent.session_compaction import CompactionResult, compact_session
-from docket.agent.session_units import group_atomic_units
+from docket.agent.session_units import group_atomic_units, is_compacted_summary_unit
 
-# Slack over the overflow when sizing what one reduction must cover: the summary's header line.
-# The summary's body is not known before the call; a request still over after it is reduced again.
-_FIT_MARGIN_TOKENS = 32
+#: The share of the request room one reduction frees beyond the overflow: the summary it writes
+#: takes room back, and a reduction that frees only the overflow is repeated by the next round.
+_FIT_HEADROOM_SHARE = 4
 
 
 def covering_range(
@@ -51,22 +52,29 @@ def covering_range(
     projected: list[ChatMessage],
     bounds: tuple[int, int],
     need: int,
+    headroom: int = 0,
+    *,
+    calibration: float = 1.0,
 ) -> tuple[int, int] | None:
-    """The oldest whole atomic units of ``durable[bounds]`` whose size in the request (``projected``,
-    index-aligned with ``durable``) adds up to at least *need* tokens, as a half-open range of
-    ``durable``; ``None`` when the whole of *bounds* does not cover it."""
+    """The oldest whole atomic units of ``durable[bounds]``, sized as the preflight sizes them
+    (``projected``, scaled by *calibration*), that cover *need* + *headroom*; else the whole of
+    *bounds* if it covers *need*. It holds a non-summary unit, else ``None``."""
     start, end = bounds
     covered = 0
     cursor = start
+    has_raw_unit = False
     for raw_unit, projected_unit in zip(
         group_atomic_units(durable[start:end]),
         group_atomic_units(projected[start:end]),
         strict=True,
     ):
-        covered += _message_tokens(projected_unit)
+        covered += math.ceil(_message_tokens(projected_unit) * calibration)
         cursor += len(raw_unit)
-        if covered >= need:
+        has_raw_unit = has_raw_unit or not is_compacted_summary_unit(raw_unit)
+        if has_raw_unit and covered >= need + headroom:
             return start, cursor
+    if has_raw_unit and covered >= need:
+        return start, cursor
     return None
 
 
@@ -454,6 +462,7 @@ class TurnCompaction:
             )
         overflow = estimated_input + self.state.output_reserve - self.state.context_window
         candidate_ranges = _build_reduction_candidates(durable, task_index, protected_segments)
+        headroom = self.budget.request_room() // _FIT_HEADROOM_SHARE
         projected, _budget = self.projected(durable)
 
         progressed = False
@@ -461,13 +470,31 @@ class TurnCompaction:
         accepted_prior_protected_count = 0
         accepted_replacement_count = 0
         accepted_size_change = 0
+        # Per candidate: the range with headroom, then (when the headroom grew it) the range that
+        # covers the overflow alone, tried only if a unit of the larger one is too large to summarize.
+        tries: list[tuple[str, int, tuple[int, int], bool]] = []
         for segment, candidate_range, prior_protected_count in candidate_ranges:
-            selected_range = covering_range(
-                durable, projected, candidate_range, overflow + _FIT_MARGIN_TOKENS
+            wanted = covering_range(
+                durable,
+                projected,
+                candidate_range,
+                overflow,
+                headroom,
+                calibration=self.budget.calibration,
             )
-            if selected_range is None:
+            if wanted is None:
                 continue
+            bare = covering_range(
+                durable, projected, candidate_range, overflow, calibration=self.budget.calibration
+            )
+            smaller = bare if bare is not None and bare != wanted else None
+            tries.append((segment, prior_protected_count, wanted, smaller is not None))
+            if smaller is not None:
+                tries.append((segment, prior_protected_count, smaller, False))
+        for segment, prior_protected_count, selected_range, retry in tries:
             fit_compaction, fit_compaction_stop_reason = self.run_compaction(selected_range)
+            if retry and fit_compaction.unit_too_large and fit_compaction_stop_reason is None:
+                continue
             if fit_compaction.refused_by_guard and fit_compaction_stop_reason is None:
                 # The summary gained nothing and the history is as it was: the request is
                 # irreducible, which is the fit stop, not a summarizer failure.

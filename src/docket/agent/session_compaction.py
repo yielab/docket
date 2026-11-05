@@ -23,6 +23,7 @@ from docket.agent.session_units import (
     find_orphaned_tool_messages,
     find_unanswered_tool_calls,
     group_atomic_units,
+    is_compacted_summary_unit,
     plan_compaction,
 )
 from docket.kernel import clock as _clock
@@ -87,14 +88,6 @@ def _summarization_message(
     return Template(prompt_text).safe_substitute(**inputs, turns=turns)
 
 
-def _is_compacted_summary_unit(unit: Sequence[ChatMessage]) -> bool:
-    return (
-        len(unit) == 1
-        and unit[0].role == "user"
-        and unit[0].content.startswith(_COMPACTED_SUMMARY_PREFIX)
-    )
-
-
 def _projected_prompt(
     prompt_text: str,
     inputs: Mapping[str, str],
@@ -146,8 +139,8 @@ def _bounded_summary_batch(
         if candidate_estimated <= input_budget_tokens:
             selected, prompt, estimated = candidate, candidate_prompt, candidate_estimated
             continue
-        if not _is_compacted_summary_unit(unit) and all(
-            _is_compacted_summary_unit(u) for u in selected
+        if not is_compacted_summary_unit(unit) and all(
+            is_compacted_summary_unit(u) for u in selected
         ):
             projected = _projected_prompt(
                 prompt_text, inputs, selected, unit, input_budget_tokens, estimate
@@ -155,7 +148,7 @@ def _bounded_summary_batch(
             if projected is not None:
                 selected, (prompt, estimated) = candidate, projected
         break
-    if all(_is_compacted_summary_unit(u) for u in selected):
+    if all(is_compacted_summary_unit(u) for u in selected):
         return [], "", 0
     return selected, prompt, estimated
 
@@ -184,6 +177,8 @@ class CompactionResult:
     error: str = ""
     failure_kind: FailureKind | None = None
     refused_by_guard: bool = False
+    #: With ``refused_by_guard``: the reason was one atomic unit no summarizer prompt carries.
+    unit_too_large: bool = False
 
 
 def _validate_compaction_range(
@@ -236,6 +231,7 @@ class _RoundOutcome:
     error: str = ""
     failure_kind: FailureKind | None = None
     refused_by_guard: bool = False
+    unit_too_large: bool = False
 
 
 def _untouched(
@@ -263,6 +259,7 @@ def _untouched(
         error=error,
         failure_kind=failure_kind,
         refused_by_guard=rounds.refused_by_guard if rounds else False,
+        unit_too_large=rounds.unit_too_large if rounds else False,
     )
 
 
@@ -316,7 +313,7 @@ def _run_compaction_rounds(
         plan = plan_compaction(working, budget, keep_latest_unit=keep_latest_unit)
         if not plan.needed:
             break
-        if all(_is_compacted_summary_unit(unit) for unit in plan.to_summarize):
+        if all(is_compacted_summary_unit(unit) for unit in plan.to_summarize):
             # The target can be smaller than the irreducible summary
             # marker + mandatory newest unit (common in tiny tests). All
             # raw old units are already represented, so re-summarizing
@@ -343,7 +340,7 @@ def _run_compaction_rounds(
         )
         if not batch:
             blocking = next(
-                (u for u in plan.to_summarize if not _is_compacted_summary_unit(u)),
+                (u for u in plan.to_summarize if not is_compacted_summary_unit(u)),
                 plan.to_summarize[0],
             )
             required = summary_estimate(
@@ -361,6 +358,7 @@ def _run_compaction_rounds(
                 ),
                 failure_kind="invalid_output",
                 refused_by_guard=True,
+                unit_too_large=True,
             )
 
         max_prompt_estimated = max(max_prompt_estimated, prompt_estimated)
@@ -562,6 +560,10 @@ def _plan_and_apply_compaction(
                 error=f"could not write the compaction record: {exc}",
                 failure_kind="daemon_error",
             )
+
+    if round_result.rounds == 0:
+        # Nothing was summarized (the range held only earlier summaries): the history is as it was.
+        return None, _untouched(before_count, before_estimated, ok=True)
 
     final_messages = [*preserved_prefix, *round_result.working, *preserved_suffix]
     updated = record.model_copy(

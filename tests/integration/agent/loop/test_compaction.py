@@ -191,8 +191,13 @@ class TestLiveSessionCompaction:
         )
         records = [json.loads(line) for line in tracefile.read_text().splitlines()]
         purposes = [r["payload"].get("purpose") for r in records if r["event_type"] == "llm_call"]
-        assert purposes[: purposes.index(None)] == ["compaction"]
-        assert backend.summarizer_calls == 1
+        # One compaction covers the overflow and a quarter of the room (agent-loop requirement 47):
+        # more units than one summarizer prompt carries, so it runs in rounds, and the history
+        # holds the one summary it wrote.
+        before_task = purposes[: purposes.index(None)]
+        assert before_task and set(before_task) == {"compaction"}
+        assert backend.summarizer_calls == len(before_task)
+        assert sum(r["event_type"] == "session_compaction" for r in records) == 1
         fits = [
             r["payload"]["status"]
             for r in records
@@ -205,6 +210,7 @@ class TestLiveSessionCompaction:
         kept = {call.id for message in stored for call in message.tool_calls}
         assert "read-0" not in kept and "read-11" in kept
         assert not _session_units.find_orphaned_tool_messages(stored)
+        assert sum(m.content.startswith("[compacted summary of ") for m in stored) == 1
 
     def test_request_fit_summary_timeout_aborts_before_trying_the_prefix(
         self, ctx: ToolContext

@@ -1,6 +1,6 @@
 # Session History Specification
 
-**Version**: 1.22.0
+**Version**: 1.23.0
 **Status**: Implemented and live. The agent loop loads, compacts and appends this durable history
 on the production `DocketDriver` path; every pod-dispatch step has its own history key.
 **Last Updated**: 2026-11-05
@@ -177,7 +177,9 @@ This specification does NOT cover:
     unit whose projected summary prompt (requirement 24) still cannot fit **MUST** fail closed
     without writing. The result **MUST** name that case in the typed field `refused_by_guard`,
     which is false for every other failure (a summarizer error, an empty, truncated or
-    tool-requesting reply, an orphaned tool call or result, an invalid range).
+    tool-requesting reply, an orphaned tool call or result, an invalid range). When the reason is
+    the atomic unit that cannot fit a prompt, the typed field `unit_too_large` is also true (and
+    false otherwise), so a caller can try a smaller range.
 27. `groups_summarized` **MUST** count every atomic group processed across all rounds. The result
     **MUST** also report the number of summary rounds and the largest estimated summary-prompt size,
     named explicitly as estimates.
@@ -388,7 +390,10 @@ safe characters.
 - `CompactionResult.ok=False` **MUST** mean the on-disk record for that session key was not
   written at all by that call.
 - `CompactionResult.compacted=True` only ever appears alongside `ok=True`, and distinguishes "a
-  summarisation actually ran" from "nothing needed compacting".
+  summarisation actually ran" from "nothing needed compacting". It **MUST** be true only when a
+  summary replaced messages: a call that ran no summarisation round (for example, a range made
+  only of earlier compaction summaries, which have no raw unit to add to) returns
+  `ok=True, compacted=False`, writes no compaction record and reports no `summarized_range`.
 
 ## Examples
 

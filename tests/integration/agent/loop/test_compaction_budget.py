@@ -152,8 +152,8 @@ class TestLiveSessionCompaction:
                 ChatMessage(
                     role="tool", content="old result", tool_call_id=call.id, name=call.name
                 ),
-                ChatMessage(role="user", content="middle context " * 40),
-                ChatMessage(role="user", content="recent context " * 250),
+                *[ChatMessage(role="user", content="middle context " * 25) for _ in range(10)],
+                ChatMessage(role="user", content="recent context " * 150),
             ],
         )
         events: list[tuple[str, dict[str, object]]] = []
@@ -185,7 +185,7 @@ class TestLiveSessionCompaction:
             session_key,
             "new request",
             config=_loop.LoopConfig(
-                context_window_tokens=600 + SUMMARIZER_FIXED_TOKENS, max_tokens=60
+                context_window_tokens=1_000 + SUMMARIZER_FIXED_TOKENS, max_tokens=60
             ),
         )
 
@@ -219,12 +219,18 @@ class TestLiveSessionCompaction:
         )
         assert "summary" not in compaction_events[0]
         assert compaction_events[0]["record"] == "compactions/1.json"
-        assert compaction_events[0]["summarizedRange"] == [0, 4]
+        # The overflow plus a quarter of the request room: the oldest 8 messages, not just enough.
+        assert compaction_events[0]["summarizedRange"] == [0, 8]
         assert re.fullmatch(r"[0-9a-f]{64}", str(compaction_events[0]["promptSha256"]))
         record = read_json(_session._session_path(session_key, None).parent / "compactions/1.json")
         assert record["promptSha256"] == compaction_events[0]["promptSha256"]
-        assert record["range"] == [0, 4]
-        assert [m["role"] for m in record["replaced"]] == ["user", "assistant", "tool", "user"]
+        assert record["range"] == [0, 8]
+        assert [m["role"] for m in record["replaced"]] == [
+            "user",
+            "assistant",
+            "tool",
+            *["user"] * 5,
+        ]
         assert backend.calls[1][0].role == "user"
         assert backend.calls[1][0].content.startswith("[compacted summary of ")
         assert [m.content for m in backend.calls[1][-1:]] == ["new request"]
