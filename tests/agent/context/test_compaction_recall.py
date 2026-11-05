@@ -39,6 +39,20 @@ def _reachable() -> bool:
     return True
 
 
+# A long session is mostly tool output, so the summary is shorter than what it replaces.
+_TRACEBACK = "".join(
+    f'  File "/work/.venv/lib/python3.11/site-packages/pluggy/_callers.py", line {n}, in _multicall\n'
+    "    res = hook_impl.function(*args)\n"
+    for n in range(100, 140)
+)
+_DIFF = "".join(
+    f"@@ -{n},3 +{n},3 @@ def line_item_{n}(price, qty):\n"
+    f"-    return price * qty  # unrounded item {n}\n"
+    f"+    return price * qty  # item {n}, quantized with the invoice\n"
+    for n in range(10, 50)
+)
+
+
 def _seeded_history() -> list[ChatMessage]:
     """Four facts in a long session: a decision, a failing command and its fix, a file, an open item."""
     run = ToolCall(id="c1", name="bash", arguments='{"command":"pytest tests/test_invoice.py"}')
@@ -51,14 +65,15 @@ def _seeded_history() -> list[ChatMessage]:
         assistant("", tool_calls=[run]),
         ChatMessage(
             role="tool",
-            content="FAILED test_invoice.py::test_total - AssertionError: 10.01 != 10.00\nexit 1",
+            content=_TRACEBACK
+            + "FAILED test_invoice.py::test_total - AssertionError: 10.01 != 10.00\nexit 1",
             tool_call_id="c1",
             name="bash",
         ),
         assistant("The failure is float rounding in the total.", tool_calls=[fix]),
         ChatMessage(
             role="tool",
-            content="edited src/billing/rounding.py: total now uses Decimal.quantize",
+            content=_DIFF + "edited src/billing/rounding.py: total now uses Decimal.quantize",
             tool_call_id="c2",
             name="edit",
         ),
