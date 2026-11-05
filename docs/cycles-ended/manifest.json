@@ -958,5 +958,13 @@
     "heading": "▶ WAVE 65 · the Docker PDF run is bounded (found by the PDF release-gate run, 2026-11-04)",
     "bytes": 1532,
     "sha256": "57eb03a529755789ba08512f9778d36db55f6bc01d3d1431dc46aef0103a7507"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ PHASE 66 COMPLETE 2026-11-05 — the context a turn sends is protected, reduced by what it carries, explained and recoverable (D-87, accepted 2026-11-05)",
+    "bytes": 31123,
+    "sha256": "5d76f29fe46d9838976cfd09db962f2f55be8eb329558c07fe72d87daf0b24d2"
   }
 ]

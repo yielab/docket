@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (92 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (93 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (26 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [roadmap-decisions.md](roadmap-decisions.md) | archived sections (1 archived) |
@@ -22,6 +22,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 
 | Date | Section | File | Bytes |
 |---|---|---|---|
+| 2026-11-05 | ☑ PHASE 66 COMPLETE 2026-11-05 — the context a turn sends is protected, reduced by what it carries, explained and recoverable (D-87, accepted 2026-11-05) | `todo-waves.md` | 31,123 |
 | 2026-11-04 | ▶ WAVE 65 · the Docker PDF run is bounded (found by the PDF release-gate run, 2026-11-04) | `todo-waves.md` | 1,532 |
 | 2026-11-03 | ▶ Phase 59: a step's budget is a checkpoint, not a cliff (D-81) · CLOSED 2026-11-03 (decision 5 amended before the push: a budget, a clock and guards, no dollars) | `todo-waves.md` | 42,181 |
 | 2026-11-03 | ▶ PHASE 60 ACTIVE — WAVE 60-61 · a transient failure costs a request, not a step (D-82) · accepted 2026-11-03 | `todo-waves.md` | 11,138 |

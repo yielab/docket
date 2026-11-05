@@ -16,14 +16,14 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> ## ▶ BOARD — Phase 67 ACTIVE (its real run, P67-5, re-runs as P68-6); Phases 68 (D-89 proposed) and 66 (D-87 accepted 2026-11-05) planned
+> ## ▶ BOARD — Phase 67 ACTIVE (its real run, P67-5, re-runs as P68-6); Phase 68 (D-89 proposed) planned; Phase 66 (D-87) closed 2026-11-05
 >
 > **Phase 67 is active** (D-88, accepted 2026-11-04): P67-1 to P67-4 are done and committed (`2ce62d69`, `3b32a2b4`,
 > not pushed): a folder pod under the jail reads any public host, the pod says how (`webRead`) and which need
 > blocks, and Tack reads both. Its real run (P67-5) read the web and failed in the writer hop on a compaction
 > defect, with no report. **Phase 68** (D-89, proposed) is that run's three defects plus search and runs first;
-> **Phase 66** (D-87, accepted 2026-11-05) follows, since both edit `session_compaction.py`. Neither phase's cards are
-> claimable until the maintainer accepts its decision. Phases 63 (D-85) and 64 (D-86) closed 2026-11-04; their
+> **Phase 66** (D-87, accepted 2026-11-05) ran first and closed 2026-11-05 (its section is archived; what it leaves open is under
+> "Phase 66" in the follow-ups below). Phase 68's cards are claimable once the maintainer accepts D-89. Phases 63 (D-85) and 64 (D-86) closed 2026-11-04; their
 > sections are archived and what they leave open is under "Phases 63-64" in the follow-ups below.
 > Before them, Phases 60 (D-82), 61 (D-83) and 62 (D-84) closed 2026-11-03: a transient failure costs a request, a pod says what it can reach, and `fetch` keeps the perimeter. Their sections are archived and what they leave open is in the follow-ups below. Phase 59 (D-81, [ADR 0038](docs/adr/0038-a-step-budget-is-a-checkpoint-not-a-cliff.md)) closed 2026-11-03
 > (decision 5 amended before the push): a step's budget is a checkpoint, not a cliff, and docket keeps no dollars. Its
@@ -525,327 +525,6 @@ from `main`.
   `internal-docs/baselines/phase-68/`. Closes P67-5.
 - **Gate:** the phase-close list; the full suite once at the last merge.
 
-## ○ PHASE 66 PLANNED — the context a turn sends is protected, reduced by what it carries, explained and recoverable (D-87, accepted 2026-11-05)
-
-> From the context-engineering audit of 2026-11-04 (`internal-docs/audits/context-engineering-2026-11-04.es.md`,
-> the maintainer's request; code read at `2462c872`, every locator re-checked there). Four measured facts drive
-> the phase; the rest of the audit's list keeps its trigger. **Measured, live home since 2026-10-24:**
-> (a) 77 compaction checks, 4 summaries, 0 failures; the three summaries persisted sit at index 0 of their
-> sessions, which is what compacting a one-turn history over the 6000-token `hosted` budget looks like, not a
-> defect: the turn's own task is appended after the pre-turn compaction and is never in its range (the audit
-> first read it as one; corrected the same day). The `hosted` history share stays deferred with its trigger;
-> (b) the first request of a hop measures 1.55x its estimate (median, n=75; p90 1.64, max 1.69), every later
-> request 1.00x (median, n=173): the bytes/4 estimator is right once calibrated and wrong on the one request
-> that carries the whole history (`request_fit.estimatedInputTokens` against the next `llm_call.inputTokens`);
-> (c) a synthetic history of 12 reads of about 9.6k characters estimates 29,886 tokens raw and 6,210 once
-> projected by `condense_history` (4.8x), while `reduce_for_fit` subtracts a projected overflow from the raw
-> figure; (d) 256 calls sent 34 % of their bytes as tool results and 25 % as tool schemas, with 53 % of input
-> tokens read from cache. Not planned, each with its trigger on this board or in the audit: a lazy MCP
-> catalog, lifecycle condensation, the `hosted` history share, recitation of the objective, a JSONL session
-> store, a cheaper summarizer model, server-side compaction or `count_tokens` on the Anthropic dialect.
->
-> **Decisions the plan takes (D-87 accepted 2026-11-05, all six as written):**
-> 1. Every line docket writes to steer the model and nothing else is request-only: the budget notice joins
->    the landing ask and the closing ask as a trailing `user` message, never written to `session.json`.
->    Requirement 108's "appended to the last tool result" becomes "appended to the next request". The
->    task message is appended before any model call; the fit path (2) summarizes around it, never it.
-> 2. A request that does not fit is reduced by what the request carries. The range to summarize is chosen
->    by the projected size of its atomic units (the same `condense_history` the request uses), oldest first,
->    until the overflow is covered, and that range is summarized whole (`budget_tokens=0` on a range means
->    the whole range; `plan_compaction` already does that for a range with an anchor). **Amended 2026-11-05**
->    (the maintainer: no duplicate mechanisms): the budget-driven pre-turn compaction and the `hosted`
->    `history` share are deleted; this is the one compaction, and the summarizer's input is bounded by the
->    window, not the role's carryover budget.
-> 3. A compaction leaves a record. The replaced messages and the summary are written to
->    `<session dir>/compactions/<seq>.json` by `platform/store.py`, same permissions as `session.json`, in
->    the same locked mutation; the `session_compaction` event names the record and the summarized range.
->    State, not trace: the trace keeps counts, as today.
-> 4. The compaction summary is stored with role `user`, prefixed `[compacted summary of ...]` as today, so
->    both dialects carry it in chronology (the Anthropic wire lifts every `system` into the `system`
->    parameter, out of order, and puts the cache breakpoint on it). A session written before this phase is
->    read as it is: an old `system` summary is one more body unit, never re-labelled (no compatibility
->    reader, D-34). Requirements 11, 13 and 25 say "the summary message", not "a system message".
-> 5. The summarizer prompt is a shipped prompt document, `layer: compaction`, resolved through the four
->    scopes like every prompt (ADR 0035), reached by the engine through the `RoleComposer` port; its sha256
->    is on the `session_compaction` event. The body has sections (objective and state; decisions; files
->    touched; commands and results; errors; open items), the shape Cline, Codex and Gemini converged on.
->    ADR 0035 decision 1's layer list gains `compaction`; no new ADR.
-> 6. The estimate ratio is an observed limit of the model. The first request of a turn is scaled by the ratio
->    the last turn on that model measured, recorded beside `contextWindow`/`maxTokens` in
->    `provider-models.json` (declared > observed > unknown, model-profiles 9; `estimateRatio` has no
->    declared form). Measured after the first call, the ratio then follows requirement 46a as today. Still an
->    estimate, never folded into `TokenUsage`.
->
-> **Waves (by file; Sonnet workers in parallel, one integrator):**
->
-> | Wave | Cards | File contention resolved |
-> | --- | --- | --- |
-> | 1 | P66-1 ∥ P66-4 ∥ P66-5 | `agent-loop.spec.md`, `loop.py`, `loop_steps.py`, `loop_request.py` are P66-1's; `session-history.spec.md`, `session_compaction.py` and `agent/ports.py` are P66-4's; P66-5 edits no spec and no `src/` behaviour |
-> | 2 | P66-2 ∥ P66-6 | `loop_compaction.py`, `loop_request.py` are P66-2's; `loop_budget.py`, `loop.py`, `loop_types.py`, `driver*.py`, `models/` are P66-6's; both amend `agent-loop.spec.md`: the integrator applies the two spec hunks at merge (as `FEATURES` was in Phases 63-64) |
-> | 3 | P66-3, then P66-7 | P66-3 owns `session_compaction.py`, `session_units.py`, `session.py`, `loop_compaction.py`, `loop_trace.py` and both specs; P66-7 is the integrator's real run and bench |
->
-> The integrator runs the default suite once per wave. `agent/loop.py` stays under 1,000 lines (657 today,
-> D-78); a card that would cross it moves the helper to `loop_request.py`.
-
-### P66-1 — The one steering line docket stores is sent with the request instead
-
-**Status:** DONE 2026-11-05 (`256e3ec6`; the rounds-left figure in `budget_notice` counts the round in flight, so P66-6, which edits `loop_budget.py`, must keep `max_iterations - iteration + 1`; the notice is added after `fit_task_request` and the token preflight, which do not count its ~50 tokens: P66-2's fit loop) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P68-1
-
-- **Trigger:** the audit §6.6: the budget notice of requirement 108 is written into the last tool result that
-  `dispatch_tool_batch` persists (`agent/loop_steps.py` ~142-160), so it lands in `session.json` and in every
-  later request and summary of that session ("when it ends you will be asked for a report" read back by a
-  resumed or conversation turn). The landing ask and the closing ask are already request-only
-  (`_finalization_messages`, `_closing_messages`, `agent/loop_request.py` ~221-235). 0 cases live: no run
-  reached a quarter left.
-- **Goal (decision 1):** `budget_notice` (`agent/loop_budget.py` ~27) is unchanged; its one caller moves from
-  `dispatch_tool_batch` to `_TurnState.prepare_request_or_finalize` (`agent/loop.py` ~290): when the line is
-  due, the request is `[*messages, user(notice)]`, built by a `_notice_messages` helper beside
-  `_finalization_messages`. The `budget_warning` event is unchanged. `load_messages` never contains the line.
-  The exclusions of requirement 108 (a batch that ends the turn) become "a request that is the landing or
-  the closing call carries no notice".
-- **Non-goals:** the notice's text or its 25 % rule; adding the objective to it; the fit loop (P66-2).
-- **Change:** `agent/loop.py`, `agent/loop_steps.py`, `agent/loop_request.py`; tests
-  `tests/unit/agent/test_loop_steps.py` (`TestDispatchToolBatch` ~63), `tests/unit/agent/test_loop_budget.py`,
-  `tests/integration/agent/loop/test_terminal_reservation.py` (the requirement 108 test is rewritten, not kept
-  beside the new one). Spec: `agent-loop.spec.md` requirement 108 (:940), version bump.
-- **Acceptance (RED first):**
-  - Integration: with `max_iterations=8`, the round-7 request carries the notice as its last `user` message
-    (the quarter is reached after round 6's batch), the round-8 request does not, and no stored message
-    contains `[docket] This step's budget`. Oracle: today the line is in round 6's last stored tool result.
-  - Unit: `dispatch_tool_batch` persists the tool results byte-identical to what `dispatch_tool` returned.
-  - Unit: a landing request built while the notice is due carries the landing ask only.
-- **Gate:** the three test files (under 10 s); `tests/architecture` (3 s); `bash scripts/validate-specs.sh`;
-  `scripts/maint/comment_lint.py --check` on touched files.
-
-### P66-2 — A request that does not fit is reduced by what the request carries, not by what the record holds
-
-**Status:** DONE 2026-11-05 (`1f3fd01f`; fixed on the way: the task durable index after a prefix write is `task_index + (after_count - before_count)`; open: the summarizer input is bounded by the role budget, not the window, so a large covered overflow on a small window can fail its own preflight at `max_tokens` >= 2,300 on 8k; `condense_history` re-expands whole results once units are summarized, so an overflow of ~30 tokens can fail to converge; the audit's ">1 summarizer call" was not reproducible from a prefix, the old code made none) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P66-1 (both edit `agent/loop_request.py`)
-
-- **Trigger:** measured (c): `reduce_for_fit` (`agent/loop_compaction.py` ~347) computes
-  `overflow` on the projected request and `target = selected_tokens - overflow - 32` on
-  `_selected_estimate(selected)` (`agent/loop_request.py` ~146), the raw durable range; a range of old tool
-  results is 4.8x larger raw than projected, so one accepted summary removes little from the request and
-  the loop pays another summarizer round per attempt, up to `attempt_cap = len(durable) + 1`. Not yet seen
-  live (260 fits, 0 `context_fit`), because the only live provider has 200k; the local endpoint has 32k.
-- **Goal (decision 2):**
-  - `reduce_for_fit` projects the durable history once (`condense_history`, the same `budget` as
-    `messages_for_durable`), groups both lists by `group_atomic_units` (same indices), and for each
-    candidate range (suffix after the task, then prefix; `_build_reduction_candidates` unchanged) selects
-    the oldest units whose projected estimate sums to at least `overflow + 32`; it calls
-    `run_compaction(budget_tokens=0, compact_range=<that sub-range>, keep_latest_unit=False)`.
-  - `compact_session` documents `budget_tokens=0` on a range as "summarize the range whole"
-    (`plan_compaction` with `keep_latest_unit=False` already yields that; `_validate_compaction_range`
-    keeps the anchor rule). `_selected_estimate` is deleted with its last caller.
-  - The protected-segment bookkeeping (`protected_segments`) and the attempt cap stay as they are.
-- **Non-goals:** a free reduction before the summarizer (the projection already is one); changing the
-  pre-turn compaction; the summarizer prompt (P66-4).
-- **Change:** `agent/loop_compaction.py` (`reduce_for_fit`, `messages_for_durable`), `agent/loop_request.py`
-  (`_selected_estimate` deleted; a `projected_units` helper may live here); tests
-  `tests/integration/agent/loop/test_compaction.py` (`TestLiveSessionCompaction` ~39: the growth test ~40
-  and the irreducible test ~109), `tests/unit/agent/test_loop_compaction.py`. Spec: `agent-loop.spec.md`
-  requirement 47 (:419: "with a smaller target" becomes "the oldest units whose projected size covers the
-  overflow, summarized whole"); `session-history.spec.md` requirement 28 (`budget_tokens=0`).
-- **Acceptance (RED first):**
-  - Integration, the audit's shape: a 8,000-token window, a durable history of 12 tool units of about
-    9.6k characters each after the task, a fake backend that counts summarizer calls and returns a
-    120-character summary. Today: more than one summarizer call before the task request is sent (assert
-    the count the RED run records, then the new bound). After: exactly one summarizer call, then the task
-    request, whose `request_fit` is `fits`. Oracle: the count of `llm_call` events with
-    `purpose: "compaction"` before the first task `llm_call`.
-  - Integration: the irreducible case still fails before transport with `context_fit` and no backend call
-    (the existing test, unchanged in outcome).
-  - Unit: `plan_compaction(range, 0, keep_latest_unit=False)` summarizes every unit of the range.
-- **Gate:** the two test files (under 10 s); `tests/architecture`; `validate-specs.sh`; the replay bench
-  on the fixtures unchanged in its figures (`scripts/maint/context_replay.py tests/fixtures/context-replay
-  --json`, "no step worse than the recorded request", P52-2's oracle).
-
-### P66-3 — A compaction leaves a record, its summary reads the same on every wire, and the request says what it condensed
-
-**Status:** DONE 2026-11-05 (`af2025ba` as cherry-picked; open: an orphan `compactions/<seq>.json` can remain if the `session.json` write fails after the record write, harmless, `seq` does not collide; `compacted=True` with zero rounds writes no record; the head rule of `plan_compaction` keeps its `system` prefix exclusion so an old `system` summary is body) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P66-2 (both edit `loop_compaction.py`), P66-4 (the prompt it records the hash of)
-
-- **Trigger:** the audit §6.13 and §6.5: `_plan_and_apply_compaction` (`agent/session_compaction.py` ~298)
-  replaces the summarized messages in `session.json`, `platform/store.py` keeps one `.bak`, and
-  `_trace_compaction` (`agent/loop_trace.py` ~262) records counts; after two compactions the original is
-  nowhere. The summary is a `system` message (`~252`); `anthropic_wire.build_payload` (:118-124) lifts every
-  `system` into the `system` parameter and marks the last one for cache, so a mid-history summary leaves
-  chronology and takes the breakpoint. The request projection (`condense_history`) is invisible in the
-  trace (§6.8).
-- **Goal (decisions 3, 4 and the projection):**
-  - Inside the locked mutation, before the history payload is returned, a record
-    `{sessionKey, at, range: [start, end], replaced: [messages], summary, promptSha256}` is written with
-    `platform/store.py::write_json` to `<session dir>/compactions/<seq>.json` (`seq` = count of existing
-    records + 1; `_session_dir` in `agent/session.py` ~145 gives the directory; 0o700/0o600 like
-    `session.json`). `CompactionResult` carries `record` (the relative path) and `summarized_range`;
-    `session_compaction` carries `record`, `summarizedRange` and `promptSha256`, never the text.
-  - The summary message is `role="user"`, prefixed as today. `_is_compacted_summary_unit` (~89) and the
-    head rule of `plan_compaction` (`agent/session_units.py` ~129-135) read the prefix on a `user`
-    message; the three spec requirements say "the summary message".
-  - `messages_for_durable` (`agent/loop_compaction.py` ~255) returns the projection and its figures
-    (`condensedResults`, `keptWholeResults`, `budgetChars`); `_trace_llm_call` (~96) puts them under
-    `projection` on every task `llm_call`.
-- **Non-goals:** reading records back (an operator reads the JSON); pruning records (they go with the
-  session directory); re-labelling old `system` summaries.
-- **Change:** `agent/session_compaction.py`, `agent/session_units.py`, `agent/session.py`,
-  `agent/loop_compaction.py`, `agent/loop_trace.py`; tests `tests/unit/agent/test_session_compaction.py`,
-  `tests/unit/agent/test_session_units.py`, `tests/integration/agent/loop/test_compaction_budget.py`
-  (`test_no_op_uses_one_backend_call_and_emits_bounded_trace` ~351,
-  `test_old_results_become_notices_and_the_record_keeps_every_byte` ~577), captured-payload tests of both
-  wires for a mid-history summary (`tests/unit/models/adapters/`). Specs: `session-history.spec.md`
-  (storage layout: the `compactions/` directory, a new requirement under "Fail-closed summarisation";
-  11, 13, 25 reworded; the duplicate requirement 9 at :75 renumbered `9a`; "Implementation" (:395) names
-  `session_units.py` and `session_compaction.py`), `agent-loop.spec.md` 37 (:352: the record and range
-  keys) and 71 (:630: `projection`); `trace-store.spec.md` needs no change (no new event type).
-- **Acceptance (RED first):**
-  - Unit: after a successful `compact_session`, `compactions/1.json` exists, its `replaced` equals the
-    messages `load_messages` no longer returns, byte for byte, and `[*replaced, *kept]` reproduces the
-    pre-compaction history; a failed summary writes no record. Oracle: today the directory does not exist.
-  - Unit: the stored summary has `role == "user"`; the Anthropic payload of a history
-    `[system prompt, summary, user task]` has one `system` block (the prompt) and the summary as the first
-    `user` block, in order; the OpenAI payload has it as a `user` message. Oracle: today it is in
-    `system[]` / a mid-history `system` message.
-  - Integration: `session_compaction` carries `record`, `summarizedRange`, `promptSha256`; the first
-    task `llm_call` of a turn whose history condensed two results carries `projection.condensedResults == 2`.
-- **Gate:** the five test files (under 15 s); `tests/architecture`; `validate-specs.sh`; `tests/e2e -n
-  auto` (42 s: the wire shape of a summary changed).
-
-### P66-4 — The compaction prompt is a shipped prompt document with sections, reached through the port
-
-**Status:** DONE 2026-11-05 (`28934292`; the recall test `tests/agent/context/test_compaction_recall.py` is written and runs at phase close; the port is `compaction_prompt(project, project_roots)` and reads the repository view registered for the first root, so all four scopes are reachable from the live path (integrator's cleanup, 2026-11-05); `prompt_sha256` is on `CompactionResult`, P66-3 puts it on the event) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** P68-1
-
-- **Trigger:** the audit §6.3: `_summarization_message` (`agent/session_compaction.py` ~38) is a fixed
-  string asking for "a concise summary"; no plantilla, no scope override, no hash on the trace, no recall
-  test. ADR 0035 made every other prompt a versioned document; this one was left in code.
-- **Goal (decision 5):**
-  - `src/docket/templates/prompts/compaction/history.md`: `kind: prompt`, `name: history`, `version:
-    1.0.0`, `layer: compaction`, `for: any`, `modelClass: any`, `inputs: {label, turns}`; the body states
-    the role of the summary (the only memory the next request has of these turns), then the sections it
-    must fill in order, each one line when empty: objective and current state; decisions taken and why;
-    files touched (path: what changed); commands run and their result; errors seen and whether resolved;
-    open items and the next step. It ends "Reply with the sections only." `${turns}` is the rendered units
-    (today's `_render_unit`), `${label}` the session label.
-  - `Layer` (`teams/prompts.py` :32) and `prompt.schema.json` (:35) gain `compaction`; `config-format.spec.md`
-    (:89, :202, :221, :279) and `role-archetypes.spec.md` (:75) name it where they enumerate layers;
-    `floor` keeps refusing it (a role has no compaction floor). ADR 0035 decision 1's line :94 is amended.
-  - `RoleComposer` (`agent/ports.py` ~399) gains `compaction_prompt(role, project) -> (text, sha256)`;
-    `TeamsRoleComposer` (`teams/role_composer.py`) answers with `resolve_prompt("compaction", "history",
-    project=project)` so a repository, pod or operator overrides it by scope. `compact_session` takes the
-    prompt text and hash from its caller (`TurnCompaction.run_compaction`), substitutes the two inputs
-    and reports the hash on `CompactionResult` (P66-3 puts it on the trace).
-- **Non-goals:** a per-role prompt (scopes already allow one; none ships); a verification pass over the
-  summary (Gemini's probe turn) until a recall figure says it is needed.
-- **Change:** the template file, `teams/prompts.py`, `templates/schemas/prompt.schema.json`,
-  `agent/ports.py`, `teams/role_composer.py`, `agent/session_compaction.py`, `agent/loop_compaction.py`
-  (`run_compaction` passes the prompt); tests `tests/unit/teams/test_prompts.py`,
-  `tests/unit/agent/test_session_compaction.py`, `tests/unit/agent/test_loop_compaction.py`
-  (`TestSummarizeWithoutReentry` ~62), the package test that lists shipped templates
-  (`tests/agent/release/test_distribution_package.py`, run by the integrator). Specs: `session-history.spec.md`
-  17 and 23 (the prompt is the resolved document; the input budget bounds the substituted text),
-  `config-format.spec.md`, `role-archetypes.spec.md`; ADR 0035 :94.
-- **Acceptance (RED first):**
-  - Unit: `shipped_prompt("compaction", "history")` loads, declares the two inputs, and a body with the six
-    section headings; `resolve_prompt` with a pod overlay `prompts/compaction/history.md` returns the
-    overlay's text and hash. Oracle: today `layer: compaction` is a load error.
-  - Unit: the summarizer prompt `compact_session` sends starts with the document's body and carries the
-    rendered units where `${turns}` was; a repository prompt is read from the base commit view, never the
-    worktree (the existing `RepoView` rule).
-  - Agent lane (`tests/agent/context/test_compaction_recall.py`, `LANE = "context"`, `REASON`: the summary's
-    recall is a model behaviour no unit test can read; `RETIRE_WHEN`: a recall figure is published per
-    model and tracked by the bench): on the local endpoint, a seeded history with four facts (a decision, a
-    failing command and its fix, a file edited, an open item) is compacted; the summary names all four.
-    Runs at phase close only.
-- **Gate:** the four unit files (under 10 s); `tests/architecture`; `validate-specs.sh`;
-  `scripts/maint/comment_lint.py --check`.
-
-### P66-5 — Prose that says what the code no longer does
-
-**Status:** DONE 2026-11-05 (`d379a7e3`) · **Size:** S · **Model:** Haiku · **Kind:** docs · **After:** —
-
-- **Trigger:** the audit §6.12, verified with `rg`: `agent/context.py`'s docstrings say the drop order is
-  `diff_ref -> files_changed -> verdict` (`kernel/handoff.py` :231 starts at `diff` and includes
-  `assumptions`, `questions`) and that "today's only registered window" is 16384 tokens (the live home
-  registers 32768 and Anthropic rows); `.agents/skills/docket-context-runtime/references/live-path.md`
-  says MCP output "reads `current_home().tool_max_output_chars` per call" (the live reader is
-  `artifact_scope(ctx.project, output_chars=ctx.output_cap, ...)` in `dispatch_tool`,
-  `agent/tools/registry.py` :329, for every tool).
-- **Goal:** the three statements say what the code does, with the symbol they describe. Nothing else in
-  those files changes. The gitignored `CLAUDE.md` note that `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500` is required
-  against the local endpoint is the maintainer's to re-check after P66-7 (the `local` profile derives 2,621
-  from the 32k window today).
-- **Non-goals:** the spec's "Implementation" section and duplicate requirement 9 (P66-3 owns that file).
-- **Change:** `src/docket/agent/context.py` (docstrings and the `WINDOW_SHARE` comment only),
-  `.agents/skills/docket-context-runtime/references/live-path.md`.
-- **Acceptance:** `rg -n "diff_ref -> files_changed|16384" src/docket/agent/context.py` is empty;
-  `rg -n "tool_max_output_chars.*per call" .agents/skills` is empty; `pytest --co -q` unchanged.
-- **Gate:** `uv run ruff check src/docket/agent/context.py`; `scripts/maint/comment_lint.py --check
-  src/docket/agent/context.py`.
-
-### P66-6 — The first request of a turn is estimated with the ratio the model showed last time
-
-**Status:** DONE 2026-11-05 (`3f7bb571`; `loop_state.py` gained `estimate_ratio`/`first_call_ratio`; `record_first_call_ratio` also records under a `DOCKET_LLM_BASE_URL` override, harmless; an `OSError` on the write loses one observation, not the turn) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P66-1 (both edit `agent/loop.py`)
-
-- **Trigger:** measured (b): first request of a hop 1.55x (median, n=75, p90 1.64, max 1.69, none under
-  1.0), later requests 1.00x (median, n=173), live traces 2026-10-24 to 2026-11-04, Anthropic dialect.
-  `TurnBudget.calibration` starts at 1.0 (`agent/loop_budget.py` ~60) and `calibrate` (~98) runs after the
-  first measured call; the request that carries the whole history is the one checked with the wrong
-  figure, against the window (46a) and the token budget (prospective check). On a 32k endpoint with a
-  dense history that is an HTTP 400 the pre-flight exists to prevent.
-- **Goal (decision 6):**
-  - `provider-models.json` (`Home.provider_models_file`, `kernel/home.py` :480) gains, per model,
-    `estimateRatio: <float>` and `estimateRatioAt: "YYYY-MM-DD"`, written by one new function beside
-    `record_observed_models` (`models/provider_lifecycle.py` :29), `record_observed_estimate_ratio(provider,
-    model_id, ratio)`, through `platform/store.py`. `ModelLimits`/`observed_limits` (`models/catalog.py`
-    ~516, :542) read it; `resolve_limits` (:564) resolves it observed > unknown (no declared form);
-    `Endpoint` (`agent/ports.py` ~651) carries `estimate_ratio: float | None`; the OpenAI and Anthropic
-    clients expose it like `context_window_tokens`.
-  - `_resolve_context_bounds` (`agent/loop.py` ~150) reads the backend's `estimate_ratio`;
-    `TurnBudget.__init__` seeds `calibration = max(1.0, ratio)`; `calibrate` is unchanged after the first
-    measured call. `AgentLoopResult` (`agent/loop_types.py`) carries `first_call_ratio: float | None`
-    (measured input / raw estimate of the first task call); `DocketDriver.run_turn`
-    (`hops/application/driver.py` ~255) records it for the turn's provider/model when it is positive.
-  - `docket status` / the provider render that shows `observedAt` shows the ratio with its date
-    (`model-profiles.spec.md` :353-354 names that render).
-- **Non-goals:** a tokenizer; `count_tokens`; changing `CONTEXT_BYTES_PER_TOKEN`; a ratio per role.
-- **Change:** `models/catalog.py`, `models/provider_lifecycle.py`, `models/adapters/openai_http.py`
-  (property), `agent/ports.py`, `agent/loop.py`, `agent/loop_budget.py`, `agent/loop_types.py`,
-  `hops/application/driver.py`; tests `tests/unit/agent/test_loop_budget.py`,
-  `tests/unit/models/test_catalog.py`, `tests/unit/models/test_provider_lifecycle.py`,
-  `tests/integration/agent/test_runtime_driver.py`. Specs: `agent-loop.spec.md` 46a (:412) and 44 (:388,
-  the seed is an observed limit), `model-profiles.spec.md` 9 (:371) and the render line (:353);
-  `docs/CONFIGURATION.md` where `provider-models.json` is described.
-- **Acceptance (RED first):**
-  - Unit: with `estimate_ratio=1.5` on the backend, the first `request_fit` of a turn reports
-    `estimatedInputTokens == ceil(raw * 1.5)`; with `None`, `raw`. Oracle: today the first figure is `raw`
-    whatever the model.
-  - Integration: a turn whose first call measures 1.6x its raw estimate ends with `first_call_ratio ==
-    1.6` and `provider-models.json` holds `estimateRatio: 1.6` for that model; a second turn on the same
-    model starts calibrated at 1.6. A turn that made no call records nothing.
-  - Unit: `resolve_limits` reports the ratio `observed` with its date, `unknown` when absent.
-- **Gate:** the four test files (under 15 s); `tests/architecture`; `validate-specs.sh`; `tests/e2e -n
-  auto` (42 s: the home layout gained two keys in a state file).
-
-### P66-7 — The real run: the local endpoint, the fit path and the bench, before and after
-
-**Status:** DONE 2026-11-05 (`440d3eb0`, `d3a173f3`, `fb7b1f8e`; the real run on the local 32k endpoint and on Haiku 5.5, `internal-docs/baselines/phase-66/real-run.md`. It found three seams no unit test saw: the summarizer prompt was bounded by text size while the preflight counts the serialized request; the no-progress guard fired on honest refetches after a compaction; the compaction prompt did not carry the task. Measured with 80 files of 2 KB: local Qwen 80/80 with no compaction (projection alone, 12k peak), Haiku 5.5 on 32k 80/80 with 5 compactions, on 200k with none; the estimate ratio is per model (local 1.08, Haiku 1.54) and the next turn's first estimate landed within 0.7%. Open: the replay bench's `condense_history` re-projections send more after (a tool result after the last assistant message is no longer condensed), the measured tables cannot show the phase; a first call on token-dense data is under-estimated and the server answers HTTP 400) · **Size:** M · **Model:** Opus (integrator) · **Kind:** verification · **After:** P66-1..P66-6 merged
-
-- **Trigger:** the phase-close rule ("a real run") and measured (c), whose consequence is inferred.
-- **Goal:** on this machine's llama.cpp endpoint (32k, `local` profile, `DOCKET_TOOL_MAX_OUTPUT_CHARS`
-  unset to prove the profile's cap), one `app-dev` task whose Implementer history is made to overflow (a
-  `read` of a large file, three times): the trace shows at most one `purpose: "compaction"` call before
-  each task call, every `request_fit` `fits`, `session_compaction` with `record` and `summarizedRange`, the
-  record reproduces the history, the first `request_fit` of the second turn on that model scaled by the
-  recorded ratio, and no stored `[docket]` line. Then `scripts/maint/context_replay.py
-  tests/fixtures/context-replay --json` and `--repeats` before (at `2462c872`) and after: no step sends
-  more, prefix stability not worse. The figures go to `internal-docs/baselines/phase-66/` and one line each
-  to the phase's ROADMAP row; the gitignored `CLAUDE.md` note on `DOCKET_TOOL_MAX_OUTPUT_CHARS` is rewritten
-  to what the run showed.
-- **Non-goals:** a hosted-model run (spends tokens; the maintainer's call, §7.1).
-- **Acceptance:** the trace assertions above, read with `docket task trace`; the bench's two JSON files;
-  the phase-close gates of `CLAUDE.md` "Testing budget" (goldens, agent lane incl. P66-4's recall test,
-  `pytest-without-sandbox.sh`, escape matrix, `validate-specs.sh`, `gen_cli_docs.py --check`,
-  `split_board.py check`).
-- **Gate:** the phase-close list; the full suite once at the last merge.
-
-
 ## ▶ PHASE 67 ACTIVE — a research team reads the web without anyone writing it a host list (D-88, accepted 2026-11-04)
 
 > **Trigger (the maintainer's request, with a reproduction).** Tack task `4C9BAB` ("Anliza app similares",
@@ -1053,6 +732,24 @@ from `main`.
 - *Stale `memory/` mentions* in `specs/api/cli-interface.spec.md`, `specs/acceptance/user-stories.md`,
   `specs/functional/agent-lifecycle.spec.md` and `specs/test-framework.md`; `docs/recipes.md` does not mention
   `shape`; the word "adapters" in the `_execution.py` docstring and ADR 0006.
+
+**Phase 66 (2026-11-05).** Left out of the cards on purpose, or found by the real run (`internal-docs/baselines/phase-66/real-run.md`):
+- *A first call on token-dense data is under-estimated.* Random words and digits (~2.7 bytes per token) put the first
+  estimate 1.4x low and llama.cpp answered HTTP 400; the ratio is learned only after a call succeeds. Trigger: a live hop
+  that fails its first call on hashes, digits or non-Latin text; then read the provider's own count from the overflow
+  error and retry once.
+- *The replay bench cannot show this phase.* The measured tables read recorded usage and are identical before and after;
+  the `--policy` re-projections through `condense_history` send more after (a tool result after the last assistant message
+  is no longer condensed), so "no step sends more" is not met literally. Trigger: a bench that replays with the
+  projection live, or a measured rise in input tokens per hop.
+- *A compaction on a narrow window summarizes the whole range and keeps no recent unit.* Haiku 5.5 on 32k compacted five
+  times on 80 reads (the summaries kept 10-30 of 80 values) and the model re-read; the local model needed none. A summary
+  does not guarantee a value survives. Trigger: a hop on a window of 32k or less that compacts more than three times.
+- *Three driver tests encode the paired preflight* (the cap and the fit each count the summary prompt, so a fake backend
+  carries two `prospectives` per compaction): `test_run_turn_request_fit.py` and `test_run_turn_terminal_reservation.py`.
+  Trigger: a fourth test that must repeat the pair; then give the fake one helper.
+- *An orphan `compactions/<seq>.json` can remain* if the `session.json` write fails after the record write (harmless,
+  `seq` does not collide), and `compacted=True` with zero rounds writes no record. Trigger: a reader that lists records.
 
 **Phase 68 (2026-11-04).** Left out of the cards on purpose, or found while merging:
 - *The pod report probes SearXNG on every `GET /pods/<p>` and plain `pod show` probes it twice.* Each probe is one
