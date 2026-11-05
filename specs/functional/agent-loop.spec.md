@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.12.0
+**Version**: 4.13.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -432,9 +432,13 @@ This specification does NOT cover:
     (`model-profiles.spec.md` "Provider catalog" 9). The scaled figure is still an estimate: it
     **MUST NOT** be folded into `TokenUsage`.
 47. When a task request is estimated over-window, the loop **MUST** invoke the durable, fail-closed
-    session compactor with a smaller target, preserve complete assistant-tool/result atomic units,
-    reload the accepted messages, and retry the estimate before transport. Every compactor
-    completion is subject to the same request preflight with tools disabled.
+    session compactor on the oldest atomic units of a candidate range whose size in the request
+    (the projection `condense_history` makes, not the stored size) covers the overflow plus a
+    32-token margin, and **MUST** have it summarize that sub-range whole. It **MUST** preserve
+    complete assistant-tool/result atomic units, reload the accepted messages, and retry the
+    estimate before transport. A range whose units together do not cover the overflow is skipped
+    as irreducible. Every compactor completion is subject to the same request preflight with
+    tools disabled.
 48. If every eligible range is locally irreducible or the accepted summary plus output reserve
     still exceeds the registered window, the loop **MUST** make no task HTTP call and return
     `stop_reason="context_fit"`, `failure_kind="invalid_output"`, and an actionable error

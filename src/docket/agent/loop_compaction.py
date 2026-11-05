@@ -16,7 +16,6 @@ from docket.agent.loop_request import (
     _build_reduction_candidates,
     _fallback_input_estimate,
     _segment_revision,
-    _selected_estimate,
     _usage_delta,
     send_request,
 )
@@ -39,6 +38,34 @@ from docket.agent.session import (
     window_results_budget,
 )
 from docket.agent.session_compaction import CompactionResult, compact_session
+from docket.agent.session_units import group_atomic_units
+
+# The room an accepted summary's own text takes up, kept clear when sizing what a reduction must cover.
+_FIT_MARGIN_TOKENS = 32
+
+
+def covering_range(
+    durable: list[ChatMessage],
+    projected: list[ChatMessage],
+    bounds: tuple[int, int],
+    need: int,
+) -> tuple[int, int] | None:
+    """The oldest whole atomic units of ``durable[bounds]`` whose size in the request (``projected``,
+    index-aligned with ``durable``) adds up to at least *need* tokens, as a half-open range of
+    ``durable``; ``None`` when the whole of *bounds* does not cover it."""
+    start, end = bounds
+    covered = 0
+    cursor = start
+    for raw_unit, projected_unit in zip(
+        group_atomic_units(durable[start:end]),
+        group_atomic_units(projected[start:end]),
+        strict=True,
+    ):
+        covered += max(1, _fallback_input_estimate(projected_unit, [], None, None) - 16)
+        cursor += len(raw_unit)
+        if covered >= need:
+            return start, cursor
+    return None
 
 
 @dataclass
@@ -409,21 +436,23 @@ class TurnCompaction:
             )
         overflow = estimated_input + self.state.output_reserve - self.state.context_window
         candidate_ranges = _build_reduction_candidates(durable, task_index, protected_segments)
+        projected = condense_history(durable, budget=self.whole_results_budget(durable))
 
         progressed = False
         accepted_segment = ""
         accepted_prior_protected_count = 0
         accepted_replacement_count = 0
-        for segment, selected_range, keep_latest, prior_protected_count in candidate_ranges:
-            selected = durable[selected_range[0] : selected_range[1]]
-            selected_tokens = _selected_estimate(selected)
-            target = max(1, selected_tokens - overflow - 32)
-            if target >= selected_tokens:
+        accepted_size_change = 0
+        for segment, candidate_range, prior_protected_count in candidate_ranges:
+            selected_range = covering_range(
+                durable, projected, candidate_range, overflow + _FIT_MARGIN_TOKENS
+            )
+            if selected_range is None:
                 continue
             fit_compaction, fit_compaction_stop_reason = self.run_compaction(
-                budget_tokens=target,
+                budget_tokens=0,
                 compact_range=selected_range,
-                keep_latest_unit=keep_latest,
+                keep_latest_unit=False,
             )
             if not fit_compaction.ok:
                 failure_stop_reason = fit_compaction_stop_reason or "compaction_failed"
@@ -444,11 +473,11 @@ class TurnCompaction:
             if fit_compaction.compacted:
                 accepted_segment = segment
                 accepted_prior_protected_count = prior_protected_count
+                accepted_size_change = (
+                    fit_compaction.after_message_count - fit_compaction.before_message_count
+                )
                 accepted_replacement_count = (
-                    fit_compaction.after_message_count
-                    - fit_compaction.before_message_count
-                    + selected_range[1]
-                    - selected_range[0]
+                    accepted_size_change + selected_range[1] - selected_range[0]
                 )
                 progressed = True
                 break
@@ -465,8 +494,8 @@ class TurnCompaction:
             )
 
         durable = load_messages(self.state.session_key)
-        reloaded_task_index = (
-            accepted_replacement_count if accepted_segment == "prefix" else task_index
+        reloaded_task_index = task_index + (
+            accepted_size_change if accepted_segment == "prefix" else 0
         )
         if (
             reloaded_task_index < 0

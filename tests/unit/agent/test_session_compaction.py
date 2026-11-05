@@ -250,3 +250,35 @@ class TestThePromptIsTheCallersDocument:
         assert "${turns}" in result.error
         assert prompts == []
         assert _sess.load_messages(_KEY) == before
+
+
+class TestARangeSummarizedWhole:
+    """``budget_tokens=0`` on a range with no kept unit folds every unit of the range, no other."""
+
+    def test_every_unit_of_the_range_is_summarized_and_the_rest_stays_verbatim(self) -> None:
+        task = user("the task stays exact")
+        units: list[ChatMessage] = []
+        for n in range(3):
+            call = ToolCall(id=f"w{n}", name="read", arguments="{}")
+            units += [assistant("", tool_calls=[call]), tool_result(call, f"result {n}")]
+        after = assistant("a later answer")
+        _sess.append_messages(_KEY, [*units, task, after])
+
+        result = _session_compaction.compact_session(
+            _KEY,
+            role="lead",
+            agent_id="x-lead",
+            summarizer=_summarizing_driver("everything read so far"),
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
+            budget_tokens=0,
+            compact_range=(0, len(units)),
+            keep_latest_unit=False,
+        )
+
+        assert result.ok and result.compacted
+        assert result.groups_summarized == 3
+        stored = _sess.load_messages(_KEY)
+        assert len(stored) == 3
+        assert stored[0].content.startswith("[compacted summary of ")
+        assert stored[1:] == [task, after]

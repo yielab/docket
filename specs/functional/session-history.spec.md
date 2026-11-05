@@ -1,6 +1,6 @@
 # Session History Specification
 
-**Version**: 1.17.0
+**Version**: 1.18.0
 **Status**: Implemented and live. The agent loop loads, compacts and appends this durable history
 on the production `DocketDriver` path; every pod-dispatch step has its own history key.
 **Last Updated**: 2026-11-05
@@ -177,7 +177,9 @@ This specification does NOT cover:
     Range indexes apply to the record loaded under the session lock. This mode exists for the live
     request-fit caller to compact prior history separately from completed same-turn tool units while
     retaining the current user task verbatim; it **MUST NOT** introduce an in-memory-only history
-    that differs from the durable record sent after reload.
+    that differs from the durable record sent after reload. On a range, `budget_tokens=0` with
+    `keep_latest_unit=False` means "summarize the range whole": every atomic unit of the range is
+    summarized, and only the messages outside it stay verbatim.
 
 ### Request projection
 

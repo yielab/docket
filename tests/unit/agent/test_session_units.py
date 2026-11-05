@@ -132,6 +132,16 @@ class TestPlanCompactionBasics:
         assert plan.keep_tail == []
         assert plan.to_summarize == [[latest]]
 
+    def test_a_zero_budget_on_a_ranged_plan_summarizes_every_unit(self) -> None:
+        calls = [ToolCall(id=f"c{n}", name="read", arguments="{}") for n in range(3)]
+        units = [[assistant("", tool_calls=[call]), tool_result(call, "r" * 400)] for call in calls]
+        range_messages = [message for unit in units for message in unit]
+
+        plan = _session_units.plan_compaction(range_messages, 0, keep_latest_unit=False)
+
+        assert plan.to_summarize == units
+        assert plan.keep_tail == []
+
 
 class TestPlanCompactionAtomicityBoundary:
     """The card's named trap: a cut that would land inside a tool-call group."""

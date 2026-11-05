@@ -25,6 +25,7 @@ from docket.agent.ports import (
     ToolCall,
     ToolSpec,
     assistant,
+    tool_result,
 )
 from docket.agent.session import append_messages as append_session_messages
 from docket.agent.session import load_session
@@ -140,6 +141,71 @@ class TestLiveSessionCompaction:
         assert [
             message.content for message in _session.load_messages("agent:irreducible:demo")
         ] == ["current task must remain exact"]
+
+    def test_one_summary_of_the_oldest_units_fits_a_history_of_large_tool_results(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        session_key = "agent:request-fit:large-results"
+        history: list[ChatMessage] = []
+        for n in range(12):
+            call = ToolCall(id=f"read-{n}", name="echo", arguments="{}")
+            history += [assistant("", tool_calls=[call]), tool_result(call, f"{n:02d} " * 3_200)]
+        append_session_messages(session_key, history)
+
+        class CountingBackend:
+            def __init__(self) -> None:
+                self.summarizer_calls = 0
+
+            def complete(
+                self,
+                messages: Sequence[ChatMessage],
+                *,
+                tools: Sequence[ToolSpec] = (),
+                max_tokens: int | None = None,
+                temperature: float | None = None,
+                top_p: float | None = None,
+                tool_choice: str | None = None,
+                timeout: int = 120,
+            ) -> ChatResponse:
+                if tools:
+                    return _final("task complete")
+                self.summarizer_calls += 1
+                return _final("S" * 120)
+
+        backend = CountingBackend()
+
+        result = _loop.run_agent_turn(
+            backend,
+            registry,
+            ctx,
+            session_key,
+            "continue the investigation",
+            config=_loop.LoopConfig(
+                context_window_tokens=8_000,
+                max_tokens=2_100,
+                history_budget_tokens=1_000_000,
+            ),
+        )
+
+        tracefile = (
+            current_home().traces_dir / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        )
+        records = [json.loads(line) for line in tracefile.read_text().splitlines()]
+        purposes = [r["payload"].get("purpose") for r in records if r["event_type"] == "llm_call"]
+        assert purposes[: purposes.index(None)] == ["compaction"]
+        assert backend.summarizer_calls == 1
+        fits = [
+            r["payload"]["status"]
+            for r in records
+            if r["event_type"] == "request_fit" and r["payload"]["purpose"] == "task"
+        ]
+        assert fits == ["failed", "fits"]
+        assert result.ok, result.error
+        assert result.output == "task complete"
+        stored = _session.load_messages(session_key)
+        kept = {call.id for message in stored for call in message.tool_calls}
+        assert "read-0" not in kept and "read-11" in kept
+        assert not _session_units.find_orphaned_tool_messages(stored)
 
     def test_request_fit_summary_timeout_aborts_before_trying_the_prefix(
         self, ctx: ToolContext

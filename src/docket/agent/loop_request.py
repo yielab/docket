@@ -155,10 +155,6 @@ def _estimate_input_tokens(
     return _fallback_input_estimate(messages, tools, max_tokens, temperature)
 
 
-def _selected_estimate(selected: list[ChatMessage]) -> int:
-    return max(1, _fallback_input_estimate(selected, [], None, None) - 16)
-
-
 def _segment_revision(selected: list[ChatMessage]) -> str:
     encoded = json.dumps(
         [asdict(message) for message in selected],
@@ -173,10 +169,10 @@ def _build_reduction_candidates(
     durable: list[ChatMessage],
     task_index: int,
     protected_segments: dict[str, tuple[int, str]],
-) -> list[tuple[str, tuple[int, int], bool, int]]:
+) -> list[tuple[str, tuple[int, int], int]]:
     """Suffix-then-prefix compaction candidates; mutates ``protected_segments`` for a
     stale checkpoint that no longer matches durable history."""
-    candidate_ranges: list[tuple[str, tuple[int, int], bool, int]] = []
+    candidate_ranges: list[tuple[str, tuple[int, int], int]] = []
     if task_index + 1 < len(durable):
         suffix_start = task_index + 1
         prior_protected_count = 0
@@ -194,14 +190,12 @@ def _build_reduction_candidates(
             else:
                 protected_segments.pop("suffix", None)
         if suffix_start < len(durable):
-            candidate_ranges.append(
-                ("suffix", (suffix_start, len(durable)), False, prior_protected_count)
-            )
+            candidate_ranges.append(("suffix", (suffix_start, len(durable)), prior_protected_count))
     if task_index > 0:
         prefix = durable[:task_index]
         checkpoint = protected_segments.get("prefix")
         if checkpoint is None or checkpoint != (len(prefix), _segment_revision(prefix)):
-            candidate_ranges.append(("prefix", (0, task_index), True, 0))
+            candidate_ranges.append(("prefix", (0, task_index), 0))
     return candidate_ranges
 
 

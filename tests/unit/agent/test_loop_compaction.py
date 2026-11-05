@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from docket.agent.loop_budget import TurnBudget
-from docket.agent.loop_compaction import TurnCompaction
+from docket.agent.loop_compaction import TurnCompaction, covering_range
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_types import LoopConfig
 from docket.agent.ports import (
@@ -295,6 +295,51 @@ class TestTheRequestProjectionFollowsTheWindow:
         assert self._condensed(free.messages_for_durable(durable)) < self._condensed(
             crowded.messages_for_durable(durable)
         )
+
+
+class TestTheRangeAReductionSummarizes:
+    """The oldest whole units that cover the overflow by their size in the request, not on disk."""
+
+    @staticmethod
+    def _history(units: int) -> list[ChatMessage]:
+        out: list[ChatMessage] = [user("the task")]
+        for n in range(units):
+            call = ToolCall(id=f"c{n}", name="read", arguments=f'{{"path":"f{n}"}}')
+            out += [assistant("", tool_calls=[call]), tool_result(call, "x" * 40_000)]
+        return out
+
+    @staticmethod
+    def _projection(durable: list[ChatMessage]) -> list[ChatMessage]:
+        return [
+            dataclasses.replace(m, content="[old result condensed] " * 4) if m.role == "tool" else m
+            for m in durable
+        ]
+
+    def test_it_counts_what_the_request_carries_not_what_the_record_holds(self) -> None:
+        durable = self._history(6)
+        projected = self._projection(durable)
+        bounds = (1, len(durable))
+
+        assert covering_range(durable, projected, bounds, need=2_000) is None
+        assert covering_range(durable, durable, bounds, need=2_000) == (1, 3)
+
+    def test_it_ends_on_the_unit_boundary_that_first_covers_the_need(self) -> None:
+        durable = self._history(6)
+        projected = self._projection(durable)
+        bounds = (1, len(durable))
+
+        one = covering_range(durable, projected, bounds, need=1)
+        some = covering_range(durable, projected, bounds, need=300)
+
+        assert one == (1, 3)
+        assert some is not None and 3 < some[1] < len(durable)
+        assert (some[1] - 1) % 2 == 0
+
+    def test_it_never_starts_before_the_range_it_is_given(self) -> None:
+        durable = self._history(6)
+        projected = self._projection(durable)
+
+        assert covering_range(durable, projected, (5, len(durable)), need=1) == (5, 7)
 
 
 class TestAResearchTurnOnAWideWindow:
