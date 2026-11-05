@@ -40,16 +40,16 @@ class TestInitWithRoles:
     def test_a_starter_and_an_operator_role_follow_the_lean_pair_in_the_given_order(
         self, tmp_path: Path
     ) -> None:
-        _operator_role("critic")
+        _operator_role("auditor")
 
-        result = runner.invoke(app, ["init", "demo", str(tmp_path), "--with", "analyst,critic"])
+        result = runner.invoke(app, ["init", "demo", str(tmp_path), "--with", "analyst,auditor"])
 
         assert result.exit_code == 0, result.output
         assert _registered() == [
             "demo-lead",
             "demo-implementer",
             "demo-analyst",
-            "demo-critic",
+            "demo-auditor",
         ]
 
     def test_the_given_order_is_kept_not_the_registry_order(self, tmp_path: Path) -> None:

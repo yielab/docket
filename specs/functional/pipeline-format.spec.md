@@ -334,9 +334,9 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    is not shaped like a pod member id; it **MUST** become `agent:` when it is shaped like one --
    `<prefix>-<role>` or `<prefix>-<role>-<index>` where `<role>` is one of the caller's role names
    and `<prefix>` is not empty. The role names come in as data (Requirement 90); the match is by
-   shape alone, as the `archetype` field's slug shape is, and checks no pod. With `critic` among
-   the role names, `shop-critic` and `shop-critic-2` are `agent:` and `critic` is a `role:`;
-   without it, `shop-critic` stays a `role:`. `myshop-implementer` and `myshop-implementer-2` are
+   shape alone, as the `archetype` field's slug shape is, and checks no pod. With `auditor` among
+   the role names, `shop-auditor` and `shop-auditor-2` are `agent:` and `auditor` is a `role:`;
+   without it, `shop-auditor` stays a `role:`. `myshop-implementer` and `myshop-implementer-2` are
    `agent:` whenever `implementer` is a role name.
 4. The recognized sugar keys, each optional, **MUST** be mapped as follows:
    - `verify: true` -> `gate: {type: mechanical}`; `verify: "<command>"` -> `gate: {type:
