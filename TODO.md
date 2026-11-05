@@ -141,7 +141,7 @@ from `main`.
 > | 1 | P68-1 ∥ P68-2 ∥ P68-3 | P68-1 owns `agent/session_compaction.py`, `agent/loop_compaction.py`, `session-history.spec.md`, `agent-loop.spec.md` 37; P68-2 owns `governance/policy.py`, the policy templates, the corpus, `security-gates.spec.md`; P68-3 owns `teams/builtin_roles.py`, `role-archetypes.spec.md` |
 > | 2 | P68-4 (done) ∥ P68-5 | P68-4 owns the `web-research` recipe, `services/`, the `setup search` command and `teams/apply/needs.py`; P68-5 owns `agent/tools/capability_gap.py`, `hops/application/driver_support.py` `pod_offer`, `serve-read-api.spec.md` |
 > | 2b | P68-7 (done) | `agent/session.py`, `session-history.spec.md` requirement 30; before P68-6 |
-> | 2c | P68-9 (done) ∥ P68-10 (done) ∥ P68-8 | P68-9 owns `agent/context.py`, `hops/application/compose.py`, `pod-dispatch.spec.md`; P68-10 owns `agent/session.py` `_result_notice`, `session-history.spec.md`; P68-8, after P68-4: `needs.py`, the recipe, the pod report, `operator-api.spec.md`; Brave and the Tack surface |
+> | 2c | P68-9, P68-10, P68-8 (done) | P68-9 owns `agent/context.py`, `hops/application/compose.py`, `pod-dispatch.spec.md`; P68-10 owns `agent/session.py` `_result_notice`, `session-history.spec.md`; P68-8, after P68-4: `needs.py`, the recipe, the pod report, `operator-api.spec.md`; Brave and the Tack surface |
 > | 3 | P68-6 | the integrator's real run, which also closes P67-5 |
 >
 > **Against Phase 66:** P68-1 edits `session_compaction.py`, `loop_compaction.py` and `session-history.spec.md`, which
@@ -328,7 +328,7 @@ from `main`.
 
 ### P68-8 — Brave Search API as the option, and Tack sees and sets the provider
 
-**Status:** TODO (decided 2026-11-05; P68-4 is done, so it can start: both edit `needs.py`, the recipe and `pod-blueprints.spec.md`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** P68-4
+**Status:** DONE 2026-11-05 except goal 4, the 20 live Brave queries, which wait for a key (`c7749066` cherry-picked; operator-api, pod-blueprints, cli-json-shapes, cli-interface bumped; `search` object and feature; fixture `pod-search.json`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** P68-4
 
 - **Trigger:** the maintainer's choice 4: Brave is the optional provider, and the plan of record (Tack) must see
   which provider a pod searches through and be able to change it.
@@ -920,6 +920,14 @@ from `main`.
   `shape`; the word "adapters" in the `_execution.py` docstring and ADR 0006.
 
 **Phase 68 (2026-11-04).** Left out of the cards on purpose, or found while merging:
+- *The pod report probes SearXNG on every `GET /pods/<p>` and plain `pod show` probes it twice.* Each probe is one
+  `GET` with a 2 s timeout, only when a search service is declared. Trigger: a plan of record polling pods often, or
+  a slow answer in `pod show`; then cache the probe for the length of the request.
+- *Brave's storage terms.* Read 2026-11-05 (summarised fetch): section 3(b)(i) bars storing or caching results other
+  than transient storage; 3(b)(xiii) bars using results to train or evaluate AI models; storage needs a plan with
+  storage rights, which the pricing page did not list. docket keeps tool results in the session and the trace.
+  Decision for the maintainer before Brave is recommended anywhere: whether that is transient; the README says it is
+  undecided.
 - *Two callers still fit a budget without the window.* P68-9 passes the receiving model's window to
   `budget_for_role` in `compose.py`; `hops/application/driver_support.py` and `agent/session_compaction.py` still call
   it without one. Trigger: a hosted turn whose compaction or summary budget is the 6,000-token floor in a trace.

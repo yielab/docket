@@ -57,6 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Brave Search API is the optional search provider, and the plan of record sees it.** `docket setup search brave`
+  takes the key from a hidden prompt or stdin (never an argument), stores it as the secret `brave-search` and writes
+  the pod's `services/search.yaml`. `GET /pods/<pod>` and `pod show --json` carry `search {provider, ready, reason,
+  fix, options}` and `/health` lists the feature `search`; a plan of record switches provider by applying a
+  directory whose `services/search.yaml` is the chosen one, and the key never travels over HTTP. The recipe README
+  states what Brave's terms say about storing results and what is unverified.
 - **A research team searches through a SearXNG service.** The `web-research` recipe ships a `search` service
   (`services/search.yaml`, a `GET` to a local SearXNG on loopback) and `docket setup search searxng [--pod P]`
   writes the SearXNG settings under the home, the pod's service document, and prints the one `docker run` line;
