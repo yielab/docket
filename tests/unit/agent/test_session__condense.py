@@ -13,6 +13,7 @@ from docket.agent.ports import (
     tool_result,
     user,
 )
+from docket.kernel.home import current_home
 
 _isolate_sessions_dir = _support_home.isolate_sessions_dir
 
@@ -351,28 +352,27 @@ class TestCondenseHistorySmallResults:
         )
 
 
-class TestHistoryResultsBudget:
-    """A turn's history budget in tokens sets how many result characters stay whole."""
+class TestWindowResultsBudget:
+    """The room a window leaves, in tokens, sets how many result characters stay whole."""
 
-    def test_eight_thousand_tokens_is_the_default_budget(self) -> None:
-        assert _sess.history_results_budget(8_000) == _sess.HISTORY_FULL_RESULTS_CHARS == 6_000
+    def test_a_small_room_never_goes_below_the_default(self) -> None:
+        assert _sess.window_results_budget(1_000) == _sess.HISTORY_FULL_RESULTS_CHARS == 6_000
+        assert _sess.window_results_budget(-500) == 6_000
 
-    def test_a_smaller_history_never_goes_below_the_default(self) -> None:
-        assert _sess.history_results_budget(1_000) == 6_000
-
-    def test_twenty_five_thousand_tokens_keeps_18750_characters(self) -> None:
-        assert _sess.history_results_budget(25_000) == 18_750
+    def test_a_wide_room_keeps_every_character_it_holds(self) -> None:
+        per_token = current_home().context_bytes_per_token
+        assert _sess.window_results_budget(25_000) == 25_000 * per_token
 
     def test_the_low_water_is_half_the_budget(self) -> None:
-        """Ten 2,000-character results cross 18,750 once; the cut leaves 9,375 or less whole."""
-        messages = _history_of(10, 2_000)
-        out = _sess.condense_history(messages, keep=2, budget=_sess.history_results_budget(25_000))
+        """Twelve 2,000-character results cross 20,000 once; the cut leaves 10,000 whole, then one more arrives."""
+        budget = 20_000
+        out = _sess.condense_history(_history_of(12, 2_000), keep=2, budget=budget)
         whole = [len(m.content) for m in out if m.role == "tool" and m.content[0] != "["]
-        assert whole == [2_000] * 4
+        assert whole == [2_000] * 6
 
     def test_a_larger_budget_moves_the_cut_once_where_the_default_moves_it_often(self) -> None:
-        wide = _cut_moves(12, 1_800, _sess.history_results_budget(25_000))
-        default = _cut_moves(12, 1_800, _sess.history_results_budget(8_000))
+        wide = _cut_moves(12, 1_800, 18_750)
+        default = _cut_moves(12, 1_800, _sess.HISTORY_FULL_RESULTS_CHARS)
         assert wide == 1
         assert default > 1
 

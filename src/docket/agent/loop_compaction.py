@@ -14,6 +14,7 @@ from docket.agent.loop_budget import _TOKEN_BUDGET_ERROR_PREFIX, TurnBudget
 from docket.agent.loop_request import (
     _accumulate,
     _build_reduction_candidates,
+    _fallback_input_estimate,
     _segment_revision,
     _selected_estimate,
     _usage_delta,
@@ -27,8 +28,8 @@ from docket.agent.session import (
     HISTORY_FULL_RESULTS_CHARS,
     append_messages,
     condense_history,
-    history_results_budget,
     load_messages,
+    window_results_budget,
 )
 from docket.agent.session_compaction import CompactionResult, compact_session
 
@@ -269,12 +270,21 @@ class TurnCompaction:
         self.incoming = incoming
         self.task_message_index = len(appended.messages) - 1
 
+    def whole_results_budget(self, durable: list[ChatMessage]) -> int:
+        """The characters of whole tool results the window leaves once the system prompt, the tool
+        specs and the history's other messages are in: the default where the window is unknown."""
+        window = self.state.context_window
+        if window is None:
+            return HISTORY_FULL_RESULTS_CHARS
+        base = [system(self.state.system_prompt)] if self.state.system_prompt else []
+        others = base + [m for m in durable if m.role != "tool"]
+        fixed = _fallback_input_estimate(others, self.state.tool_specs, None, None)
+        return window_results_budget(window - max(0, self.state.output_reserve) - fixed)
+
     def messages_for_durable(self, durable: list[ChatMessage]) -> list[ChatMessage]:
-        tokens = self.state.cfg.history_budget_tokens
-        kept = HISTORY_FULL_RESULTS_CHARS if tokens is None else history_results_budget(tokens)
         return [
             *([system(self.state.system_prompt)] if self.state.system_prompt else []),
-            *condense_history(durable, budget=kept),
+            *condense_history(durable, budget=self.whole_results_budget(durable)),
         ]
 
     def context_fit_convergence_error(self, reason: str, estimated_input: int) -> str:

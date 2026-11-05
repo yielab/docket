@@ -1,9 +1,9 @@
 # Model Policy Specification
 
-**Version**: 7.1.0
+**Version**: 7.2.0
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
-**Last Updated**: 2026-11-03
+**Last Updated**: 2026-11-05
 
 ## Purpose
 
@@ -446,8 +446,9 @@ directly — see "Provider catalog" below.
    `history` share or the model's context window is unknown, and otherwise `max(role context
    budget, floor(window x history))`: `hosted` on a 1,000,000-token window and an 8,000-token role
    gives 25,000, on a 200,000-token window 8,000; `local` gives 8,000 on any window. The driver
-   **MUST** write it to `LoopConfig.history_budget_tokens`, where turn-start compaction and the
-   request projection (`session-history.spec.md` requirements 29-31) read it.
+   **MUST** write it to `LoopConfig.history_budget_tokens`, where turn-start compaction reads it.
+   The request projection does not: it condenses by the receiving model's window
+   (`session-history.spec.md` requirement 30).
 3. `resolve_profile(model)` **MUST** return the profile of the catalog row the model names, found
    the way `resolve_endpoint` finds its row; a provider absent from the catalog, and any model
    while `DOCKET_LLM_BASE_URL` overrides the endpoint, resolve to `hosted`. A `hosted` row **MUST**

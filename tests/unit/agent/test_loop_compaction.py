@@ -6,6 +6,8 @@ from __future__ import annotations
 import dataclasses
 import json
 from collections.abc import Callable
+from itertools import pairwise
+from pathlib import Path
 from typing import Any
 
 from docket.agent.loop_budget import TurnBudget
@@ -25,6 +27,8 @@ from docket.agent.session import _session_path, append_messages, load_messages
 from docket.kernel.home import current_home
 
 SUBJECT = "docket.agent.loop_compaction"
+
+_FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
 
 MakeState = Callable[..., TurnState]
 
@@ -236,8 +240,8 @@ class TestTurnStartCompactionUsesTheHistoryBudget:
         assert len(load_messages(state.session_key)) < len(before)
 
 
-class TestTheRequestProjectionUsesTheHistoryBudget:
-    """The kept tool results widen with the turn's history budget and stay at 6,000 at 8,000."""
+class TestTheRequestProjectionFollowsTheWindow:
+    """Answered results stay whole while the request fits the window, and condense when not."""
 
     @staticmethod
     def _results(count: int) -> list[ChatMessage]:
@@ -247,22 +251,99 @@ class TestTheRequestProjectionUsesTheHistoryBudget:
             out += [assistant("", tool_calls=[call]), tool_result(call, "x" * 2_000)]
         return out
 
-    def test_a_wide_history_budget_keeps_older_results_whole(
-        self, make_turn_state: MakeState
-    ) -> None:
+    @staticmethod
+    def _condensed(messages: list[ChatMessage]) -> int:
+        return sum(1 for m in messages if m.role == "tool" and m.content[0] == "[")
+
+    def test_a_wide_window_keeps_older_results_whole(self, make_turn_state: MakeState) -> None:
         durable = self._results(6)
-        wide = _compaction(make_turn_state(LoopConfig(history_budget_tokens=25_000)))
+        wide = _compaction(make_turn_state(context_window=1_000_000, output_reserve=8_000))
 
         assert wide.messages_for_durable(durable) == durable
 
-    def test_the_role_budget_condenses_them(self, make_turn_state: MakeState) -> None:
+    def test_the_history_share_does_not_widen_it(self, make_turn_state: MakeState) -> None:
         durable = self._results(6)
-        narrow = _compaction(make_turn_state(LoopConfig(history_budget_tokens=8_000)))
-        unset = _compaction(make_turn_state(LoopConfig()))
+        state = make_turn_state(LoopConfig(history_budget_tokens=250_000))
 
-        for compaction in (narrow, unset):
-            kept = [m for m in compaction.messages_for_durable(durable) if m.role == "tool"]
-            assert sum(m.content[0] != "[" for m in kept) < 6
+        assert self._condensed(_compaction(state).messages_for_durable(durable)) > 0
+
+    def test_a_window_the_results_overflow_condenses_them(self, make_turn_state: MakeState) -> None:
+        durable = self._results(6)
+        narrow = _compaction(make_turn_state(context_window=4_000, output_reserve=1_000))
+
+        assert self._condensed(narrow.messages_for_durable(durable)) > 0
+
+    def test_an_unknown_window_projects_with_the_default_budget(
+        self, make_turn_state: MakeState
+    ) -> None:
+        kept = _compaction(make_turn_state(context_window=None)).messages_for_durable(
+            self._results(6)
+        )
+        assert self._condensed(kept) > 0
+
+    def test_the_system_prompt_and_tools_take_their_room_first(
+        self, make_turn_state: MakeState
+    ) -> None:
+        durable = self._results(12)
+        free = _compaction(make_turn_state(context_window=9_000, output_reserve=500))
+        crowded = _compaction(
+            make_turn_state(context_window=9_000, output_reserve=500, system_prompt="s" * 16_000)
+        )
+
+        assert self._condensed(free.messages_for_durable(durable)) < self._condensed(
+            crowded.messages_for_durable(durable)
+        )
+
+
+class TestAResearchTurnOnAWideWindow:
+    """A ten-iteration research turn replayed iteration by iteration through the projection."""
+
+    SHAPE = json.loads(
+        (_FIXTURES / "research-turn" / "v1" / "shape.json").read_text(encoding="utf-8")
+    )
+
+    @classmethod
+    def _requests(cls, make_turn_state: MakeState, **state: Any) -> list[list[ChatMessage]]:
+        """The projected request at each iteration: the rounds so far, the newest unanswered."""
+        compaction = _compaction(make_turn_state(**state))
+        durable: list[ChatMessage] = [user(cls.SHAPE["task"])]
+        out: list[list[ChatMessage]] = []
+        for n, rnd in enumerate(cls.SHAPE["rounds"]):
+            calls = [
+                ToolCall(
+                    id=f"r{n}c{k}",
+                    name="fetch",
+                    arguments=f'{{"url":"https://example.test/{n}/{k}"}}',
+                )
+                for k, _ in enumerate(rnd["fetch_result_chars"])
+            ]
+            durable.append(assistant(f"round {n}", tool_calls=calls))
+            durable += [
+                tool_result(call, f"page {n}.{k} " + "filler " * (size // 7))
+                for k, (call, size) in enumerate(zip(calls, rnd["fetch_result_chars"], strict=True))
+            ]
+            out.append(compaction.messages_for_durable(durable))
+        return out
+
+    def test_a_million_token_window_condenses_nothing_and_keeps_the_prefix(
+        self, make_turn_state: MakeState
+    ) -> None:
+        requests = self._requests(make_turn_state, context_window=1_000_000, output_reserve=8_192)
+
+        for before, after in pairwise(requests):
+            assert after[: len(before)] == before
+        assert all(m.content[0] != "[" for m in requests[-1] if m.role == "tool")
+
+    def test_a_32k_window_condenses_and_moves_the_prefix_in_few_batches(
+        self, make_turn_state: MakeState
+    ) -> None:
+        requests = self._requests(make_turn_state, context_window=32_768, output_reserve=4_096)
+
+        last = requests[-1]
+        assert any(m.role == "tool" and m.content[0] == "[" for m in last)
+        assert all(m.content[0] != "[" for m in last[-3:] if m.role == "tool")
+        moved = sum(after[: len(before)] != before for before, after in pairwise(requests))
+        assert 1 <= moved <= 3
 
 
 class TestAPreTurnCompactionTheGuardRefuses:

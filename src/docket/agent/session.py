@@ -50,10 +50,10 @@ __all__ = [
     "find_orphaned_tool_messages",
     "find_unanswered_tool_calls",
     "group_atomic_units",
-    "history_results_budget",
     "load_messages",
     "load_session",
     "plan_compaction",
+    "window_results_budget",
 ]
 
 #: The shape `compact_session` needs from a driver -- identical to
@@ -66,7 +66,7 @@ SessionSummaryRunner = Callable[[str, str, str, int, dict[str, str] | None], Tur
 #: Tool results newer than this many stay whole in a built request.
 HISTORY_KEEP_FULL_RESULTS = 2
 #: Older results also stay whole while all whole results fit in this many characters, at the
-#: least (``history_results_budget`` widens it with the turn's history budget).
+#: least: the budget of an unknown window (``window_results_budget`` widens it to a known one).
 HISTORY_FULL_RESULTS_CHARS = 6_000
 #: A result shorter than this is never condensed while a longer one is whole.
 HISTORY_SMALL_RESULT_CHARS = 1_500
@@ -356,13 +356,11 @@ def _small_results_kept(results: Sequence[ChatMessage], cut: int) -> set[str]:
     }
 
 
-def history_results_budget(history_tokens: int) -> int:
-    """The characters of whole results a history of *history_tokens* keeps: 3/16 of what it
-    holds (6,000 of the 32,000 characters of 8,000 tokens), never under the default."""
-    return max(
-        HISTORY_FULL_RESULTS_CHARS,
-        history_tokens * current_home().context_bytes_per_token * 3 // 16,
-    )
+def window_results_budget(room_tokens: int) -> int:
+    """The characters of whole results that *room_tokens* of the receiving window leave: all of
+    them, never under the default. Results condense because the request would not fit, not to save
+    tokens."""
+    return max(HISTORY_FULL_RESULTS_CHARS, room_tokens * current_home().context_bytes_per_token)
 
 
 def _unanswered_count(messages: Sequence[ChatMessage]) -> int:

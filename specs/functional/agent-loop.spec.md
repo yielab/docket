@@ -799,7 +799,8 @@ This specification does NOT cover:
     composed system prompt, so the fit check measures what is sent. The projection **MUST NOT** be
     written back: `session.json` and the compaction candidates are built from the stored messages,
     and the newest `HISTORY_KEEP_FULL_RESULTS` tool results of the request stay whole, with older
-    ones while they fit `HISTORY_FULL_RESULTS_CHARS`.
+    ones while the request fits the context window (`window_results_budget`; at least
+    `HISTORY_FULL_RESULTS_CHARS`, and exactly that where the window is unknown).
 
 ### File state the model is judged on
 

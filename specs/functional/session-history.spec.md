@@ -1,6 +1,6 @@
 # Session History Specification
 
-**Version**: 1.15.0
+**Version**: 1.16.0
 **Status**: Implemented and live. The agent loop loads, compacts and appends this durable history
 on the production `DocketDriver` path; every pod-dispatch step has its own history key.
 **Last Updated**: 2026-11-05
@@ -180,14 +180,22 @@ This specification does NOT cover:
     results make room for it. The last `keep` (at least 1) `tool` messages stay whole;
     older ones stay whole too,
     newest first, while the characters of all whole results fit in `budget` (6,000 by default, one
-    `read` window; the live request passes `history_results_budget(history_tokens)`, which is
-    `max(6000, history_tokens x bytes-per-token x 3 // 16)`, so a turn whose history budget is
-    8,000 tokens keeps 6,000 and one of 25,000 keeps 18,750). The cut is a function of the
-    messages alone and moves in batches: walking the results oldest to newest, once the characters
-    of all whole results exceed `budget`, the cut moves so the whole results fit in the low-water
-    mark (half of `budget`; the last `keep` stay whole regardless) and does not move again until
-    the whole results exceed `budget` once more. A turn whose history budget is unset
-    (`LoopConfig.history_budget_tokens` is `None`) projects with the default `budget`. Every result older than the cut **MUST** have its
+    `read` window). The live request passes `window_results_budget(room_tokens)`, which is
+    `max(6000, room_tokens x bytes-per-token)`, where `room_tokens` is what the receiving model's
+    window leaves for results: the registered context window, less the output reserve, less the
+    estimate of the system prompt, the tool specs and every non-`tool` message of the history. A
+    result is therefore condensed because the request would not fit the window, never to save
+    tokens: on a 1,000,000-token window a research turn of fetched pages condenses nothing and
+    every message before the newest assistant/tool pair is byte-identical on every request, while
+    a 32,768-token window condenses after a few results. The history share of a model profile
+    (`model-profiles.spec.md` "Model profiles" 2) does not drive this budget. The cut is a
+    function of the messages and the room alone and moves in batches: walking the results oldest
+    to newest, once the characters of all whole results exceed `budget`, the cut moves so the
+    whole results fit in the low-water mark (half of `budget`; the last `keep` stay whole
+    regardless) and does not move again until
+    the whole results exceed `budget` once more. A turn whose context window is unknown
+    (`LoopConfig.context_window_tokens` and the backend's are both `None`) projects with the
+    default `budget`. Every result older than the cut **MUST** have its
     `content` replaced by `[<tool> <target>: N lines, M characters. You read this earlier in this
     session; its text is no longer in this view. Call <tool> again only for text you still need.]`,
     built from the matching call, unless the notice is not shorter than the content. The notice
@@ -235,7 +243,7 @@ def group_atomic_units(messages: Sequence[ChatMessage]) -> list[list[ChatMessage
 HISTORY_KEEP_FULL_RESULTS = 2
 HISTORY_FULL_RESULTS_CHARS = 6_000
 HISTORY_SMALL_RESULT_CHARS = 1_500
-def history_results_budget(history_tokens: int) -> int: ...
+def window_results_budget(room_tokens: int) -> int: ...
 def condense_history(
     messages: Sequence[ChatMessage], keep: int = HISTORY_KEEP_FULL_RESULTS,
     budget: int = HISTORY_FULL_RESULTS_CHARS,
@@ -417,7 +425,7 @@ result = sess.compact_session(
   `group_atomic_units`, `find_orphaned_tool_messages`, `find_unanswered_tool_calls`,
   `plan_compaction`, `compact_session`, `condense_history`, `SessionSummaryRunner`,
   `HISTORY_KEEP_FULL_RESULTS`, `HISTORY_FULL_RESULTS_CHARS`, `HISTORY_SMALL_RESULT_CHARS`,
-  `history_results_budget`
+  `window_results_budget`
 - `src/docket/agent/context.py`: `estimate_tokens`, `budget_for_role`
 - `src/docket/agent/loop_compaction.py`: the live caller (`run_compaction`,
   `summarize_without_reentry`, the request builder that applies `condense_history`)

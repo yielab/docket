@@ -1,0 +1,68 @@
+{
+  "note": "Synthetic shape of a ten-iteration research turn: filler text only, no live content. Each round is one assistant message calling fetch once per size; each result is that many characters.",
+  "task": "Research the topic and write the findings.",
+  "rounds": [
+    {
+      "fetch_result_chars": [
+        9200,
+        14100
+      ]
+    },
+    {
+      "fetch_result_chars": [
+        11800,
+        8700,
+        15300
+      ]
+    },
+    {
+      "fetch_result_chars": [
+        10400,
+        12600
+      ]
+    },
+    {
+      "fetch_result_chars": [
+        13900,
+        9100
+      ]
+    },
+    {
+      "fetch_result_chars": [
+        8800,
+        15700,
+        11200
+      ]
+    },
+    {
+      "fetch_result_chars": [
+        12100,
+        10300
+      ]
+    },
+    {
+      "fetch_result_chars": [
+        14600,
+        9400
+      ]
+    },
+    {
+      "fetch_result_chars": [
+        9900,
+        13300
+      ]
+    },
+    {
+      "fetch_result_chars": [
+        11500,
+        12800
+      ]
+    },
+    {
+      "fetch_result_chars": [
+        10700,
+        14900
+      ]
+    }
+  ]
+}
