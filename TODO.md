@@ -825,7 +825,7 @@ from `main`.
 
 ### P66-7 — The real run: the local endpoint, the fit path and the bench, before and after
 
-**Status:** TODO (after P66-1..P66-6) · **Size:** M · **Model:** Opus (integrator) · **Kind:** verification · **After:** P66-1..P66-6 merged
+**Status:** DONE 2026-11-05 (`440d3eb0`, `d3a173f3`, `fb7b1f8e`; the real run on the local 32k endpoint and on Haiku 5.5, `internal-docs/baselines/phase-66/real-run.md`. It found three seams no unit test saw: the summarizer prompt was bounded by text size while the preflight counts the serialized request; the no-progress guard fired on honest refetches after a compaction; the compaction prompt did not carry the task. Measured with 80 files of 2 KB: local Qwen 80/80 with no compaction (projection alone, 12k peak), Haiku 5.5 on 32k 80/80 with 5 compactions, on 200k with none; the estimate ratio is per model (local 1.08, Haiku 1.54) and the next turn's first estimate landed within 0.7%. Open: the replay bench's `condense_history` re-projections send more after (a tool result after the last assistant message is no longer condensed), the measured tables cannot show the phase; a first call on token-dense data is under-estimated and the server answers HTTP 400) · **Size:** M · **Model:** Opus (integrator) · **Kind:** verification · **After:** P66-1..P66-6 merged
 
 - **Trigger:** the phase-close rule ("a real run") and measured (c), whose consequence is inferred.
 - **Goal:** on this machine's llama.cpp endpoint (32k, `local` profile, `DOCKET_TOOL_MAX_OUTPUT_CHARS`
