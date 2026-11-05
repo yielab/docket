@@ -326,23 +326,27 @@ from `main`.
   draft, reports what it read as read.
 - **Gate:** the focused files; `validate-specs.sh`; `comment_lint.py --check`.
 
-### P68-11 — A research hop's token budget fits what a research hop reads
+### P68-11 — A turn always keeps room to land, and a research hop's budget fits what it reads
 
-**Status:** TODO (measured 2026-11-05, three real runs, `internal-docs/baselines/phase-68/real-run-searxng.md`; the value is the maintainer's call, so no number here until chosen) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** TODO (measured 2026-11-05, three real runs, `internal-docs/baselines/phase-68/real-run-searxng.md`; practices compared in `internal-docs/design/limitar-consumo-tokens-2026-11-05.es.md`; the order of the options is the maintainer's call) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
-- **Trigger:** `AGENT_LOOP_TOKEN_BUDGET` defaults to 100,000 per turn. In run 2 two of three researchers died on
-  `cannot start terminal finalization ... used 95251 of 100000` after one round of 8 fetches (~33k tokens held whole,
-  resent on every iteration); in run 3, with the budget at 400,000, the hops used 158.7k and 237.2k (researchers),
-  172.9k (analyst) and 108.4k (writer). Run 1 got through at about 100k per hop because it lost information.
-- **What the numbers say:** the input counted is every resend of the history, including cache reads and cache
-  writes (run 3: of 696k input, 271k were cache reads). The guard was sized for a short local turn.
-- **Options (the maintainer picks):** (a) a larger default; (b) a budget per pipeline step (`maxTokens` already exists
-  per task; a step-level value in the pipeline file for a research step); (c) cache reads counted at a fraction, since
-  they are not new work (D-81 keeps no dollars, so the fraction is a measure of work, not price). Not an option: a
-  silent per-role number.
-- **Change (after the pick):** the owning spec (`agent-loop.spec.md` requirement on the turn budget), the setting's
-  home, tests; `web-research`'s pipeline declares what its research steps need if (b).
-- **Acceptance:** run 2's task (8 fetches in one round, 3 parallel researchers) finishes without raising an
+- **Trigger:** in run 2 two of three researchers died on `cannot start terminal finalization ... used 95251 of
+  100000, estimated input 19229 + output reserve 8192, remaining 4749`: one round of 8 fetches (~33k tokens held whole,
+  resent each iteration) took the turn from more than a quarter free to 4,749, so the landing (requirement 51) no longer
+  fit and the hop ended with nothing. In run 3, at 400,000, the hops used 158.7k, 237.2k (researchers), 172.9k
+  (analyst) and 108.4k (writer).
+- **What is already right:** the turn counts `input - cached + output` (a cache read is not counted; checked: web-b
+  102,815 - 9,578 + 2,014 = 95,251); `budget_warning` fires at a quarter left; `prospective_budget_error` refuses a
+  request that does not fit. A cache write still counts.
+- **Options:** (d) **reserve the landing**: before a normal request, if afterwards the landing (its estimated input
+  plus reserve) would not fit, land now, so a low budget yields a partial report instead of nothing; no number
+  changes. (b) a budget per pipeline step, so `web-research` declares what its research steps read. (a) a larger
+  default, only with measurements beyond research. (e) a model-visible budget (Anthropic task budgets, beta, one
+  provider), later. Recommended order: (d), then (b) with the run figures.
+- **Change (d):** `agent/loop_budget.py` (`check_iteration_bounds`/`select_landing`), `agent-loop.spec.md`
+  requirement 51, a test with a stub model whose round adds more than the remaining budget.
+- **Acceptance (d):** run 2's shape (a round that jumps past the warning) ends with the landing's report and the
+  bound's stop, never `cannot start terminal finalization`. **(b):** run 2's task finishes without raising an
   environment variable.
 
 ### P68-8 — Brave Search API as the option, and Tack sees and sets the provider
