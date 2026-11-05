@@ -346,6 +346,14 @@ def _task_section(
     return "\n\n".join(p for p in (head, repo_map) if p)
 
 
+def _role_budget(role: str, project: str, model: str) -> int:
+    """The token budget *role*'s message is fit to, widened by the window of the receiving *model*."""
+    window, max_output = _endpoint.handoff_window(model)
+    return _ctx.budget_for_role(
+        role, project=project, context_window_tokens=window, max_output_tokens=max_output
+    )
+
+
 def _hop_message(
     task: TaskRecord,
     role: str,
@@ -400,19 +408,12 @@ def _hop_message(
         model_class,
     )
 
-    # The role's total token budget, minus what the immutable task
-    # description and this role's own fixed instruction footer already cost
-    # — what's left is what the carryover (rework note + prior hops) may
-    # spend. This is what makes "the composed message fits its role's
-    # budget" a real, checkable property rather than an aspiration: the two
-    # pieces that are never shed are accounted for before anything
-    # sheddable is given a share.
+    # What is left of the role's budget after the task description and the fixed instruction
+    # footer (never shed) is what the carryover may spend, so "the message fits its budget" is
+    # checkable.
     task_section = _task_section(task, desc, root, prior, workdir=workdir)
     reserved_tokens = sum(_rd.estimate_tokens(t) for t in (task_section, instructions, root_line))
-    window, max_output = _endpoint.handoff_window(model)
-    role_budget = _ctx.budget_for_role(
-        role, project=project, context_window_tokens=window, max_output_tokens=max_output
-    )
+    role_budget = _role_budget(role, project, model)
     carryover_budget = max(role_budget - reserved_tokens, 0)
 
     lines = [task_section, "", "## Hop"] + ([root_line, ""] if root_line else [])
