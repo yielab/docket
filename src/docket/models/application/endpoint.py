@@ -119,6 +119,7 @@ def endpoint_from_spec(spec: ProviderSpec, provider: str, model_id: str, api_key
         provider=provider,
         context_window_tokens=limits.context_window,
         max_output_tokens=limits.max_output,
+        estimate_ratio=limits.estimate_ratio,
         auth_type=spec.auth.type,
         auth_header=spec.auth.header,
         headers=tuple(spec.headers.items()),

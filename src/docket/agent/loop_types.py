@@ -134,3 +134,6 @@ class AgentLoopResult:
     budget_stop: BudgetStop | None = None
     #: Set exactly when ``stop_reason == "capability_missing"`` (agent-loop.spec.md requirement 114).
     capability_gap: CapabilityGap | None = None
+    #: The first task call's measured input tokens over its raw estimate; ``None`` when no call
+    #: reported input tokens (agent-loop.spec.md requirement 46a).
+    first_call_ratio: float | None = None

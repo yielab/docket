@@ -422,6 +422,9 @@ class TestPodShowProvider:
                 "maxTokensSource": "declared",
                 "source": "declared",
                 "observedAt": "",
+                "estimateRatio": None,
+                "estimateRatioSource": "unknown",
+                "estimateRatioAt": "",
             }
 
     def test_observed_and_unknown_limits_name_their_source(
@@ -457,6 +460,11 @@ class TestPodShowProvider:
             )
             assert observed["source"] == "observed"
             assert observed["observedAt"] == _prov.observed_at("bench") != ""
+            assert observed["estimateRatioSource"] == "unknown"
+            _provider_lifecycle.record_observed_estimate_ratio("bench", "qwen", 1.55)
+            ratio = _explain_json(lead, capsys)["provider"]["model"]
+            assert (ratio["estimateRatio"], ratio["estimateRatioSource"]) == (1.55, "observed")
+            assert ratio["estimateRatioAt"] == _prov.observed_at("bench")
 
             _fleet.meta_set(lead, "model", "bench/other")
             unknown = _explain_json(lead, capsys)["provider"]["model"]

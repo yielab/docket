@@ -266,6 +266,63 @@ class TestObservedLimitsStore:
         assert _provider.observed_limits("b", "m") == ModelLimits(2, 2)
 
 
+class TestEstimateRatioStore:
+    def test_record_writes_the_ratio_and_its_date_beside_the_models_limits(self) -> None:
+        _provider_lifecycle.record_observed_models(_spec(), _probe(("m", 32768, None)))
+        with use_clock(_Day(3)):
+            _provider_lifecycle.record_observed_estimate_ratio("gw", "m", 1.6)
+        on_disk = json.loads(current_home().provider_models_file.read_text(encoding="utf-8"))
+        assert on_disk["providers"]["gw"]["models"]["m"] == {
+            "contextWindow": 32768,
+            "maxTokens": None,
+            "estimateRatio": 1.6,
+            "estimateRatioAt": "1970-01-03",
+        }
+
+    def test_a_model_never_probed_gets_a_row_of_its_own(self) -> None:
+        with use_clock(_Day(4)):
+            _provider_lifecycle.record_observed_estimate_ratio("gw", "fresh", 1.4)
+        assert _provider.observed_limits("gw", "fresh") == ModelLimits(
+            None, None, estimate_ratio=1.4, estimate_ratio_at="1970-01-04"
+        )
+        assert _provider.observed_at("gw") == ""
+
+    def test_a_later_ratio_replaces_the_earlier_one(self) -> None:
+        with use_clock(_Day(1)):
+            _provider_lifecycle.record_observed_estimate_ratio("gw", "m", 1.3)
+        with use_clock(_Day(2)):
+            _provider_lifecycle.record_observed_estimate_ratio("gw", "m", 1.6)
+        seen = _provider.observed_limits("gw", "m")
+        assert seen is not None
+        assert (seen.estimate_ratio, seen.estimate_ratio_at) == (1.6, "1970-01-02")
+
+    @pytest.mark.parametrize("ratio", [0.0, -1.0, float("nan"), float("inf")])
+    def test_a_ratio_that_is_not_a_positive_finite_number_records_nothing(
+        self, ratio: float
+    ) -> None:
+        _provider_lifecycle.record_observed_estimate_ratio("gw", "m", ratio)
+        assert not current_home().provider_models_file.exists()
+
+    def test_a_new_probe_of_the_provider_keeps_the_ratio(self) -> None:
+        _provider_lifecycle.record_observed_models(_spec(), _probe(("m", 1, 1)))
+        _provider_lifecycle.record_observed_estimate_ratio("gw", "m", 1.6)
+        _provider_lifecycle.record_observed_models(_spec(), _probe(("m", 2, 2), ("n", 3, 3)))
+        seen = _provider.observed_limits("gw", "m")
+        assert seen is not None
+        assert (seen.context_window, seen.estimate_ratio) == (2, 1.6)
+        other = _provider.observed_limits("gw", "n")
+        assert other is not None and other.estimate_ratio is None
+
+    def test_a_malformed_ratio_on_disk_is_unknown(self) -> None:
+        _provider_lifecycle.record_observed_models(_spec(), _probe(("m", 1, 1)))
+        path = current_home().provider_models_file
+        document = json.loads(path.read_text(encoding="utf-8"))
+        document["providers"]["gw"]["models"]["m"]["estimateRatio"] = "high"
+        path.write_text(json.dumps(document), encoding="utf-8")
+        seen = _provider.observed_limits("gw", "m")
+        assert seen is not None and seen.estimate_ratio is None
+
+
 class TestResolveLimits:
     def test_declared_beats_observed_beats_unknown_per_limit(self) -> None:
         spec = _spec("gw", _provider.ModelRow(id="m", contextWindow=1000))
@@ -289,6 +346,25 @@ class TestResolveLimits:
         _provider_lifecycle.record_observed_models(spec, _probe(("m", 4096, None)))
         got = _provider.resolve_limits(spec, "m")
         assert (got.context_window_source, got.max_output_source) == ("observed", "unknown")
+
+    def test_the_estimate_ratio_is_observed_with_its_date_else_unknown(self) -> None:
+        spec = _spec("gw", _provider.ModelRow(id="m"))
+        before = _provider.resolve_limits(spec, "m")
+        assert (before.estimate_ratio, before.estimate_ratio_source) == (None, "unknown")
+        assert before.estimate_ratio_at == ""
+        with use_clock(_Day(5)):
+            _provider_lifecycle.record_observed_estimate_ratio("gw", "m", 1.55)
+        got = _provider.resolve_limits(spec, "m")
+        assert (got.estimate_ratio, got.estimate_ratio_source) == (1.55, "observed")
+        assert got.estimate_ratio_at == "1970-01-05"
+        assert _provider.resolve_limits(spec, "other").estimate_ratio_source == "unknown"
+
+    def test_a_ratio_alone_does_not_make_the_limits_observed(self) -> None:
+        spec = _spec("gw", _provider.ModelRow(id="m"))
+        _provider_lifecycle.record_observed_estimate_ratio("gw", "m", 1.55)
+        got = _provider.resolve_limits(spec, "m")
+        assert got.source == "unknown"
+        assert (got.context_window_source, got.max_output_source) == ("unknown", "unknown")
 
 
 class TestRegistrationRecordsWhatTheProbeSaw:

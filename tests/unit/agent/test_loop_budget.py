@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 from collections.abc import Callable
 
 import pytest
@@ -15,7 +16,7 @@ from docket.agent.loop_budget import (
 )
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_types import AgentLoopResult, LoopConfig
-from docket.agent.ports import BudgetStop, ChatResponse, TokenUsage
+from docket.agent.ports import BudgetStop, ChatMessage, ChatResponse, TokenUsage, user
 
 SUBJECT = "docket.agent.loop_budget"
 
@@ -90,6 +91,68 @@ class TestCalibrate:
         budget.pending_raw_estimate = 100
         budget.calibrate(40)
         assert budget.calibration == 1.0
+
+
+class _RawEstimate:
+    """A backend whose raw input estimate is fixed; it makes no exchange."""
+
+    def __init__(self, raw: int) -> None:
+        self.raw = raw
+
+    def estimate_input_tokens(self, *args: object, **kwargs: object) -> int:
+        return self.raw
+
+    def complete(self, *args: object, **kwargs: object) -> ChatResponse:
+        raise AssertionError("this test makes no backend call")
+
+
+class TestFirstRequestCalibration:
+    """The first request of a turn is estimated with the ratio the model showed last time."""
+
+    @staticmethod
+    def _first_estimate(state: TurnState) -> int:
+        messages: list[ChatMessage] = [user("hello")]
+        estimated, _error = TurnBudget(state).preflight_request(messages, [], purpose="task")
+        return estimated
+
+    def test_an_observed_ratio_scales_the_first_estimate(self, make_turn_state: MakeState) -> None:
+        state = make_turn_state(backend=_RawEstimate(1_001), estimate_ratio=1.5)
+        assert self._first_estimate(state) == math.ceil(1_001 * 1.5)
+
+    def test_no_ratio_leaves_the_first_estimate_raw(self, make_turn_state: MakeState) -> None:
+        state = make_turn_state(backend=_RawEstimate(1_001), estimate_ratio=None)
+        assert self._first_estimate(state) == 1_001
+
+    def test_a_ratio_below_one_never_shrinks_the_first_estimate(
+        self, make_turn_state: MakeState
+    ) -> None:
+        state = make_turn_state(backend=_RawEstimate(1_001), estimate_ratio=0.7)
+        assert self._first_estimate(state) == 1_001
+
+    def test_the_first_measured_call_replaces_the_seed(self, make_turn_state: MakeState) -> None:
+        budget = TurnBudget(make_turn_state(estimate_ratio=1.5))
+        assert budget.calibration == 1.5
+        budget.pending_raw_estimate = 100
+        budget.calibrate(120)
+        assert budget.calibration == 1.2
+
+    def test_the_first_call_ratio_is_measured_over_the_raw_estimate_and_kept(
+        self, make_turn_state: MakeState
+    ) -> None:
+        state = make_turn_state(estimate_ratio=1.5)
+        budget = TurnBudget(state)
+        budget.pending_raw_estimate = 1_000
+        budget.calibrate(1_600)
+        budget.pending_raw_estimate = 2_000
+        budget.calibrate(2_000)
+        assert state.first_call_ratio == 1.6
+
+    def test_a_call_that_measured_nothing_leaves_no_ratio(self, make_turn_state: MakeState) -> None:
+        state = make_turn_state()
+        budget = TurnBudget(state)
+        budget.pending_raw_estimate = 1_000
+        budget.calibrate(0)
+        assert state.first_call_ratio is None
 
 
 class TestCheckIterationBounds:

@@ -19,6 +19,7 @@ model-profiles.spec.md "Provider readiness" 3 and ADR 0011 §4.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -522,6 +523,9 @@ class ResolvedLimits:
     context_window_source: LimitSource
     max_output_source: LimitSource
     observed_at: str
+    estimate_ratio: float | None = None
+    estimate_ratio_source: LimitSource = "unknown"
+    estimate_ratio_at: str = ""
 
     @property
     def source(self) -> LimitSource:
@@ -552,7 +556,19 @@ def observed_limits(provider: str, model_id: str) -> ModelLimits | None:
             value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
         )
 
-    return ModelLimits(_limit(row.get("contextWindow")), _limit(row.get("maxTokens")))
+    ratio = row.get("estimateRatio")
+    seen_ratio = (
+        float(ratio)
+        if isinstance(ratio, int | float) and not isinstance(ratio, bool) and 0 < ratio < math.inf
+        else None
+    )
+    ratio_at = row.get("estimateRatioAt")
+    return ModelLimits(
+        _limit(row.get("contextWindow")),
+        _limit(row.get("maxTokens")),
+        seen_ratio,
+        ratio_at if seen_ratio is not None and isinstance(ratio_at, str) else "",
+    )
 
 
 def observed_at(provider: str) -> str:
@@ -562,7 +578,8 @@ def observed_at(provider: str) -> str:
 
 
 def resolve_limits(spec: ProviderSpec, model_id: str) -> ResolvedLimits:
-    """*model_id*'s limits under *spec*, each limit declared > observed > unknown."""
+    """*model_id*'s limits under *spec*, each limit declared > observed > unknown; the estimate
+    ratio has no declared form, so it is observed or unknown."""
     exact = next((row for row in spec.models if row.id == model_id), None)
     seen = observed_limits(spec.name, model_id)
     when = observed_at(spec.name) if seen is not None else ""
@@ -580,4 +597,14 @@ def resolve_limits(spec: ProviderSpec, model_id: str) -> ResolvedLimits:
     output, output_source = _pick(
         exact.max_tokens if exact else None, seen.max_output if seen else None
     )
-    return ResolvedLimits(window, output, window_source, output_source, when)
+    ratio = seen.estimate_ratio if seen else None
+    return ResolvedLimits(
+        window,
+        output,
+        window_source,
+        output_source,
+        when,
+        ratio,
+        "observed" if ratio is not None else "unknown",
+        seen.estimate_ratio_at if seen and ratio is not None else "",
+    )

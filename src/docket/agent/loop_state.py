@@ -45,6 +45,10 @@ class TurnState:
     system_prompt: str
     tool_specs: list[ToolSpec]
 
+    # The ratio the model's last turn measured (seeds the first request's estimate), and the
+    # one this turn's first task call measured (agent-loop.spec.md requirement 46a).
+    estimate_ratio: float | None = None
+    first_call_ratio: float | None = None
     trace_task_id: str = ""
     total_usage: TokenUsage = field(default_factory=TokenUsage)
     tool_calls_executed: int = 0
@@ -113,6 +117,7 @@ class TurnState:
             closing_args=closing_args,
             budget_stop=budget_stop,
             capability_gap=capability_gap,
+            first_call_ratio=self.first_call_ratio,
         )
 
     def budget_stop_for(self, stop_reason: StopReason) -> BudgetStop | None:

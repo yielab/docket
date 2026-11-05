@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 7.2.0
+**Version**: 7.3.0
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
 **Last Updated**: 2026-11-05
@@ -351,7 +351,8 @@ directly — see "Provider catalog" below.
    source (`resolve_credential`'s `"override"`/`"env"`/`"store"`/`"none"`), and the
    model's `id`/`contextWindow`/`maxTokens` as resolved by requirement 9, with a `source` of
    `"declared"`, `"observed"` or `"unknown"` (plus `contextWindowSource`/`maxTokensSource` per
-   limit and `observedAt`) — never a credential value. The human-readable render
+   limit and `observedAt`, and the observed `estimateRatio` with its `estimateRatioSource` and
+   `estimateRatioAt`) — never a credential value. The human-readable render
    **MUST** show the same provider name, scope and credential source under the model line.
    `docket setup` **MUST** report each global provider document in `docket-providers.json` that
    fails the validation `ProviderSpec` applies — naming the file, the provider's name and the
@@ -374,8 +375,15 @@ directly — see "Provider catalog" below.
    document); *observed* is what the provider's own `/models` body published, recorded in
    `~/.docket/provider-models.json`
    (`{"providers": {<name>: {"observedAt": "YYYY-MM-DD", "models": {<id>: {"contextWindow": N|null,
-   "maxTokens": N|null}}}}}`), read by `observed_limits` and written only by
-   `record_observed_models`; *unknown* is `None`, never a filled-in number. `probe_models`
+   "maxTokens": N|null, "estimateRatio": F, "estimateRatioAt": "YYYY-MM-DD"}}}}}`), read by
+   `observed_limits` and written only by `record_observed_models` and
+   `record_observed_estimate_ratio`; *unknown* is `None`, never a filled-in number.
+   `estimateRatio` is a third observed limit of the model: its input tokens as the endpoint
+   measured them over docket's raw estimate, on the first task call of the last turn that made
+   one (agent-loop requirement 46a). It has no declared form, so it resolves observed > unknown
+   with its own date `estimateRatioAt`; `record_observed_estimate_ratio(provider, model_id, ratio)`
+   writes a positive ratio dated today and nothing else, and a later `/models` observation of the
+   provider **MUST NOT** erase it. It is an estimate and is never folded into `TokenUsage`. `probe_models`
    **MUST** return each advertised id's limits (`ProbeResult.limits`), detecting the wire shape
    **per row by field presence**: window from `max_input_tokens` (Anthropic), `context_window`
    (gateway), `meta.n_ctx` (llama.cpp -- **never** `meta.n_ctx_train`) or `context_length`
@@ -394,7 +402,9 @@ directly — see "Provider catalog" below.
    **MUST** print one row per model with `WINDOW` and `OUTPUT` columns, each as
    `<N> (declared)`, `<N> (observed <date>)` or `unknown`; `--json` carries `contextWindow`,
    `maxTokens`, `limitsSource` (`declared` when any limit is declared, else `observed` when any is
-   observed, else `unknown`), `contextWindowSource`, `maxTokensSource` and `observedAt`.
+   observed, else `unknown`), `contextWindowSource`, `maxTokensSource` and `observedAt`, and also
+   `estimateRatio`, `estimateRatioSource` (`observed` or `unknown`) and `estimateRatioAt`; the
+   table's `ESTIMATE` column shows `<F> (observed <date>)` or `unknown`.
 
 10. **The `anthropic-messages` dialect.** `POST {baseUrl}/messages`, with the encoding and decoding
     below; `docket` never invents a value the table does not name.

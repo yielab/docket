@@ -647,11 +647,13 @@ class ChatResponse:
 
 @dataclass(frozen=True)
 class ModelLimits:
-    """One model's context window and output cap as a provider published them; ``None`` is
-    unknown, never zero."""
+    """One model's context window and output cap as a provider published them, and the estimate
+    ratio its last turn measured (with the day it did); ``None`` is unknown, never zero."""
 
     context_window: int | None = None
     max_output: int | None = None
+    estimate_ratio: float | None = None
+    estimate_ratio_at: str = ""
 
 
 @dataclass(frozen=True)
@@ -666,6 +668,7 @@ class Endpoint:
     provider: str = ""
     context_window_tokens: int | None = None
     max_output_tokens: int | None = None
+    estimate_ratio: float | None = None
     auth_type: Literal["bearer", "header", "none"] = "bearer"
     auth_header: str = ""
     headers: tuple[tuple[str, str], ...] = ()

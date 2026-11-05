@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.10.0
+**Version**: 4.12.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -397,7 +397,10 @@ This specification does NOT cover:
     `provider-models.json` recorded. Selection **MUST** match the exact model id, not merely the
     provider. A process-wide `DOCKET_LLM_BASE_URL` override **MUST NOT** inherit stored limits from
     the provider it replaces; its window and output cap are unknown. An explicit `LoopConfig`
-    value wins over the backend's own reported limit.
+    value wins over the backend's own reported limit. The model's estimate ratio (requirement 46a)
+    is a third observed limit of the same endpoint, `estimateRatio`: the live client reports it as
+    `estimate_ratio`, `None` when the model never showed one or the override replaces the provider,
+    and it has no declared form.
 45. Before every task or compaction `ChatBackend.complete` call whose context window is known, the
     loop **MUST** estimate the complete prospective input — messages, tool-call metadata,
     advertised tool schemas, model/protocol framing — and add the output reserve. The shipped
@@ -420,8 +423,14 @@ This specification does NOT cover:
 46a. After the first measured call of a turn, every input estimate used by the window check and the
     cumulative budget check **MUST** be scaled by `max(1, measured_input / estimated_input)` of the
     latest call that reported input tokens, so an under-counting estimator converges on the
-    endpoint's own count and never shrinks below the raw estimate. The scaled figure is still an
-    estimate: it **MUST NOT** be folded into `TokenUsage`.
+    endpoint's own count and never shrinks below the raw estimate. Before that call the scale is
+    `max(1, estimate_ratio)` of the backend (requirement 44), so the first request of a turn is
+    checked with the ratio the last turn on that model measured; `1` when the backend reports
+    none. The result carries `first_call_ratio`, the first task call's measured input tokens over
+    its raw (unscaled) estimate, `None` when the turn made no call that reported input tokens;
+    the driver records a positive one for the turn's provider and model
+    (`model-profiles.spec.md` "Provider catalog" 9). The scaled figure is still an estimate: it
+    **MUST NOT** be folded into `TokenUsage`.
 47. When a task request is estimated over-window, the loop **MUST** invoke the durable, fail-closed
     session compactor with a smaller target, preserve complete assistant-tool/result atomic units,
     reload the accepted messages, and retry the estimate before transport. Every compactor

@@ -70,6 +70,7 @@ from docket.hops.application.driver_support import (
     _turn_token_budget,
     _validated_pipeline_worktree,
     pod_offer,
+    record_first_call_ratio,
     refresh_claim_each_round,
 )
 from docket.hops.application.handoff_tool import parse_values, register_closing_tool
@@ -328,6 +329,7 @@ class DocketDriver:
             if view_token is not None:
                 _repo_view.unregister(view_token)
 
+        record_first_call_ratio(effective_model, result)
         turn = _turn_result_from(result)
         if view is not None:
             turn.repo_files = dict(view.composed)

@@ -241,6 +241,9 @@ def _provider_report(model: str) -> dict[str, Any]:
                 "maxTokensSource": found.max_output_source,
                 "source": found.source,
                 "observedAt": found.observed_at,
+                "estimateRatio": found.estimate_ratio,
+                "estimateRatioSource": found.estimate_ratio_source,
+                "estimateRatioAt": found.estimate_ratio_at,
             },
         }
 
@@ -261,6 +264,9 @@ def _provider_report(model: str) -> dict[str, Any]:
             "maxTokensSource": "unknown",
             "source": "unknown",
             "observedAt": "",
+            "estimateRatio": None,
+            "estimateRatioSource": "unknown",
+            "estimateRatioAt": "",
         },
     }
 

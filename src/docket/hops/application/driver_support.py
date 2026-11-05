@@ -3,6 +3,7 @@ policy scope, loop config and the trace callback. Moved out of ``driver.py`` unc
 
 from __future__ import annotations
 
+import contextlib
 import json
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -36,7 +37,8 @@ from docket.kernel.errors import DispatchError
 from docket.kernel.gate import DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
 from docket.kernel.ports import records as _pod_records
-from docket.models.catalog import ModelProfile
+from docket.models.catalog import ModelProfile, load_catalog
+from docket.models.provider_lifecycle import record_observed_estimate_ratio
 from docket.observability import trace as _trace
 from docket.platform import read_json
 from docket.tasks.application import runs as _runs
@@ -509,6 +511,18 @@ def refresh_claim_each_round(backend: ChatBackend, project: str, task_id: str) -
     if not task_id:
         return backend
     return _ClaimRefreshingBackend(backend, project, task_id)
+
+
+def record_first_call_ratio(model: str, result: _loop.AgentLoopResult) -> None:
+    """Record the ratio *result*'s first call measured for the catalog row *model* names
+    (agent-loop.spec.md requirement 46a); no measured call or catalog row records nothing, and an
+    unwritable store loses one observation, never the turn."""
+    provider, _, model_id = model.partition("/")
+    ratio = result.first_call_ratio
+    if ratio is None or ratio <= 0 or not model_id or load_catalog().get(provider) is None:
+        return
+    with contextlib.suppress(OSError):
+        record_observed_estimate_ratio(provider, model_id, ratio)
 
 
 def _turn_result_from(result: _loop.AgentLoopResult) -> TurnResult:

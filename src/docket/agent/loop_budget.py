@@ -62,7 +62,7 @@ class TurnBudget:
 
     def __init__(self, state: TurnState) -> None:
         self.state = state
-        self.calibration = 1.0
+        self.calibration = max(1.0, state.estimate_ratio or 1.0)
         self.pending_raw_estimate = 0
 
     def preflight_request(
@@ -126,9 +126,13 @@ class TurnBudget:
         return self.state.total_usage.counted_tokens + pending.counted_tokens
 
     def calibrate(self, measured_input: int) -> None:
-        """Scale later estimates by ``max(1, measured / estimated)`` of the latest call."""
+        """Scale later estimates by ``max(1, measured / estimated)`` of the latest call; the first
+        call's unscaled ratio is kept for the driver to record."""
         if measured_input > 0 and self.pending_raw_estimate > 0:
-            self.calibration = max(1.0, measured_input / self.pending_raw_estimate)
+            ratio = measured_input / self.pending_raw_estimate
+            if self.state.first_call_ratio is None:
+                self.state.first_call_ratio = ratio
+            self.calibration = max(1.0, ratio)
 
     def reserve_within_budget(self, estimated_input: int, remaining: int) -> int:
         """A known cap cut to what the budget leaves after the input (requirement 46); the

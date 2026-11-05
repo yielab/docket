@@ -102,6 +102,10 @@ class OpenAIChatClient:
     def max_output_tokens(self) -> int | None:
         return self.endpoint.max_output_tokens
 
+    @property
+    def estimate_ratio(self) -> float | None:
+        return self.endpoint.estimate_ratio
+
     def estimate_input_tokens(
         self,
         messages: Sequence[ChatMessage],

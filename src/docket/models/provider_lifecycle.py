@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,9 +28,9 @@ from docket.platform import read_modify_write
 
 
 def record_observed_models(spec: ProviderSpec, probe: ProbeResult) -> None:
-    """Replace *spec*'s observed models with what *probe* advertised, dated today. A probe that
-    is not a 200 records nothing and leaves an earlier observation alone. The only writer of
-    ``Home.provider_models_file``."""
+    """Replace *spec*'s observed models with what *probe* advertised, dated today; a non-200
+    probe records nothing and a recorded estimate ratio survives. With
+    ``record_observed_estimate_ratio``, the only writer of ``Home.provider_models_file``."""
     if probe.status != 200:
         return
     models = {
@@ -39,16 +40,54 @@ def record_observed_models(spec: ProviderSpec, probe: ProbeResult) -> None:
         }
         for model_id in sorted(set(probe.model_ids) | set(probe.limits))
     }
-    entry = {"observedAt": _clock.today_iso(), "models": models}
 
     def _update(current: dict[str, Any]) -> dict[str, Any]:
-        providers = current.get("providers")
-        if not isinstance(providers, dict):
-            providers = {}
-        providers[spec.name] = entry
+        providers = _providers_of(current)
+        for model_id, kept in _recorded_ratios(providers.get(spec.name)).items():
+            models.setdefault(model_id, {"contextWindow": None, "maxTokens": None}).update(kept)
+        providers[spec.name] = {"observedAt": _clock.today_iso(), "models": models}
         return {"providers": providers}
 
     read_modify_write(current_home().provider_models_file, _update)
+
+
+def record_observed_estimate_ratio(provider: str, model_id: str, ratio: float) -> None:
+    """Record *ratio* (input tokens the endpoint measured over docket's raw estimate) for
+    *model_id* under *provider*, dated today, beside the limits already observed for it. A ratio
+    that is not a positive finite number records nothing."""
+    if not 0 < ratio < math.inf:
+        return
+
+    def _update(current: dict[str, Any]) -> dict[str, Any]:
+        providers = _providers_of(current)
+        entry = providers.get(provider)
+        entry = entry if isinstance(entry, dict) else {}
+        models = entry.get("models")
+        models = models if isinstance(models, dict) else {}
+        row = models.get(model_id)
+        row = row if isinstance(row, dict) else {}
+        models[model_id] = {**row, "estimateRatio": ratio, "estimateRatioAt": _clock.today_iso()}
+        providers[provider] = {**entry, "models": models}
+        return {"providers": providers}
+
+    read_modify_write(current_home().provider_models_file, _update)
+
+
+def _providers_of(document: dict[str, Any]) -> dict[str, Any]:
+    providers = document.get("providers")
+    return providers if isinstance(providers, dict) else {}
+
+
+def _recorded_ratios(entry: object) -> dict[str, dict[str, Any]]:
+    """The estimate ratio and date each model of a provider's recorded *entry* carries."""
+    models = entry.get("models") if isinstance(entry, dict) else None
+    if not isinstance(models, dict):
+        return {}
+    return {
+        model_id: {key: row[key] for key in ("estimateRatio", "estimateRatioAt")}
+        for model_id, row in models.items()
+        if isinstance(row, dict) and "estimateRatio" in row and "estimateRatioAt" in row
+    }
 
 
 def refresh_observed_models_due() -> list[str]:

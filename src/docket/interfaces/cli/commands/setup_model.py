@@ -141,10 +141,11 @@ def provider_show(
                     model_id,
                     _limit_text(found.context_window, found.context_window_source, found),
                     _limit_text(found.max_output, found.max_output_source, found),
+                    _ratio_text(found),
                 ]
                 for model_id, found in limits.items()
             ],
-            ["MODEL", "WINDOW", "OUTPUT"],
+            ["MODEL", "WINDOW", "OUTPUT", "ESTIMATE"],
         )
 
 
@@ -156,6 +157,9 @@ def _limits_json(found: _prov.ResolvedLimits) -> dict[str, object]:
         "contextWindowSource": found.context_window_source,
         "maxTokensSource": found.max_output_source,
         "observedAt": found.observed_at,
+        "estimateRatio": found.estimate_ratio,
+        "estimateRatioSource": found.estimate_ratio_source,
+        "estimateRatioAt": found.estimate_ratio_at,
     }
 
 
@@ -165,6 +169,12 @@ def _limit_text(value: int | None, source: str, found: _prov.ResolvedLimits) -> 
     if source == "observed":
         return f"{value} (observed {found.observed_at})"
     return f"{value} ({source})"
+
+
+def _ratio_text(found: _prov.ResolvedLimits) -> str:
+    if found.estimate_ratio is None:
+        return "unknown"
+    return f"{found.estimate_ratio:g} (observed {found.estimate_ratio_at})"
 
 
 @provider_app.command("remove")

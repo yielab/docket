@@ -322,6 +322,7 @@ class TestProviderLimits:
                 ),
             )
             when = _prov.observed_at("gw")
+            _provider_lifecycle.record_observed_estimate_ratio("gw", "seen", 1.55)
 
             result = _runner.invoke(app, ["setup", "provider", "show", "gw"])
 
@@ -331,9 +332,9 @@ class TestProviderLimits:
                 for line in result.stdout.splitlines()
                 if line.split()[:1] in (["declared"], ["seen"], ["blank"])
             }
-            assert rows["declared"] == "1000 (declared) 500 (declared)"
-            assert rows["seen"] == f"32768 (observed {when}) unknown"
-            assert rows["blank"] == "unknown unknown"
+            assert rows["declared"] == "1000 (declared) 500 (declared) unknown"
+            assert rows["seen"] == f"32768 (observed {when}) unknown 1.55 (observed {when})"
+            assert rows["blank"] == "unknown unknown unknown"
 
     def test_show_json_carries_the_resolved_limits_and_sources(self, tmp_path: Path) -> None:
         with _home(tmp_path):
@@ -353,11 +354,15 @@ class TestProviderLimits:
                     status=200, model_ids=["seen"], limits={"seen": ModelLimits(32768, 4096)}
                 ),
             )
+            _provider_lifecycle.record_observed_estimate_ratio("gw", "seen", 1.55)
 
             result = _runner.invoke(app, ["setup", "provider", "show", "gw", "--json"])
 
             assert result.exit_code == 0, result.stdout + result.stderr
             seen, blank = json.loads(result.stdout)["models"]
+            assert (seen["estimateRatio"], seen["estimateRatioSource"]) == (1.55, "observed")
+            assert seen["estimateRatioAt"] == _prov.observed_at("gw")
+            assert (blank["estimateRatio"], blank["estimateRatioSource"]) == (None, "unknown")
             assert seen["contextWindow"] == 32768 and seen["maxTokens"] == 4096
             assert seen["limitsSource"] == "observed" and seen["observedAt"] == _prov.observed_at(
                 "gw"
