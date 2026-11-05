@@ -141,7 +141,7 @@ from `main`.
 > | 1 | P68-1 ∥ P68-2 ∥ P68-3 | P68-1 owns `agent/session_compaction.py`, `agent/loop_compaction.py`, `session-history.spec.md`, `agent-loop.spec.md` 37; P68-2 owns `governance/policy.py`, the policy templates, the corpus, `security-gates.spec.md`; P68-3 owns `teams/builtin_roles.py`, `role-archetypes.spec.md` |
 > | 2 | P68-4 (done) ∥ P68-5 | P68-4 owns the `web-research` recipe, `services/`, the `setup search` command and `teams/apply/needs.py`; P68-5 owns `agent/tools/capability_gap.py`, `hops/application/driver_support.py` `pod_offer`, `serve-read-api.spec.md` |
 > | 2b | P68-7 (done) | `agent/session.py`, `session-history.spec.md` requirement 30; before P68-6 |
-> | 2c | P68-9, P68-10, P68-8 (done) | P68-9 owns `agent/context.py`, `hops/application/compose.py`, `pod-dispatch.spec.md`; P68-10 owns `agent/session.py` `_result_notice`, `session-history.spec.md`; P68-8, after P68-4: `needs.py`, the recipe, the pod report, `operator-api.spec.md`; Brave and the Tack surface |
+> | 2c | P68-9, P68-10, P68-8 (done) ∥ P68-11 (needs the maintainer's pick) | P68-9 owns `agent/context.py`, `hops/application/compose.py`, `pod-dispatch.spec.md`; P68-10 owns `agent/session.py` `_result_notice`, `session-history.spec.md`; P68-8, after P68-4: `needs.py`, the recipe, the pod report, `operator-api.spec.md`; Brave and the Tack surface |
 > | 3 | P68-6 | the integrator's real run, which also closes P67-5 |
 >
 > **Against Phase 66:** P68-1 edits `session_compaction.py`, `loop_compaction.py` and `session-history.spec.md`, which
@@ -325,6 +325,25 @@ from `main`.
 - **Check by the next real run:** a task that reads pages in one round and drafts from them, then reviews its own
   draft, reports what it read as read.
 - **Gate:** the focused files; `validate-specs.sh`; `comment_lint.py --check`.
+
+### P68-11 — A research hop's token budget fits what a research hop reads
+
+**Status:** TODO (measured 2026-11-05, three real runs, `internal-docs/baselines/phase-68/real-run-searxng.md`; the value is the maintainer's call, so no number here until chosen) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** `AGENT_LOOP_TOKEN_BUDGET` defaults to 100,000 per turn. In run 2 two of three researchers died on
+  `cannot start terminal finalization ... used 95251 of 100000` after one round of 8 fetches (~33k tokens held whole,
+  resent on every iteration); in run 3, with the budget at 400,000, the hops used 158.7k and 237.2k (researchers),
+  172.9k (analyst) and 108.4k (writer). Run 1 got through at about 100k per hop because it lost information.
+- **What the numbers say:** the input counted is every resend of the history, including cache reads and cache
+  writes (run 3: of 696k input, 271k were cache reads). The guard was sized for a short local turn.
+- **Options (the maintainer picks):** (a) a larger default; (b) a budget per pipeline step (`maxTokens` already exists
+  per task; a step-level value in the pipeline file for a research step); (c) cache reads counted at a fraction, since
+  they are not new work (D-81 keeps no dollars, so the fraction is a measure of work, not price). Not an option: a
+  silent per-role number.
+- **Change (after the pick):** the owning spec (`agent-loop.spec.md` requirement on the turn budget), the setting's
+  home, tests; `web-research`'s pipeline declares what its research steps need if (b).
+- **Acceptance:** run 2's task (8 fetches in one round, 3 parallel researchers) finishes without raising an
+  environment variable.
 
 ### P68-8 — Brave Search API as the option, and Tack sees and sets the provider
 
