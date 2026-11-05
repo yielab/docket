@@ -383,7 +383,8 @@ def test_the_shipped_compaction_prompt_declares_its_inputs_and_six_sections_in_o
         "any",
         "any",
     )
-    assert parsed.inputs == {"label": "string", "turns": "text"}
+    assert parsed.inputs == {"label": "string", "task": "text", "turns": "text"}
+    assert "${task}" in loaded.text and "${turns}" in loaded.text
     headings = [line[3:] for line in loaded.text.splitlines() if line.startswith("## ")]
     assert headings == list(_HISTORY_SECTIONS)
     assert "only memory the next request has" in loaded.text

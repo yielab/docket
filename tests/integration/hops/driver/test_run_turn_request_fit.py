@@ -138,7 +138,10 @@ class TestRunTurn:
                 prompt = messages[0].content
                 self.summary_prompts.append(prompt)
                 assert "compacting durable turn history" in prompt
-                if "CONCURRENT_REVISION" in prompt:
+                # The task block of every prompt carries the task message; only the turns being
+                # summarized tell the revisions apart.
+                turns = prompt.split("Turns, oldest first:", 1)[1]
+                if "CONCURRENT_REVISION" in turns:
                     assert "FIRST_SUMMARY" not in prompt
                     assert "ORIGINAL_SUFFIX" not in prompt
                     return _final_response("SECOND_SUMMARY " + "N" * 400, TokenUsage(10, 5))

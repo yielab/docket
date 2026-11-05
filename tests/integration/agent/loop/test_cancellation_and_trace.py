@@ -237,7 +237,7 @@ class TestCooperativeRunCancellation:
             session_key,
             [
                 message
-                for n in range(6)
+                for n in range(10)
                 for message in (
                     ChatMessage(role="user", content=f"old context {n} " * 40),
                     ChatMessage(role="assistant", content="old complete answer"),
@@ -257,7 +257,7 @@ class TestCooperativeRunCancellation:
             ctx,
             session_key,
             "new request",
-            config=_loop.LoopConfig(context_window_tokens=700, max_tokens=100),
+            config=_loop.LoopConfig(context_window_tokens=1_320, max_tokens=100),
         )
         try:
             assert backend.entered.wait(timeout=5)

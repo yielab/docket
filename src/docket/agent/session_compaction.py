@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -60,16 +60,31 @@ def _render_unit(unit: Sequence[ChatMessage], tool_result_cap: int | None = None
     return "\n".join(lines)
 
 
+# The most of the task a summarizer prompt carries: it says what to keep, it is not history.
+_TASK_CHARS = 2_000
+
+
+def _task_of(kept: Sequence[ChatMessage]) -> str:
+    """The user messages the range leaves in place, cut to ``_TASK_CHARS``: what the session is for."""
+    asks = [
+        m.content
+        for m in kept
+        if m.role == "user" and not m.content.startswith(_COMPACTED_SUMMARY_PREFIX)
+    ]
+    return "\n\n".join(asks)[:_TASK_CHARS] or "(not recorded)"
+
+
 def _summarization_message(
     prompt_text: str,
-    label: str,
+    inputs: Mapping[str, str],
     units: Sequence[Sequence[ChatMessage]],
     tool_result_cap: int | None = None,
 ) -> str:
-    """The summarizer prompt: the caller's resolved *prompt_text* with ``${label}`` and ``${turns}``
-    (the *units* being replaced, oldest first) substituted. Nothing is read from disk."""
+    """The summarizer prompt: the caller's resolved *prompt_text* with ``${label}`` and ``${task}``
+    (*inputs*) and ``${turns}`` (the *units* being replaced, oldest first) substituted. Nothing is
+    read from disk."""
     turns = "\n\n".join(_render_unit(u, tool_result_cap) for u in units)
-    return Template(prompt_text).safe_substitute(label=label, turns=turns)
+    return Template(prompt_text).safe_substitute(**inputs, turns=turns)
 
 
 def _is_compacted_summary_unit(unit: Sequence[ChatMessage]) -> bool:
@@ -82,7 +97,7 @@ def _is_compacted_summary_unit(unit: Sequence[ChatMessage]) -> bool:
 
 def _projected_prompt(
     prompt_text: str,
-    label: str,
+    inputs: Mapping[str, str],
     summaries: Sequence[Sequence[ChatMessage]],
     unit: Sequence[ChatMessage],
     input_budget_tokens: int,
@@ -93,7 +108,7 @@ def _projected_prompt(
     batch = [*summaries, list(unit)]
 
     def _fits(cap: int) -> tuple[str, int] | None:
-        prompt = _summarization_message(prompt_text, label, batch, tool_result_cap=cap)
+        prompt = _summarization_message(prompt_text, inputs, batch, tool_result_cap=cap)
         estimated = estimate(prompt)
         return (prompt, estimated) if estimated <= input_budget_tokens else None
 
@@ -113,7 +128,7 @@ def _projected_prompt(
 
 def _bounded_summary_batch(
     prompt_text: str,
-    label: str,
+    inputs: Mapping[str, str],
     units: Sequence[Sequence[ChatMessage]],
     input_budget_tokens: int,
     estimate: Callable[[str], int],
@@ -126,7 +141,7 @@ def _bounded_summary_batch(
     estimated = 0
     for unit in units:
         candidate = [*selected, list(unit)]
-        candidate_prompt = _summarization_message(prompt_text, label, candidate)
+        candidate_prompt = _summarization_message(prompt_text, inputs, candidate)
         candidate_estimated = estimate(candidate_prompt)
         if candidate_estimated <= input_budget_tokens:
             selected, prompt, estimated = candidate, candidate_prompt, candidate_estimated
@@ -135,7 +150,7 @@ def _bounded_summary_batch(
             _is_compacted_summary_unit(u) for u in selected
         ):
             projected = _projected_prompt(
-                prompt_text, label, selected, unit, input_budget_tokens, estimate
+                prompt_text, inputs, selected, unit, input_budget_tokens, estimate
             )
             if projected is not None:
                 selected, (prompt, estimated) = candidate, projected
@@ -288,6 +303,7 @@ def _run_compaction_rounds(
     """Repeatedly summarize *working*'s oldest atomic units until it fits *budget* or a round
     fails, bounded by a deterministic round cap. Never mutates *preserved_prefix*/*_suffix* --
     they are only consulted to validate each candidate's atomic-unit integrity."""
+    inputs = {"label": display_label, "task": _task_of([*preserved_prefix, *preserved_suffix])}
     rounds = 0
     groups_summarized = 0
     max_prompt_estimated = 0
@@ -320,7 +336,7 @@ def _run_compaction_rounds(
 
         batch, prompt, prompt_estimated = _bounded_summary_batch(
             prompt_text,
-            display_label,
+            inputs,
             plan.to_summarize,
             summary_input_budget,
             summary_estimate,
@@ -331,7 +347,7 @@ def _run_compaction_rounds(
                 plan.to_summarize[0],
             )
             required = summary_estimate(
-                _summarization_message(prompt_text, display_label, [blocking], tool_result_cap=0)
+                _summarization_message(prompt_text, inputs, [blocking], tool_result_cap=0)
             )
             return _RoundOutcome(
                 ok=False,

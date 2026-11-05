@@ -104,6 +104,44 @@ def _compact(
     )
 
 
+class TestTheSummarizerSeesTheTaskItSummarizesFor:
+    """The user messages the range leaves in place reach the prompt as ``${task}``: without them
+    the summarizer cannot know which values the session needs (session-history requirement 23)."""
+
+    def _run(self, task: str) -> list[str]:
+        _sess.append_messages(
+            _KEY,
+            [user(task), assistant("ok")]
+            + [m for n in range(3) for m in (user(f"ask {n} " + "x" * 400), assistant("done"))],
+        )
+        driver, prompts = _recording_summarizer(tokens=20)
+        result = _session_compaction.compact_session(
+            _KEY,
+            agent_id="reader",
+            summarizer=driver,
+            prompt_text="Task: ${task}\nTurns:\n${turns}",
+            prompt_sha256=_PROMPT_SHA,
+            budget_tokens=0,
+            summary_input_budget_tokens=5_000,
+            compact_range=(2, 6),
+            keep_latest_unit=False,
+        )
+        assert result.ok and result.compacted, result.error
+        return prompts
+
+    def test_the_task_message_kept_ahead_of_the_range_is_in_the_prompt(self) -> None:
+        prompts = self._run("TASK keep every CODE value verbatim")
+
+        assert prompts[0].startswith("Task: TASK keep every CODE value verbatim")
+        assert "ask 0" in prompts[0]
+
+    def test_a_long_task_is_cut(self) -> None:
+        prompts = self._run("T" * 5_000)
+
+        head = prompts[0].split("\nTurns:")[0]
+        assert 2_000 <= len(head) < 2_100
+
+
 class TestAUnitLargerThanThePromptIsSummarizedFromAProjection:
     """The measured failure: a lone summary was summarized because the next unit did not fit."""
 

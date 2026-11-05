@@ -15,6 +15,12 @@ from docket.agent.ports import (
 )
 from docket.kernel.home import current_home
 
+# What every summarizer prompt carries besides the turns it replaces: the instruction text (about
+# 120 tokens) and the task block, up to 2,000 characters (500 tokens) of the user messages the
+# compacted range leaves in place. A toy context window has to leave room for both before it can
+# bound the turns, so the tests that run the shipped prompt add this to the window they mean.
+SUMMARIZER_FIXED_TOKENS = 620
+
 
 class ScriptedBackend:
     """Replays a fixed script of `ChatResponse`s; records each call's messages for assertions

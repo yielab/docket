@@ -1,6 +1,6 @@
 # Session History Specification
 
-**Version**: 1.21.0
+**Version**: 1.22.0
 **Status**: Implemented and live. The agent loop loads, compacts and appends this durable history
 on the production `DocketDriver` path; every pod-dispatch step has its own history key.
 **Last Updated**: 2026-11-05
@@ -128,7 +128,10 @@ This specification does NOT cover:
     `RoleComposer` port, whose adapter resolves the shipped `compaction/history` prompt through
     the four scopes (`config-format.spec.md`, "The `prompt` kind"), so a repository, pod or
     operator overrides it like any prompt. The text **MUST** use the input `${turns}`
-    (the rendered units); a text that does not is refused before any summarizer call, with
+    (the rendered units) and **MAY** use `${label}` and `${task}`, the user messages the range
+    leaves in place (the task the session serves, which the summary does not repeat, cut to 2,000
+    characters; `(not recorded)` when there is none), so the summarizer knows which values to
+    keep; a text that does not use `${turns}` is refused before any summarizer call, with
     `ok=False` and `failure_kind="invalid_output"`. The result **MUST** report the hash in
     `prompt_sha256` for a call that ran summarisation rounds (`""` otherwise). The shipped body
     names the summary as the only memory the next request has of the turns and asks for six
@@ -152,10 +155,9 @@ This specification does NOT cover:
     Failure reports identical before/after values; no-op reports the unchanged values; success
     reports the persisted candidate. These fields **MUST NOT** be presented as measured usage.
 23. The complete summarizer prompt for each compaction round (the resolved prompt document with
-    `${label}` and `${turns}` substituted, so the document's own length counts) **MUST** fit a
-    bounded estimated-token input budget. By default that input budget is the role's configured history budget (independent
-    of a caller's one-off target-budget override); an explicit input override exists for
-    deterministic tests, not as a second role-budget registry.
+    `${label}`, `${task}` and `${turns}` substituted, so the document's own length counts)
+    **MUST** fit the caller's `summary_input_budget_tokens` (requirement 14); no role or profile
+    budget stands behind it.
 24. When all units selected by the compaction plan do not fit one summary prompt, compaction
     **MUST** summarize the largest fitting oldest prefix, preserve every remaining unit, and repeat
     hierarchically until every selected raw old unit has been folded into bounded summaries. No
@@ -319,7 +321,7 @@ def compact_session(
     role: str,
     agent_id: str,
     summarizer: SessionSummaryRunner,
-    prompt_text: str,                          # the resolved compaction prompt; uses ${turns}, may use ${label}
+    prompt_text: str,                          # the resolved compaction prompt; uses ${turns}, may use ${label} and ${task}
     prompt_sha256: str,                        # its hash, reported on the result
     summarizer_session_key: str | None = None, # default: derived key distinct from session_key
     budget_tokens: int,                        # the size the range is planned to; 0 on a range: the whole range

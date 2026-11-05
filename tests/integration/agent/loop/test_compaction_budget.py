@@ -8,6 +8,7 @@ from collections.abc import Callable, Sequence
 
 import pytest
 from tests.support.loop_harness import (
+    SUMMARIZER_FIXED_TOKENS,
     ScriptedBackend,
     _final,
     _tool_call_response,
@@ -38,14 +39,17 @@ SUBJECT = "docket.agent.loop"
 
 # A window the history below does not fit, so the first task request is compacted: the oldest
 # units are summarized, in rounds whose prompts stay inside window - reserve - 16.
-_NARROW_WINDOW = _loop.LoopConfig(context_window_tokens=700, max_tokens=100)
+_NARROW_WINDOW = _loop.LoopConfig(
+    context_window_tokens=700 + SUMMARIZER_FIXED_TOKENS, max_tokens=100
+)
 
 
 def _append_history_that_does_not_fit(session_key: str) -> list[dict[str, object]]:
-    """Eight user messages of about 105 tokens each; returns them as stored, for byte comparison."""
+    """Fourteen user messages of about 105 tokens each, more than ``_NARROW_WINDOW`` holds; returns
+    them as stored, for byte comparison."""
     append_session_messages(
         session_key,
-        [ChatMessage(role="user", content=f"old-{n} " * 60) for n in range(8)],
+        [ChatMessage(role="user", content=f"old-{n} " * 60) for n in range(14)],
     )
     return [message.model_dump(by_alias=True) for message in load_session(session_key).messages]
 
@@ -149,7 +153,7 @@ class TestLiveSessionCompaction:
                     role="tool", content="old result", tool_call_id=call.id, name=call.name
                 ),
                 ChatMessage(role="user", content="middle context " * 40),
-                ChatMessage(role="user", content="recent context " * 100),
+                ChatMessage(role="user", content="recent context " * 250),
             ],
         )
         events: list[tuple[str, dict[str, object]]] = []
@@ -180,7 +184,9 @@ class TestLiveSessionCompaction:
             ctx,
             session_key,
             "new request",
-            config=_loop.LoopConfig(context_window_tokens=600, max_tokens=60),
+            config=_loop.LoopConfig(
+                context_window_tokens=600 + SUMMARIZER_FIXED_TOKENS, max_tokens=60
+            ),
         )
 
         assert result.ok, result.error
@@ -189,9 +195,12 @@ class TestLiveSessionCompaction:
         assert backend.calls[0][0].role == "user"
         assert backend.tool_specs[0] == []
         assert backend.tool_specs[1]
-        assert "old context" in backend.calls[0][0].content
-        assert "middle context" in backend.calls[0][0].content
-        assert "recent context" not in backend.calls[0][0].content
+        # The prompt names the task the range leaves in place, which is "recent context"; the
+        # turns it asks to summarize come after that, and hold the range only.
+        summarized = backend.calls[0][0].content.split("Turns, oldest first:", 1)[1]
+        assert "old context" in summarized
+        assert "middle context" in summarized
+        assert "recent context" not in summarized
         assert any("old decision preserved" in m.content for m in backend.calls[1])
         assert any("recent context" in m.content for m in backend.calls[1])
         stored = load_session(session_key)
@@ -227,6 +236,7 @@ class TestLiveSessionCompaction:
         real_tracer_except: Callable[..., None],
     ) -> None:
         session_key = "agent:hierarchical:demo"
+        window = 1_000 + SUMMARIZER_FIXED_TOKENS
         append_session_messages(
             session_key,
             [ChatMessage(role="user", content=f"old-{index} " * 90) for index in range(20)],
@@ -277,11 +287,11 @@ class TestLiveSessionCompaction:
             ctx,
             session_key,
             "new request",
-            config=_loop.LoopConfig(context_window_tokens=1_000, max_tokens=50),
+            config=_loop.LoopConfig(context_window_tokens=window, max_tokens=50),
         )
 
         rounds = len(backend.summary_prompts)
-        summary_input_bound = 1_000 - 50 - 16
+        summary_input_bound = window - 50 - 16
         assert result.ok, result.error
         assert rounds > 1
         assert all(
@@ -304,6 +314,10 @@ class TestLiveSessionCompaction:
         self, registry: ToolRegistry, ctx: ToolContext
     ) -> None:
         session_key = "agent:summary-budget:demo"
+        # Two summary rounds spend the whole budget; a round costs more than the fixed part of a
+        # summarizer prompt, so a third is refused at its preflight.
+        round_input, round_output = 480 + SUMMARIZER_FIXED_TOKENS, 20
+        token_budget = 2 * (round_input + round_output)
         append_session_messages(
             session_key,
             [ChatMessage(role="user", content=f"old-{index} " * 30) for index in range(100)],
@@ -313,7 +327,7 @@ class TestLiveSessionCompaction:
         ]
 
         class _Backend:
-            context_window_tokens = 300
+            context_window_tokens = 300 + SUMMARIZER_FIXED_TOKENS
             max_output_tokens = 10
 
             def __init__(self) -> None:
@@ -330,7 +344,7 @@ class TestLiveSessionCompaction:
                 if len(messages) == 1 and "compacting durable turn history" in messages[0].content:
                     # Grows with the prompt, so the window bounds each summarizer batch.
                     return len(messages[0].content) // 4
-                return 900
+                return 900 + SUMMARIZER_FIXED_TOKENS
 
             def complete(
                 self,
@@ -348,7 +362,7 @@ class TestLiveSessionCompaction:
                 self.summary_prompts.append(messages[0].content)
                 return _final(
                     f"bounded summary {len(self.summary_prompts)}",
-                    TokenUsage(input_tokens=480, output_tokens=20),
+                    TokenUsage(input_tokens=round_input, output_tokens=round_output),
                 )
 
         backend = _Backend()
@@ -358,20 +372,20 @@ class TestLiveSessionCompaction:
             ctx,
             session_key,
             "task request that does not fit",
-            config=_loop.LoopConfig(token_budget=1_000, max_tokens=10),
+            config=_loop.LoopConfig(token_budget=token_budget, max_tokens=10),
         )
 
         assert not result.ok
         assert result.stop_reason == "token_budget"
-        assert result.usage.total_tokens == 1_000
+        assert result.usage.total_tokens == token_budget
         assert len(backend.summary_prompts) == 2
         stored = load_session(session_key)
         assert [
             message.model_dump(by_alias=True) for message in stored.messages[:-1]
         ] == original_messages
         assert stored.messages[-1].content == "task request that does not fit"
-        assert stored.usage.input_tokens == 960
-        assert stored.usage.output_tokens == 40
+        assert stored.usage.input_tokens == 2 * round_input
+        assert stored.usage.output_tokens == 2 * round_output
         tracefile = (
             current_home().traces_dir / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
         )
@@ -493,7 +507,9 @@ class TestLiveSessionCompaction:
             session_key,
             "task request",
             config=_loop.LoopConfig(
-                context_window_tokens=700, max_tokens=100, token_budget=100_000
+                context_window_tokens=_NARROW_WINDOW.context_window_tokens,
+                max_tokens=100,
+                token_budget=100_000,
             ),
         )
 
@@ -547,7 +563,11 @@ class TestLiveSessionCompaction:
             ctx,
             session_key,
             "task request",
-            config=_loop.LoopConfig(context_window_tokens=700, max_tokens=100, token_budget=2_000),
+            config=_loop.LoopConfig(
+                context_window_tokens=_NARROW_WINDOW.context_window_tokens,
+                max_tokens=100,
+                token_budget=2_000,
+            ),
         )
 
         assert not result.ok
