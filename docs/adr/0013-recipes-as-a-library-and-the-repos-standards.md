@@ -82,7 +82,7 @@ still applied only by an operator command.**
 | --- | --- | --- |
 | Team | `secure-build`, `research-review`, `ops-approval` (existing; policies re-written on structured predicates) | roles + members + pipeline + policies |
 | Policy pack | `git-safety`, `no-egress`, `secrets-guard`, `prod-approval` | policy items only |
-| Methodology | `tdd` (red → check → green → test), `spec-first` (spec → critic gate → build → review), `reflexion` (build → critique loop, bounded → test), `dual-review` (build → parallel reviewer + critic), `frugal` (budget, one rework cycle, cheap-tier planning) | members it needs from the built-in and starter roles, a pipeline, and for `frugal` settings |
+| Methodology | `tdd` (red → check → green), `spec-first` (spec → reviewer gate on the spec → build → review), `reflexion` (build → reviewer critique loop, bounded), `cross-family-review` (build → reviewer on another provider family), `frugal` (budget, one rework cycle, cheap-tier planning) | members it needs from the built-in and starter roles, a pipeline, and for `frugal` settings |
 
 Each methodology recipe is the smallest pipeline that *is* the practice, expressed only with the
 dialect that exists (`verify`, `verdict`, `on:` with `max`, `parallel`, `run:`, `model:`,

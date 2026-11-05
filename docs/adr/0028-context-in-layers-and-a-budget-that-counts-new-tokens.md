@@ -1,7 +1,7 @@
 # ADR 0028 (D-64): context in layers, and a budget that counts new tokens
 
 **Question:** four steps of a sibling project, dispatched through Tack on 2026-10-18, stopped
-on `AGENT_LOOP_TOKEN_BUDGET=100000` in three cases out of four, and the fourth (a critic) lost
+on `AGENT_LOOP_TOKEN_BUDGET=100000` in three cases out of four, and the fourth (a verdict step) lost
 a finished verdict. No single request was large. What must docket change so that a step sends
 the model what it needs once, and the budget counts what is really spent, **without raising any
 limit**?
@@ -23,17 +23,17 @@ code (`develop` at `5dda9d37`). Answers recorded in "Decisions taken".
   `cached_tokens` is a subset of `input`.
 - A finished answer that crosses the budget is discarded:
   `_TurnState.call_backend_and_handle_response` checks the budget before it accepts a reply
-  with no tool calls. The critic ended `finish_reason=stop`, 1,292 tokens over.
+  with no tool calls. The verdict step ended `finish_reason=stop`, 1,292 tokens over.
 - `glob` has no character cap, prints absolute paths and sorts by mtime
   (`edges/adapters/toolbox.py::glob_files`); one `glob **/*` returned 41,964 characters, 78 %
   of them the repeated checkout prefix, and was re-sent four times (84 % of its step). `read`
   returns the whole file up to 30,000 characters by default; a 12,475-character generated file
   was 26 % of another step. `fetch` reads up to 200,000 bytes with no `_truncate`, and is
   offered with an empty domain allowlist (seven refused calls).
-- The critic re-read the note the researcher had just written and re-sent it nine times
+- The verdict step re-read the note the researcher had just written and re-sent it nine times
   (about 30,000 tokens): `_implementer_diff_probe` hands `files_changed`/`diff_ref` to the next
   hop for the `implementer` role only, and `diff_ref` is a branch name, not content.
-- The critic had 0 % cache hits over 11 calls (70-82 % on the other providers): nothing in
+- The verdict step had 0 % cache hits over 11 calls (70-82 % on the other providers): nothing in
   `src/` marks `cache_control`. The project roots sit in the live contract, in the middle of
   the system prompt (`core/identity.py::compose_system_prompt`), and HEARTBEAT.md, whose
   dispatch block changes per task, is composed after it, so no prefix survives between tasks.
@@ -156,7 +156,7 @@ code (`develop` at `5dda9d37`). Answers recorded in "Decisions taken".
 ## Acceptance for the phase
 
 On the replay bench, against today's policy, every step **sends** less than half the input
-tokens, none reaches the budget under the new count, and the critic's verdict is kept. Both
+tokens, none reaches the budget under the new count, and the verdict is kept. Both
 numbers are required: the new count alone would pass a "counts less" test without sending one
 byte less. A final real run of the same four steps, approved by the maintainer, compares the
 evidence table above before and after.

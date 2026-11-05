@@ -1347,7 +1347,7 @@ that already own the files.
 - **`lifetime: task` for an MCP server.** Trigger: a recorded run in which a following hop needed the
   previous hop's session.
 - **A structured-output gate** (a result that must match a schema). Trigger: a recorded run whose
-  critic approved a malformed list.
+  judge approved a malformed list.
 
 **Standard teams and records (deferred from Phase 56, 2026-10-30; analysis in
 `internal-docs/strategy/equipos-estandar-empresa-digital-2026-10-30.es.md` §8 and
@@ -1357,7 +1357,7 @@ that already own the files.
   (its workspace holds the queue, `teams/settings.py:21-26`, the settings and budget, `:29`,
   `teams/member_workspace.py:214`; `pre_input` is evaluated and session events traced as `"lead"`,
   `tasks/application/queue.py:72`, `governance/approval.py:73`), but no pipeline step has to use it: the
-  `outward` recipe's pipeline already runs researcher, writer, critic, actor. Making the pod the subject is
+  `respond` blueprint's pipeline already runs researcher, writer, reviewer, actor. Making the pod the subject is
   a persisted-state change (the queue's and settings' location). Trigger: a measured cost of the idle Lead
   member (its workspace, its row in `status`), or a pod whose operator refuses a Lead at all.
 - **Measuring the three-role full pod against the four-role one** (P56-15 ships the change on the
@@ -1371,8 +1371,8 @@ that already own the files.
 **Fired, waiting for a maintainer go (the measurement spends hosted-model tokens).**
 
 - **The implementer sends 0.65 of what the backend counts** (Phase 45 real runs on `app-dev`,
-  2026-10-20: 14 and 13 calls, largest request about 7,000 estimated tokens; reviewer 0.62, tester 0.80
-  and 0.90). The Phase 44 trigger ("a real implementer run with its grants declared that still sends
+  2026-10-20: 14 and 13 calls, largest request about 7,000 estimated tokens; reviewer 0.62, the other
+  verdict hops 0.80 and 0.90). The Phase 44 trigger ("a real implementer run with its grants declared that still sends
   over half") fired. Next: P52-1 measures which calls repeat on the recorded traces (no live run
   needed); P53-4 (which absorbed P52-5) acts on the figure.
 

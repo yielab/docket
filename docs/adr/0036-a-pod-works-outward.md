@@ -25,7 +25,7 @@ a Chrome started with remote debugging; findings 3, 7, 8 and 9 were read in the 
 symbols or lines; re-locate with `rg -n`.
 
 1. **A pod without a repository runs today.** The `content` blueprint (`workspaceKind: workdir`,
-   lead → writer → critic) took a task to `done` in three hops with no worktree, no `baseCommit`
+   lead → writer → judge) took a task to `done` in three hops with no worktree, no `baseCommit`
    and its output in the working directory. A custom pipeline on the same pod ran a `REJECT →
    draft` rework once and a `run:` step (`command_step exit 0`, cwd the working directory) and
    finished `done`. Worktree, `prepare`, diff, evidence and the protected-path check skip cleanly
@@ -334,7 +334,7 @@ Options weighed:
 - **`lifetime: task` for an MCP server.** Trigger: a recorded run in which a following hop needed
   the previous hop's session.
 - **A structured-output gate** (a result that must match a schema). Trigger: a recorded run whose
-  critic approved a malformed list.
+  judge approved a malformed list.
 - **Pod memory with non-path subjects** (`workspace-structure.spec.md:158-169`). Trigger: a recorded
   workdir run whose Lead repeats a correction a person already made.
 

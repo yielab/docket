@@ -145,7 +145,7 @@ flag it; re-verifying the inventory against the live turn path did.
    `DOCKET_NO_HINTS=1`. `inbox` prints the exact `docket task approve <id>` line for each item.
 
 7. **One role vocabulary.** The model policy is keyed by archetype names (`lead`, `implementer`,
-   `reviewer`, `tester` and the starter archetypes); `policy_role` and the `manager`/`programmer`/
+   `reviewer` and the starter archetypes); `policy_role` and the `manager`/`programmer`/
    `repo` names go. `setup model` shows the names a pod uses.
 
 8. **What does not change.** The `exec` contract (events, result, exit codes, `--contract

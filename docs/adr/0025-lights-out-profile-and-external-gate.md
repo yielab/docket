@@ -38,7 +38,7 @@ re-locate with `rg -n`):
 
 | Fact | Locator |
 | --- | --- |
-| The built-in pipeline is lead, implementer (mechanical gate), reviewer (verdict gate with a bounded rework edge to the implementer), tester | `core/pipeline.py::default_pipeline` |
+| The built-in pipeline is lead, implementer (mechanical gate), reviewer (verdict gate with a bounded rework edge to the implementer) | `core/pipeline.py::default_pipeline` |
 | A `MechanicalGate` runs `command` or the member's `verifyCmd` and reads one thing: pass or fail. Its evidence is `{cmd, exitCode (0 or 1), durationS, outputTail}`. No reasons file, no third outcome | `core/dispatch.py::_evaluate_mechanical_gate`, `core/pipeline.py::MechanicalGate` |
 | A failing mechanical gate fails the task unless the step's `on` map routes `fail` somewhere (`{goto, max}`, `until: verify` sugar) | `core/dispatch.py::_match_on_route`, `core/pipeline.py::_build_until_route` |
 | The bounded rework edge (`ReworkEdge`, `maxCycles`) belongs to `VerdictGate` only; the pod default comes from `maxReworkCycles` (default 1) | `core/pipeline.py::ReworkEdge`, `core/dispatch.py::pod_max_rework_cycles` |
@@ -292,7 +292,7 @@ content check. Proposed as evidence `1.1.0`, additive and opt-in like the other 
    continuation and `accept` needs none. Is the new continuation acceptable, or should `needs_human`
    simply fail the task and leave resuming to the caller?
 4. **AGENTS.md is agent-writable today.** Under the evidence above, the project-instructions root is
-   the task worktree, so an Implementer can edit the file that the Reviewer and Tester then read.
+   the task worktree, so an Implementer can edit the file that the Reviewer then reads.
    D3.2 fixes this only under the profile. Should it be fixed for every run (a behaviour change to
    an existing feature, with no users to migrate, per D-57)?
 5. **`--max-tokens` is refused with `--recipe`** (`cli/_harness_recipe.py`), and `budgetUsd` is a

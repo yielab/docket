@@ -22,8 +22,8 @@ list.
 
 Read at `52c22f89`; every locator is a symbol or a line, re-locate with `rg -n` before use.
 
-1. **Three of four built-in hop prompts are code.** `hops/application/compose.py::_role_instructions`
-   (`:69-101`) returns fixed strings for implementer, reviewer and tester; a step's `instructions`
+1. **The built-in hop prompts are code.** `hops/application/compose.py::_role_instructions`
+   (`:69-101`) returns fixed strings for the implementer and the reviewer; a step's `instructions`
    overrides them; a custom role resolves through `teams/role_schema.py::resolve_hop_instruction`
    (`:188`). Only the Lead is a registry archetype (`teams/builtin_roles.py:82`,
    `BUILTIN_ARCHETYPES`). No version, hash or test covers the three strings.

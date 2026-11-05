@@ -86,7 +86,7 @@ most-restrictive-wins rule between the classifier and policies. Three problems:
 
 - The policy store fails **open**.
 - Unattended turns wait 120 s on every ask even when nothing can answer. Three asks in a row
-  killed the Tester hop in the real dispatch.
+  killed a hop in the real dispatch.
 - There is no audited, scoped way to allow a project's own test runner (`pytest`, `uv`), so the
   only unattended path is `python3 -m …`.
 
@@ -100,7 +100,7 @@ Items 1–24 are the re-verified audit findings at `a592328`. N1–N2 are new re
 | N2 prompt drops all state with no marker (22) | **DO** | P26-2 | `SOUL.md` 21.9 KB → MEMORY truncated; 24.4 KB → HEARTBEAT, AGENTS, TOOLS, MEMORY all absent, no marker, no trace |
 | 22 static budgets ignore the model window | **DO** | P26-3 | the same repro against a 200k-window model; handoff `tokenBudget` fixed at 6000 |
 | 6, 7 pod settings: no writer, stored as strings, silent default | **DO** — reverses D-41's "not scheduled" | P26-4 | D-41 judged a timeout writer unmeasured. What changed: invalid values are silently replaced (`dispatch.py:434-463`), `budgetUsd` is persisted as a string, and the explicit request makes pod tuning a first-class need. It is said here, not quietly re-litigated. |
-| 24 unattended ask waits 120 s × N with no channel | **DO** | P26-5 | a real tester hop died on 3 × `approval_timeout`; harness mode already has `refuse` |
+| 24 unattended ask waits 120 s × N with no channel | **DO** | P26-5 | a real hop died on 3 × `approval_timeout`; harness mode already has `refuse` |
 | 4 pipeline file cannot be a pod's default | **DO** | P26-6 | only `cli/_pod.py:575` and `cli/_pipeline.py:167,205` pass `spec=` |
 | 3, 5 custom role gets no hop instruction; `variables` unused | **DO** | P26-7 | `dispatch.py:571-572,639`; `resolve_variables` only stores into `runs.py:285` |
 | 1 (partial) `pytest`/`uv`/`python` ask | **DO — scoped, audited, per pod** | P26-8 | `classify_command('pytest -q')` → ask. Never loosens opaque markers, high-risk classes or policies |
