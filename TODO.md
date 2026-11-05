@@ -141,7 +141,8 @@ from `main`.
 > | 1 | P68-1 ∥ P68-2 ∥ P68-3 | P68-1 owns `agent/session_compaction.py`, `agent/loop_compaction.py`, `session-history.spec.md`, `agent-loop.spec.md` 37; P68-2 owns `governance/policy.py`, the policy templates, the corpus, `security-gates.spec.md`; P68-3 owns `teams/builtin_roles.py`, `role-archetypes.spec.md` |
 > | 2 | P68-4 (done) ∥ P68-5 | P68-4 owns the `web-research` recipe, `services/`, the `setup search` command and `teams/apply/needs.py`; P68-5 owns `agent/tools/capability_gap.py`, `hops/application/driver_support.py` `pod_offer`, `serve-read-api.spec.md` |
 > | 2b | P68-7 (done) | `agent/session.py`, `session-history.spec.md` requirement 30; before P68-6 |
-> | 2c | P68-9, P68-10, P68-8 (done) ∥ P68-11 (needs the maintainer's pick) | P68-9 owns `agent/context.py`, `hops/application/compose.py`, `pod-dispatch.spec.md`; P68-10 owns `agent/session.py` `_result_notice`, `session-history.spec.md`; P68-8, after P68-4: `needs.py`, the recipe, the pod report, `operator-api.spec.md`; Brave and the Tack surface |
+> | 2c | P68-9, P68-10, P68-8 (done) | P68-9 owns `agent/context.py`, `hops/application/compose.py`, `pod-dispatch.spec.md`; P68-10 owns `agent/session.py` `_result_notice`, `session-history.spec.md`; P68-8, after P68-4: `needs.py`, the recipe, the pod report, `operator-api.spec.md`; Brave and the Tack surface |
+> | 3a | P68-11 ∥ P68-12 ∥ P68-13 ∥ P68-14 ∥ P68-15 | P68-11 owns `loop_compaction.py`, `session.py` `history_results_budget`, `catalog.py` `BudgetShares`, `driver_support.py` `history_budget_tokens`, `session-history` 30, `model-profiles`; P68-12 owns `kernel/service.py`, `platform/service_http.py`, `service-client.spec.md`, the two search documents; P68-13 owns `platform/fetch.py`, `security-gates` fetch bullet; P68-14 owns `loop_budget.py`, `agent-loop` 51 and 108; P68-15 owns `kernel/handoff.py`, `record.py`, the analyst and researcher prompts, `pod-dispatch` handoff section. The integrator measures run 2's task after P68-11 + P68-14 land, and again after all five |
 > | 3 | P68-6 | the integrator's real run, which also closes P67-5 |
 >
 > **Against Phase 66:** P68-1 edits `session_compaction.py`, `loop_compaction.py` and `session-history.spec.md`, which
@@ -326,28 +327,137 @@ from `main`.
   draft, reports what it read as read.
 - **Gate:** the focused files; `validate-specs.sh`; `comment_lint.py --check`.
 
-### P68-11 — A turn always keeps room to land, and a research hop's budget fits what it reads
+### P68-11 — A turn condenses to fit the window, never to save tokens
 
-**Status:** TODO (measured 2026-11-05, three real runs, `internal-docs/baselines/phase-68/real-run-searxng.md`; practices compared in `internal-docs/design/limitar-consumo-tokens-2026-11-05.es.md`; the order of the options is the maintainer's call) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** TODO (measured 2026-11-05, `internal-docs/baselines/phase-68/real-run-searxng.md` run 3; analysis `internal-docs/design/limitar-consumo-tokens-2026-11-05.es.md` §2 and §5 A) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
-- **Trigger:** in run 2 two of three researchers died on `cannot start terminal finalization ... used 95251 of
-  100000, estimated input 19229 + output reserve 8192, remaining 4749`: one round of 8 fetches (~33k tokens held whole,
-  resent each iteration) took the turn from more than a quarter free to 4,749, so the landing (requirement 51) no longer
-  fit and the hop ended with nothing. In run 3, at 400,000, the hops used 158.7k, 237.2k (researchers), 172.9k
-  (analyst) and 108.4k (writer).
-- **What is already right:** the turn counts `input - cached + output` (a cache read is not counted; checked: web-b
-  102,815 - 9,578 + 2,014 = 95,251); `budget_warning` fires at a quarter left; `prospective_budget_error` refuses a
-  request that does not fit. A cache write still counts.
-- **Options:** (d) **reserve the landing**: before a normal request, if afterwards the landing (its estimated input
-  plus reserve) would not fit, land now, so a low budget yields a partial report instead of nothing; no number
-  changes. (b) a budget per pipeline step, so `web-research` declares what its research steps read. (a) a larger
-  default, only with measurements beyond research. (e) a model-visible budget (Anthropic task budgets, beta, one
-  provider), later. Recommended order: (d), then (b) with the run figures.
-- **Change (d):** `agent/loop_budget.py` (`check_iteration_bounds`/`select_landing`), `agent-loop.spec.md`
-  requirement 51, a test with a stub model whose round adds more than the remaining budget.
-- **Acceptance (d):** run 2's shape (a round that jumps past the warning) ends with the landing's report and the
-  bound's stop, never `cannot start terminal finalization`. **(b):** run 2's task finishes without raising an
-  environment variable.
+- **Trigger:** researcher `web-a`, 10 iterations on Haiku 5.5 (1M window): the cache read was 4,876 tokens on every
+  iteration (the system prompt and tools, nothing else) and the history was rewritten each time (28k, 46k, 17k...
+  cache writes, `cacheMiss: messages_changed` from iteration 3). The writer of the same run, whose results were never
+  condensed, read 8.8k -> 10.8k -> 13.7k -> 15.7k from cache with 200-600 written per iteration. The cause is the
+  request projection: `condense_history` turns answered results into notices once the whole ones pass
+  `history_results_budget(history_budget_tokens)`, and `hosted` gives the history 2.5% of the window
+  (`BudgetShares(history=0.025)`, model-profiles "Model profiles" 2): 25,000 tokens on 1M, which is **18,750
+  characters** of whole results, less than one page. Each cut moves the prefix; the cache dies; and since the turn
+  counts `input - cached`, every rewrite counts in full: `web-a` counted 191k for work it read once.
+- **Goal:** the projection keeps answered results whole while the request fits, and condenses only when it would not:
+  the trigger is the receiving model's window (what request-fit already measures: estimated input against the window
+  minus the output reserve), not a share of it. When it fires, one cut down to the low-water mark, as `_batch_cut`
+  does today, so the prefix changes once per cut and not per iteration. A local 32k endpoint hits the trigger after a
+  few results and behaves as today; a 1M window does not condense a research turn at all. `HISTORY_FULL_RESULTS_CHARS`
+  (6,000) stays as the floor for an unknown window. The `history` share stops driving the projection; delete it if
+  `rg` finds no other reader. P68-7's rule (an unanswered round is never condensed) is unchanged.
+- **Non-goals:** turn-start compaction (summaries, agent-loop 36-37); the condensed notice (P68-10); any new constant.
+- **Change:** `agent/loop_compaction.py` `messages_for_durable` (the budget it passes), `agent/session.py`
+  `history_results_budget` or its caller, `models/catalog.py` `BudgetShares`/`_budgets_of`, `hops/application/driver_support.py`
+  (`history_budget_tokens`), specs `session-history.spec.md` requirement 30 (the budget clause), `model-profiles.spec.md`
+  "Model profiles" 2, `agent-loop.spec.md` where it names the history budget; tests beside each.
+- **Acceptance:** a replay of run 3's `web-a` session (the integrator provides the saved `session.json`) through the
+  projection on a 1,000,000-token window yields the same bytes for the history prefix on every iteration (no
+  `messages_changed` cause); the same replay on a 32,768-token window condenses as today's test expects; a unit test
+  pins both. Then the integrator's real run: the researcher's cache reads grow with the history.
+- **Gate:** the focused files (`test_session__condense.py`, `test_loop_compaction.py`, `test_catalog__profile.py`),
+  `validate-specs.sh`, `tests/architecture`, `comment_lint.py --check`.
+
+### P68-12 — A service operation returns the fields the model needs, not the whole document
+
+**Status:** TODO (measured 2026-11-05; analysis §2 and §5 B) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** —
+
+- **Trigger:** one SearXNG answer is 23,000-30,000 characters (about 8k tokens) for 30 results, each with `engine`,
+  `engines`, `score`, `positions`, `category`, `parsed_url`...; the model used five URLs and their titles. Two searches
+  put 16.6k tokens into the researcher's request and stayed there for every later iteration. `service-client.spec.md`
+  requirement 24 re-serialises the whole 2xx JSON.
+- **Goal:** an operation may declare `response: {items: <dotted path to a list>, fields: [<name>, ...]}`. When the 2xx
+  body is JSON and the path resolves to a list, the result is that list reduced to those fields, compact JSON; when
+  the path is absent from the body, the whole body as today (never an error: the model still gets an answer). The
+  recipe's `services/search.yaml` declares `items: results`, `fields: [title, url, content]`; the Brave document
+  (`brave/services/search.yaml`) declares `items: web.results`, `fields: [title, url, description]`.
+- **Non-goals:** a query language; projections on non-list bodies; changing `fetch`.
+- **Change:** `kernel/service.py` (`Operation.response`, validated: `items` a dotted path, `fields` a non-empty list of
+  names), `platform/service_http.py` (apply after requirement 24's parse), `service-client.spec.md` (new requirement
+  after 24, version bump), the two shipped search documents, `docs/CONFIGURATION.md` if it documents operations;
+  tests with a recorded SearXNG JSON answer (take one from `internal-docs/baselines/phase-68/search-service-rows.json`
+  or a 30-result synthetic one of the same shape).
+- **Acceptance:** a 30,000-character SearXNG answer projects to under 4,000 characters with every `url` intact and in
+  order; a body without the path returns whole; a document with `fields: []` or `items` not a string is refused at load
+  with a message naming the key. The integrator reruns the 20 queries through the service to confirm the URLs.
+- **Gate:** `test_service_http*`, `test_service*` under `tests/unit/kernel` and `tests/integration/teams`,
+  `validate-specs.sh`, `gen_recipe_docs.py --check`, `tests/architecture`.
+
+### P68-13 — `fetch` returns a page's main content, not its chrome
+
+**Status:** TODO (measured 2026-11-05; analysis §2 and §5 B) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** a fetched store or vendor page is 25,000-30,000 characters of readable text (`web-a` held eight of them,
+  about 33k tokens, resent on every later iteration); the text includes navigation, cookie banners, footers and
+  related-content blocks. The main content of such pages is commonly 20-40% of the text. Default cap 30,000 cuts the
+  tail mid-sentence.
+- **Goal:** `platform/fetch.py`'s readable-text collector drops the elements that are never content (`nav`, `header`,
+  `footer`, `aside`, `script`, `style`, `noscript`, `template`, `svg`, `form`, and elements whose `role` is
+  `navigation`, `banner`, `contentinfo`, `complementary`) and, when the page has one `main` or `article`, keeps that
+  subtree only; otherwise the body minus the dropped elements. The `title` is kept as the first line, as today if
+  that is the case. No readability scoring, no heuristics by class name.
+- **Non-goals:** PDF (read by the jail's interpreter); JavaScript rendering; changing the size cap.
+- **Change:** `platform/fetch.py` (the collector), `security-gates.spec.md`'s `fetch` bullet (what the text contains;
+  version bump), `tests/unit/platform/test_fetch*.py` with synthetic pages: one with `main`, one with `article`, one
+  with neither, one whose only `main` is empty (then the body rule applies).
+- **Acceptance:** the synthetic page with a 2,000-character `nav`, a 1,000-character `footer` and a 3,000-character
+  `main` returns the `main` text and the title only; links inside `main` keep their text; a page with no landmarks
+  returns the body minus `nav`/`footer`/scripts. The integrator measures on three pages from run 3 (store, vendor,
+  Wikipedia) and records the ratio.
+- **Gate:** the fetch tests, `validate-specs.sh`, `tests/architecture`, `comment_lint.py --check`.
+
+### P68-14 — The budget stops new work, never the report: the landing is always made
+
+**Status:** TODO (measured 2026-11-05, run 2; analysis §4 and §5 C) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** run 2, hops `web-b` and `repo`: `token budget: cannot start terminal finalization completion within
+  token_budget=100000 (used 95251, estimated input 19229 + output reserve 8192, remaining 4749); no backend call
+  made`. One round of eight `fetch` took the turn from more than a quarter free to 4,749 left, so the landing
+  (agent-loop 51) did not fit and the hop ended with nothing; the requirement 108 notice had been appended to that
+  round's last result, too late to act on. Everything the round read was paid for and lost.
+- **Goal:** the landing request is exempt from the counted-token bound: the bound decides when no *more* work starts,
+  and the one finalization request is then made whatever the count, bounded by being one request with no tools
+  (request-fit against the window still applies). `select_landing`'s hard stop for spent tokens becomes a landing
+  like the other three bounds, and `prospective_budget_error` is not applied to `purpose="terminal finalization"`.
+  The requirement 108 notice says what to do: `... do not start new reads or searches; finish from what you have ...`.
+- **Non-goals:** changing `AGENT_LOOP_TOKEN_BUDGET`; a per-step budget; the model-visible countdown of Anthropic's
+  task budgets.
+- **Change:** `agent/loop_budget.py` (`select_landing`, `prospective_budget_error`, `_NOTICE`), `agent-loop.spec.md`
+  requirements 51 and 108 (version bump), `tests/unit/agent/test_loop_budget*.py` and the loop test that pins "spent
+  tokens leave no room".
+- **Acceptance:** a stub model whose second round returns results larger than the remaining budget ends the turn with
+  `stop_reason="token_budget"`, a landing report as the hop's summary and exactly one request past the bound; the
+  string `cannot start terminal finalization` is no longer produced for the landing; the notice carries the new clause.
+  Then run 2's task on the default budget ends every hop with a report (partial is acceptable here; P68-11 makes it
+  whole).
+- **Gate:** the loop budget tests, `tests/integration/agent/loop/`, `validate-specs.sh`, `comment_lint.py --check`.
+
+### P68-15 — A handoff names the sources it read, so the next hop reads the copy instead of fetching again
+
+**Status:** TODO (measured 2026-11-05, run 3; analysis §2 and §5 D) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + prompt · **After:** —
+
+- **Trigger:** the analyst spent 172,942 input tokens, most of it re-fetching the five pages the researchers had read;
+  those pages were already in the pod's `cache/artifacts/` (every over-cap `fetch` result is stored whole there).
+  The handoff carries the researcher's summary and no pointer to what it read, and the analyst's role says
+  "verify", so it fetched everything again.
+- **Goal:** `HandoffArtifact` gains `sources: [{url, artifact}]`, filled by `build_hop_result` from the hop's `fetch`
+  results (the URL from the call's arguments; the artifact path from `artifact_path_in(result)` when the result was
+  stored, else empty). `render()` lists them after the summary as `Sources read: <url> (read: <artifact path>)`, one
+  per line, last in the drop order so a tight budget sheds them before the summary. The analyst's identity prompt
+  says to check a sample of the sources from their stored copies with `read` and not to fetch a page a researcher
+  already read; the researcher's says to keep each claim next to its URL.
+- **Non-goals:** copying page text into the handoff; changing the artifact store; a new tool.
+- **Change:** `kernel/handoff.py` (field, render, drop order), `tasks/application/record.py` `build_hop_result`,
+  `hops/application/compose.py` only if the render site needs it, `templates/prompts/identity/analyst.md` and
+  `researcher.md` (their version lines), `pod-dispatch.spec.md` "Structured handoff artifacts", the prompt spec that
+  owns the identity files; fixture handoffs under `tests/fixtures/` re-recorded if they pin the render.
+- **Acceptance:** a hop with two `fetch` results, one stored as an artifact, yields a handoff with both URLs and one
+  path; the next hop's composed message contains the `Sources read` lines; under a budget that fits the summary but
+  not the sources, the sources are shed first; the analyst prompt names `read` and the stored copies. The integrator's
+  run: the analyst's `fetch` count against run 3's five.
+- **Gate:** `tests/unit/kernel/test_handoff*.py`, `tests/integration/hops/test_hop_carryover.py`, the prompt tests,
+  `validate-specs.sh`, `tests/architecture`.
 
 ### P68-8 — Brave Search API as the option, and Tack sees and sets the provider
 
