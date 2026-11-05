@@ -1,9 +1,9 @@
 # Session History Specification
 
-**Version**: 1.13.0
+**Version**: 1.14.0
 **Status**: Implemented and live. The agent loop loads, compacts and appends this durable history
 on the production `DocketDriver` path; every pod-dispatch step has its own history key.
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-05
 
 ## Purpose
 
@@ -173,7 +173,12 @@ This specification does NOT cover:
     same messages always yield the same bytes, the input list and its messages are never changed,
     and nothing is read from or written to disk. It is applied to the request only; the stored
     history keeps every byte, and the agent loop's request builder is its one live caller.
-30. The last `keep` (at least 1) answered `tool` messages stay whole; older ones stay whole too,
+30. A `tool` message is *answered* once an assistant message follows it; the results after the last
+    assistant message belong to the round the model has not read yet. An unanswered result
+    **MUST NEVER** be condensed, however large the round (a round of parallel fetches keeps every
+    result whole); it still counts as a whole result in the arithmetic below, so older answered
+    results make room for it. The last `keep` (at least 1) `tool` messages stay whole;
+    older ones stay whole too,
     newest first, while the characters of all whole results fit in `budget` (6,000 by default, one
     `read` window; the live request passes `history_results_budget(history_tokens)`, which is
     `max(6000, history_tokens x bytes-per-token x 3 // 16)`, so a turn whose history budget is

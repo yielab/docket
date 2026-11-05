@@ -148,6 +148,51 @@ class TestCondenseHistory:
         assert seen
 
 
+class TestCondenseHistoryUnansweredRound:
+    """A tool result the model has not answered yet is never condensed."""
+
+    @staticmethod
+    def _round(count: int, size: int) -> list[ChatMessage]:
+        calls = [
+            ToolCall(id=f"p{n}", name="fetch", arguments=f'{{"url":"https://h{n}.example/page"}}')
+            for n in range(count)
+        ]
+        return [assistant("", tool_calls=calls), *(tool_result(c, "x" * size) for c in calls)]
+
+    def test_a_round_of_parallel_results_stays_whole_before_the_model_reads_it(self) -> None:
+        """Five large results after the last assistant message are all sent whole."""
+        messages = [user("the task"), *_read_exchange(0, "y" * 2_000), *self._round(5, 4_000)]
+        out = _sess.condense_history(messages, keep=2, budget=6_000)
+        unanswered = [m for m in out if m.tool_call_id.startswith("p")]
+        assert [m.content for m in unanswered] == ["x" * 4_000] * 5
+        assert out[2].content.startswith("[read src/f0.py: 1 lines")
+
+    def test_the_same_round_is_condensed_once_the_model_has_answered(self) -> None:
+        """After an assistant message follows, the older results of the round become notices."""
+        messages = [user("the task"), *self._round(5, 4_000), assistant("noted"), user("go on")]
+        out = _sess.condense_history(messages, keep=2, budget=6_000)
+        results = [m for m in out if m.role == "tool"]
+        assert [m.content.startswith("[fetch https://h") for m in results] == [True] * 3 + [
+            False
+        ] * 2
+        assert "already seen and omitted" in results[0].content
+
+    def test_the_call_of_an_unanswered_write_keeps_its_body(self) -> None:
+        """A write whose result is unanswered keeps its large argument too."""
+        body = "w" * 5000
+        call = ToolCall(id="w1", name="write", arguments=f'{{"path":"a.md","content":"{body}"}}')
+        messages = [
+            user("t"),
+            *_read_exchange(0),
+            *_read_exchange(1),
+            assistant("", tool_calls=[call]),
+            tool_result(call, "wrote 5000 characters to a.md"),
+        ]
+        out = _sess.condense_history(messages, keep=1, budget=0)
+        assert out[-2].tool_calls[0] == call
+        assert out[-1].content == "wrote 5000 characters to a.md"
+
+
 class TestCondenseHistoryBatches:
     """The cut moves in batches, so the request prefix survives the calls between boundaries."""
 

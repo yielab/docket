@@ -367,17 +367,28 @@ def history_results_budget(history_tokens: int) -> int:
     )
 
 
+def _unanswered_count(messages: Sequence[ChatMessage]) -> int:
+    """How many tool results follow the last assistant message: the round the model has not read."""
+    count = 0
+    for m in reversed(messages):
+        if m.role == "assistant":
+            break
+        count += m.role == "tool"
+    return count
+
+
 def condense_history(
     messages: Sequence[ChatMessage],
     keep: int = HISTORY_KEEP_FULL_RESULTS,
     budget: int = HISTORY_FULL_RESULTS_CHARS,
 ) -> list[ChatMessage]:
-    """The request projection: the last *keep* tool results and older ones that still fit
-    *budget* characters stay whole, with the cut moving in batches; the rest become notices and
-    their large ``write``/``edit`` arguments counts. Pure and deterministic; the stored history
-    is never changed."""
+    """The request projection: old tool results become notices, in batches, past *keep* and
+    *budget*; a result after the last assistant message is never condensed. Pure; the stored
+    history is never changed."""
     results = [m for m in messages if m.role == "tool"]
     cut = _batch_cut([len(m.content) for m in results], max(1, keep), budget)
+    unanswered = _unanswered_count(messages)
+    cut = min(cut, len(results) - unanswered)
     old = {m.tool_call_id for m in results[:cut]}
     kept = _small_results_kept(results, cut)
     calls = {c.id: c for m in messages for c in m.tool_calls}
