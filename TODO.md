@@ -141,7 +141,7 @@ from `main`.
 > | 1 | P68-1 ∥ P68-2 ∥ P68-3 | P68-1 owns `agent/session_compaction.py`, `agent/loop_compaction.py`, `session-history.spec.md`, `agent-loop.spec.md` 37; P68-2 owns `governance/policy.py`, the policy templates, the corpus, `security-gates.spec.md`; P68-3 owns `teams/builtin_roles.py`, `role-archetypes.spec.md` |
 > | 2 | P68-4 (done) ∥ P68-5 | P68-4 owns the `web-research` recipe, `services/`, the `setup search` command and `teams/apply/needs.py`; P68-5 owns `agent/tools/capability_gap.py`, `hops/application/driver_support.py` `pod_offer`, `serve-read-api.spec.md` |
 > | 2b | P68-7 (done) | `agent/session.py`, `session-history.spec.md` requirement 30; before P68-6 |
-> | 2c | P68-9 ∥ P68-10 ∥ P68-8 | P68-9 owns `agent/context.py`, `hops/application/compose.py`, `pod-dispatch.spec.md`; P68-10 owns `agent/session.py` `_result_notice`, `session-history.spec.md`; P68-8, after P68-4: `needs.py`, the recipe, the pod report, `operator-api.spec.md`; Brave and the Tack surface |
+> | 2c | P68-9 (done) ∥ P68-10 (done) ∥ P68-8 | P68-9 owns `agent/context.py`, `hops/application/compose.py`, `pod-dispatch.spec.md`; P68-10 owns `agent/session.py` `_result_notice`, `session-history.spec.md`; P68-8, after P68-4: `needs.py`, the recipe, the pod report, `operator-api.spec.md`; Brave and the Tack surface |
 > | 3 | P68-6 | the integrator's real run, which also closes P67-5 |
 >
 > **Against Phase 66:** P68-1 edits `session_compaction.py`, `loop_compaction.py` and `session-history.spec.md`, which
@@ -284,7 +284,7 @@ from `main`.
 
 ### P68-9 — A handoff to a hosted model is not cut to a local model's window
 
-**Status:** TODO (found by the 2026-11-05 research run, `internal-docs/baselines/phase-68/real-run-searxng.md`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** DONE 2026-11-05 (cherry-picked as the "handoff is fit to the receiving model's window" commit; pod-dispatch 12.8.0, role-archetypes 5.11.0; a shipped `tokenBudget` is a floor, an operator's or a pod role file's value is exact; found by the 2026-11-05 research run, `internal-docs/baselines/phase-68/real-run-searxng.md`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
 - **Trigger:** the analyst's context carried 11,688 bytes for three researchers and the lead; researcher A was cut
   from 4,960 to 3,940 bytes and the source URLs at its tail were lost, so Nitelit, Hey Lulla and Storytime came out
@@ -308,7 +308,7 @@ from `main`.
 
 ### P68-10 — The notice for a condensed result cannot be read as the tool's answer
 
-**Status:** TODO (found by the same run; after P68-7, which already owns `agent/session.py` and requirement 30) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P68-7
+**Status:** DONE 2026-11-05 (`14ad8b1e`; session-history 1.15.0; found by the same run) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P68-7
 
 - **Trigger:** once answered, a `fetch` result becomes `[fetch <url>: N lines, M characters, already seen and
   omitted; call fetch again only for exact text you still need]`. Haiku 5.5 read it as the tool refusing a repeat:
@@ -920,6 +920,11 @@ from `main`.
   `shape`; the word "adapters" in the `_execution.py` docstring and ADR 0006.
 
 **Phase 68 (2026-11-04).** Left out of the cards on purpose, or found while merging:
+- *Two callers still fit a budget without the window.* P68-9 passes the receiving model's window to
+  `budget_for_role` in `compose.py`; `hops/application/driver_support.py` and `agent/session_compaction.py` still call
+  it without one. Trigger: a hosted turn whose compaction or summary budget is the 6,000-token floor in a trace.
+- *A role file that sets `tokenBudget: 6000` exactly reads as unpinned.* P68-9 tells a pinned value from the schema
+  default by value. Trigger: an operator who pins 6000 on purpose; then the schema carries an explicit marker.
 - *One search answer is 23,000-30,000 characters.* Measured twice: 20 queries through the service, and a real research
   run (`real-run-searxng.md`): a search adds about 8k tokens to the request and the answer is stored as an artifact
   the researchers did not open; they chose from the inline preview and the fetched URLs were real. The caps that cut

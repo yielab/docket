@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A handoff is fit to the context window of the model that receives it.** A hosted model no longer gets a
+  researcher's reply cut to a local endpoint's cap, which dropped the source URLs at its tail; a local 16k-32k
+  endpoint keeps today's budget byte for byte. A shipped `tokenBudget` is a floor of the window share, an
+  operator's value stays exact, and `context_composed` reports `budget_tokens`.
+- **The notice for a condensed tool result says the model read it earlier and its text is no longer in the view.**
+  The old "already seen and omitted" was read as the tool refusing a repeat: an analyst reported pages it had
+  drafted from as never re-read and saved that to the pod's memory.
 - **A tool result the model has not answered yet is never condensed.** A round of parallel `fetch` results
   that exceeded the keep count and the character budget had its oldest results replaced by "already seen and
   omitted; call fetch again" before the model read them, so it fetched again until the turn budget ended. The
