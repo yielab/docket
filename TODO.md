@@ -141,7 +141,7 @@ from `main`.
 > | 1 | P68-1 ∥ P68-2 ∥ P68-3 | P68-1 owns `agent/session_compaction.py`, `agent/loop_compaction.py`, `session-history.spec.md`, `agent-loop.spec.md` 37; P68-2 owns `governance/policy.py`, the policy templates, the corpus, `security-gates.spec.md`; P68-3 owns `teams/builtin_roles.py`, `role-archetypes.spec.md` |
 > | 2 | P68-4 (done) ∥ P68-5 | P68-4 owns the `web-research` recipe, `services/`, the `setup search` command and `teams/apply/needs.py`; P68-5 owns `agent/tools/capability_gap.py`, `hops/application/driver_support.py` `pod_offer`, `serve-read-api.spec.md` |
 > | 2b | P68-7 (done) | `agent/session.py`, `session-history.spec.md` requirement 30; before P68-6 |
-> | 2c | P68-8 | after P68-4: `needs.py`, the recipe, the pod report, `operator-api.spec.md`; Brave and the Tack surface |
+> | 2c | P68-9 ∥ P68-10 ∥ P68-8 | P68-9 owns `agent/context.py`, `hops/application/compose.py`, `pod-dispatch.spec.md`; P68-10 owns `agent/session.py` `_result_notice`, `session-history.spec.md`; P68-8, after P68-4: `needs.py`, the recipe, the pod report, `operator-api.spec.md`; Brave and the Tack surface |
 > | 3 | P68-6 | the integrator's real run, which also closes P67-5 |
 >
 > **Against Phase 66:** P68-1 edits `session_compaction.py`, `loop_compaction.py` and `session-history.spec.md`, which
@@ -281,6 +281,50 @@ from `main`.
   (`TestCondenseHistoryUnansweredRound`); the unanswered `write` case passes before the change and guards it.
 - **Open, measured by P68-6:** a turn whose round is larger than its request window is still bounded by request-fit,
   not by this projection.
+
+### P68-9 — A handoff to a hosted model is not cut to a local model's window
+
+**Status:** TODO (found by the 2026-11-05 research run, `internal-docs/baselines/phase-68/real-run-searxng.md`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** the analyst's context carried 11,688 bytes for three researchers and the lead; researcher A was cut
+  from 4,960 to 3,940 bytes and the source URLs at its tail were lost, so Nitelit, Hey Lulla and Storytime came out
+  of the report. The model's window was far larger.
+- **Cause:** `agent/context.py` `budget_for_role` returns the archetype's declared `token_budget` or
+  `DEFAULT_TOKEN_BUDGET` (6,000); `resolve_window_share_tokens` exists but "every existing caller omits both
+  keyword-only window arguments" (its own comment), so the window of the model that receives the handoff never
+  counts. `hop_share` then halves the budget per hop back. The cap was sized for a 16k local endpoint.
+- **Goal:** the budget the composer fits a handoff to is the receiving member's model window (the catalog knows it:
+  `models/catalog.py`) through `resolve_window_share_tokens`, with the archetype's declared value still winning when
+  it is set on purpose; a local 16k-32k endpoint resolves to today's 6,000. No new constant: measure the bytes the
+  analyst gets before and after on the same recorded handoffs.
+- **Non-goals:** a new truncation rule; keeping the tail first (the cap stops cutting a research handoff, so the
+  order of what is cut is not the question).
+- **Change:** `hops/application/compose.py` (the call site that omits the window), `agent/context.py`, the owning
+  spec's handoff requirement (`pod-dispatch.spec.md`, "Structured handoff artifacts"), tests beside them.
+- **Acceptance:** a hosted member with a 200k window gets a handoff whose researchers are not truncated (a test with
+  three 5,000-byte replies); a 16k local member keeps the 6,000-token behaviour byte for byte; `context_composed`
+  reports it.
+- **Gate:** the focused files; `validate-specs.sh`; `comment_lint.py --check` on the touched files.
+
+### P68-10 — The notice for a condensed result cannot be read as the tool's answer
+
+**Status:** TODO (found by the same run; after P68-7, which already owns `agent/session.py` and requirement 30) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P68-7
+
+- **Trigger:** once answered, a `fetch` result becomes `[fetch <url>: N lines, M characters, already seen and
+  omitted; call fetch again only for exact text you still need]`. Haiku 5.5 read it as the tool refusing a repeat:
+  the analyst rewrote its report to say none of its five pages had been re-read (false, it had drafted from them)
+  and stored "fetch returns 'already seen and omitted' on a repeat" in the pod's memory; the writer copied both.
+- **Goal:** the notice says whose view it is and that the reading happened: for example `[fetch <url>: N lines, M
+  characters. You read this earlier in this session; its text is no longer in this view. Call fetch again only
+  for text you still need.]`. The wording is the whole change; the batch cut and the arguments of `write`/`edit`
+  stay as they are. The memory-update prompt is not changed here.
+- **Change:** `agent/session.py` `_result_notice`, `session-history.spec.md` requirement 30 and the sentence that
+  quotes the notice (spec line ~191), `test_session__condense.py`.
+- **Acceptance:** the notice names that the model read the result and that its text is not in this view; a test
+  pins both clauses; no notice contains "omitted" without saying where the text is.
+- **Check by the next real run:** a task that reads pages in one round and drafts from them, then reviews its own
+  draft, reports what it read as read.
+- **Gate:** the focused files; `validate-specs.sh`; `comment_lint.py --check`.
 
 ### P68-8 — Brave Search API as the option, and Tack sees and sets the provider
 
@@ -876,12 +920,12 @@ from `main`.
   `shape`; the word "adapters" in the `_execution.py` docstring and ADR 0006.
 
 **Phase 68 (2026-11-04).** Left out of the cards on purpose, or found while merging:
-- *One search answer is 23,000-30,000 characters.* Through the declared service (P68-4, 20 queries) SearXNG's JSON
-  carries engines, scores and positions per record and has no field filter; the default tool cap (30,000) cuts it
-  mid-record and the local 2,500 cap leaves about three results. A research turn that searches five times spends
-  roughly 35k tokens on results. Trigger: a real run (P68-6) where search results are a visible share of the turn's
-  input; then the operation's response is reduced to `title`, `url` and `content` (a service-client response
-  projection, which does not exist today) or the operation description asks for fewer.
+- *One search answer is 23,000-30,000 characters.* Measured twice: 20 queries through the service, and a real research
+  run (`real-run-searxng.md`): a search adds about 8k tokens to the request and the answer is stored as an artifact
+  the researchers did not open; they chose from the inline preview and the fetched URLs were real. The caps that cut
+  it are settings of a machine, not facts about the feature. Trigger: a run where the preview lacks the URLs the
+  model needs, or search results dominate a turn's input; then a response projection (`title`, `url`, `content`)
+  in the service client.
 - *`setup search searxng` settings mount.* The command makes the settings directory 0755 and the file 0644 so the
   container user can read them; the key in the file is random per machine. Trigger: an image change that stops
   reading the mount.
