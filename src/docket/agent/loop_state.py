@@ -62,6 +62,8 @@ class TurnState:
     landing: StopReason | None = None
     landing_error: str = ""
     notice_sent: bool = False
+    #: Compactions that replaced part of the history this turn; the no-progress count starts over after each.
+    compactions: int = 0
     # Transport retries made so far over the turn, and the wait before one (requirement 110).
     request_retries: int = 0
     sleep: Callable[[float], None] = time.sleep

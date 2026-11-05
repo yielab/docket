@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -86,6 +86,7 @@ def _projected_prompt(
     summaries: Sequence[Sequence[ChatMessage]],
     unit: Sequence[ChatMessage],
     input_budget_tokens: int,
+    estimate: Callable[[str], int],
 ) -> tuple[str, int] | None:
     """Prompt for *unit* with each tool result cut to the largest share that still fits, or
     ``None`` when even cutting every tool result to nothing does not fit."""
@@ -93,7 +94,7 @@ def _projected_prompt(
 
     def _fits(cap: int) -> tuple[str, int] | None:
         prompt = _summarization_message(prompt_text, label, batch, tool_result_cap=cap)
-        estimated = _ports.estimate_tokens(prompt)
+        estimated = estimate(prompt)
         return (prompt, estimated) if estimated <= input_budget_tokens else None
 
     low, high = 0, max((len(m.content) for m in unit if m.role == "tool"), default=0)
@@ -115,6 +116,7 @@ def _bounded_summary_batch(
     label: str,
     units: Sequence[Sequence[ChatMessage]],
     input_budget_tokens: int,
+    estimate: Callable[[str], int],
 ) -> tuple[list[list[ChatMessage]], str, int]:
     """Largest oldest prefix whose complete summary prompt fits the estimate. A batch holds at
     least one raw unit: when the first raw unit does not fit behind the summaries, it is
@@ -125,14 +127,16 @@ def _bounded_summary_batch(
     for unit in units:
         candidate = [*selected, list(unit)]
         candidate_prompt = _summarization_message(prompt_text, label, candidate)
-        candidate_estimated = _ports.estimate_tokens(candidate_prompt)
+        candidate_estimated = estimate(candidate_prompt)
         if candidate_estimated <= input_budget_tokens:
             selected, prompt, estimated = candidate, candidate_prompt, candidate_estimated
             continue
         if not _is_compacted_summary_unit(unit) and all(
             _is_compacted_summary_unit(u) for u in selected
         ):
-            projected = _projected_prompt(prompt_text, label, selected, unit, input_budget_tokens)
+            projected = _projected_prompt(
+                prompt_text, label, selected, unit, input_budget_tokens, estimate
+            )
             if projected is not None:
                 selected, (prompt, estimated) = candidate, projected
         break
@@ -275,6 +279,7 @@ def _run_compaction_rounds(
     prompt_text: str,
     display_label: str,
     summary_input_budget: int,
+    summary_estimate: Callable[[str], int],
     agent_id: str,
     summary_session_key: str,
     turn_timeout: int,
@@ -318,13 +323,14 @@ def _run_compaction_rounds(
             display_label,
             plan.to_summarize,
             summary_input_budget,
+            summary_estimate,
         )
         if not batch:
             blocking = next(
                 (u for u in plan.to_summarize if not _is_compacted_summary_unit(u)),
                 plan.to_summarize[0],
             )
-            required = _ports.estimate_tokens(
+            required = summary_estimate(
                 _summarization_message(prompt_text, display_label, [blocking], tool_result_cap=0)
             )
             return _RoundOutcome(
@@ -450,6 +456,7 @@ def _plan_and_apply_compaction(
     keep_latest_unit: bool,
     budget: int,
     summary_input_budget: int,
+    summary_estimate: Callable[[str], int],
     turn_timeout: int,
     prompt_text: str,
     prompt_sha256: str,
@@ -497,6 +504,7 @@ def _plan_and_apply_compaction(
         prompt_text=prompt_text,
         display_label=display_label,
         summary_input_budget=summary_input_budget,
+        summary_estimate=summary_estimate,
         agent_id=agent_id,
         summary_session_key=summary_session_key,
         turn_timeout=turn_timeout,
@@ -573,6 +581,7 @@ def compact_session(
     prompt_sha256: str,
     budget_tokens: int,
     summary_input_budget_tokens: int,
+    summary_estimate: Callable[[str], int] = _ports.estimate_tokens,
     summarizer_session_key: str | None = None,
     compact_range: tuple[int, int] | None = None,
     keep_latest_unit: bool = True,
@@ -582,8 +591,8 @@ def compact_session(
     sessions_dir: Path | None = None,
 ) -> CompactionResult:
     """Compact *session_key*'s history in place to *budget_tokens* (``0`` on a range: the whole
-    range), each summarizer prompt within *summary_input_budget_tokens* (session-history.spec.md).
-    Fail-closed: any failure leaves the record unchanged and returns ``ok=False``."""
+    range), each summarizer prompt within *summary_input_budget_tokens* as *summary_estimate*
+    counts it. Fail-closed: any failure leaves the record unchanged and returns ``ok=False``."""
     summary_session_key = summarizer_session_key or f"{session_key}:compaction"
     if summary_session_key == session_key:
         return CompactionResult(
@@ -623,6 +632,7 @@ def compact_session(
             keep_latest_unit=keep_latest_unit,
             budget=budget_tokens,
             summary_input_budget=summary_input_budget_tokens,
+            summary_estimate=summary_estimate,
             turn_timeout=turn_timeout,
             prompt_text=prompt_text,
             prompt_sha256=prompt_sha256,

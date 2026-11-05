@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.15.0
+**Version**: 4.17.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 reduces a request that does not fit, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -333,8 +333,9 @@ This specification does NOT cover:
     window (requirement 47). `run_agent_turn` makes no compaction check at the start of a turn and
     no profile, role or setting sizes the history (`session-history.spec.md` requirement 14); the
     history a turn loads is sent as the request projection (requirement 84) until a request
-    overflows. The summarizer's input is bounded by the registered window less the output reserve
-    (`TurnCompaction.run_compaction`), never by the role's carryover budget, and a required
+    overflows. The summarizer's input is bounded by the registered window less the output reserve, counted
+    as the request that carries it is (the calibrated fit estimate, not the prompt's text alone;
+    `TurnCompaction.run_compaction`), never by the role's carryover budget, and a required
     summary completion **MUST** finish before the task-completion `ChatBackend.complete` call it
     makes room for.
 33. The live summarizer **MUST** be one direct, tool-free call through the `ChatBackend` instance
@@ -743,7 +744,9 @@ This specification does NOT cover:
     output text)` over that round's calls. Denied and refused results count like any other, since
     their text is part of the digest. A round with no tool calls never counts.
 78. The loop **MUST** keep the fingerprints seen in the turn and count consecutive rounds whose
-    fingerprint was already seen; any new fingerprint resets the count. When the count reaches
+    fingerprint was already seen; any new fingerprint resets the count. A compaction that
+    replaces part of the history (requirement 32) clears the fingerprints seen and the count, since
+    the results they stand for are no longer in the model's context. When the count reaches
     `LoopConfig.no_progress_rounds` the loop **MUST** stop with `stop_reason="no_progress"`,
     `ok=False` and `failure_kind="invalid_output"`, after the round's atomic persistence, with no
     further backend call; its error **MUST** name the repeated tool(s). The approval and denial

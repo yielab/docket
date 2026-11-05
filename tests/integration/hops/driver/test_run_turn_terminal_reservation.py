@@ -374,9 +374,11 @@ class TestRunTurn:
         assert dispatches == 1
         assert len(backend.calls) == 2
         assert [bool(tools) for tools in backend.tools_seen] == [True, False]
+        # Each summarizer request is estimated twice: once to bound its prompt, once by the fit preflight.
         assert backend.prospectives == [
             ("task", 200),
             ("task", 1_220),
+            ("compaction", 700),
             ("compaction", 700),
             ("task", 890),
         ]

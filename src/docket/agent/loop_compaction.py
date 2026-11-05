@@ -281,7 +281,8 @@ class TurnCompaction:
             prompt_sha256=prompt_sha256,
             summarizer_session_key=f"{self.state.session_key}:compaction",
             budget_tokens=0,
-            summary_input_budget_tokens=self.budget.request_text_budget(),
+            summary_input_budget_tokens=self.budget.request_room(),
+            summary_estimate=self.budget.prompt_cost,
             compact_range=compact_range,
             keep_latest_unit=False,
             timeout=min(self.state.cfg.request_timeout_s, remaining_now),
@@ -299,6 +300,8 @@ class TurnCompaction:
             result,
             task_id=self.state.trace_task_id,
         )
+        if result.compacted:
+            self.state.compactions += 1
         return result, self.compaction_failure_stop_reason
 
     def seed_task_message(self, message: str) -> None:

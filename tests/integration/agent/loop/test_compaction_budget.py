@@ -328,7 +328,8 @@ class TestLiveSessionCompaction:
                 temperature: float | None = None,
             ) -> int:
                 if len(messages) == 1 and "compacting durable turn history" in messages[0].content:
-                    return 10
+                    # Grows with the prompt, so the window bounds each summarizer batch.
+                    return len(messages[0].content) // 4
                 return 900
 
             def complete(

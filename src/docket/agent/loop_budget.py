@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 
-from docket.agent.loop_request import _estimate_input_tokens, _fallback_input_estimate, _usage_delta
+from docket.agent.loop_request import _estimate_input_tokens, _usage_delta
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_budget_notice, _trace_request_fit
 from docket.agent.loop_types import AgentLoopResult, StopReason, limit_origin
@@ -128,16 +128,23 @@ class TurnBudget:
         )
         return estimated_input, error
 
-    def request_text_budget(self) -> int:
-        """The most text a one-message tool-free request may carry and pass the fit preflight: the
-        window less the output reserve, under the calibration, less the scaffold of one message as
-        docket's own estimate counts it. The summarizer's prompt is bounded by it."""
+    def request_room(self) -> int:
+        """The most input a request may estimate to: the window less the output reserve."""
         assert self.state.context_window is not None
-        scaffold = _fallback_input_estimate(
-            [user("")], [], self.state.request_max_tokens, self.state.cfg.temperature
+        return self.state.context_window - self.state.output_reserve
+
+    def prompt_cost(self, text: str) -> int:
+        """What the fit preflight would estimate for a one-message, tool-free request carrying
+        *text*, calibration included. The summarizer's prompt is bounded by it, so the request
+        that carries the prompt is never refused for a size the bound let through."""
+        raw = _estimate_input_tokens(
+            self.state.backend,
+            [user(text)],
+            [],
+            self.state.request_max_tokens,
+            self.state.cfg.temperature,
         )
-        room = (self.state.context_window - self.state.output_reserve) / self.calibration
-        return max(1, math.floor(room) - scaffold)
+        return math.ceil(raw * self.calibration)
 
     def effective_measured_tokens(self) -> int:
         pending = _usage_delta(self.state.summary_usage, self.state.accounted_summary_usage)

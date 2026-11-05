@@ -1,6 +1,6 @@
 # Session History Specification
 
-**Version**: 1.20.0
+**Version**: 1.21.0
 **Status**: Implemented and live. The agent loop loads, compacts and appends this durable history
 on the production `DocketDriver` path; every pod-dispatch step has its own history key.
 **Last Updated**: 2026-11-05
@@ -106,9 +106,12 @@ This specification does NOT cover:
     turn and no profile, role or setting sizes its history. `compact_session` takes its two
     budgets from its caller, never from a role: `budget_tokens`, the size the range is planned to
     (`0` on a range: the whole range, requirement 28), and `summary_input_budget_tokens`, the most
-    one summarizer prompt may estimate to; the live caller (`TurnCompaction.run_compaction`) passes
-    the registered window less the output reserve, so a summarizer request is bounded like any
-    other request to that model.
+    one summarizer prompt may estimate to, counted by `summary_estimate`; the live caller
+    (`TurnCompaction.run_compaction`) passes the registered window less the output reserve and the
+    cost of the request that carries the prompt (the same estimate, calibration included, as the
+    fit preflight of that request), so a summarizer request is bounded like any other request to
+    that model and never refused by its own preflight. Without `summary_estimate` a prompt is
+    counted by its text (`estimate_tokens`).
 15. Token counts used to decide whether to compact **MUST** be computed via the existing
     bytes/divisor approximation and **MUST NOT** be described as an exact count.
 16. Measured usage (real counts from the completion endpoint) and estimated size (the
@@ -321,6 +324,7 @@ def compact_session(
     summarizer_session_key: str | None = None, # default: derived key distinct from session_key
     budget_tokens: int,                        # the size the range is planned to; 0 on a range: the whole range
     summary_input_budget_tokens: int,          # the most one summarizer prompt may estimate to
+    summary_estimate: Callable[[str], int] = estimate_tokens, # how a prompt is counted against it
     compact_range: tuple[int, int] | None = None, # half-open; boundaries must be atomic
     keep_latest_unit: bool = True, # False requires a non-empty unselected anchor
     timeout: int | None = None,               # default: the DISTILL_TIMEOUT_S setting

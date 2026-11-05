@@ -94,6 +94,7 @@ class ToolStep:
         self.state = state
         self.consecutive_denial_kinds: list[ToolDenialKind] = []
         self.progress: _ProgressDetector | None = None
+        self._compactions_seen = 0
 
     # Persists the assistant message and every tool result as one atomic unit
     # through dispatch_tool. Returns None to keep looping.
@@ -243,8 +244,9 @@ class ToolStep:
         self, round_entries: list[tuple[str, str, bool, str]]
     ) -> AgentLoopResult | None:
         """Stop once enough consecutive rounds repeat already-seen results."""
-        if self.progress is None:
+        if self.progress is None or self._compactions_seen != self.state.compactions:
             self.progress = _ProgressDetector(self.state.cfg.no_progress_rounds)
+            self._compactions_seen = self.state.compactions
         if not self.progress.observe(round_entries):
             return None
         return self.state.done(

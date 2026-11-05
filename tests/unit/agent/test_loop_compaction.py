@@ -13,6 +13,7 @@ from typing import Any
 from docket.agent.loop_budget import TurnBudget
 from docket.agent.loop_compaction import TurnCompaction, covering_range
 from docket.agent.loop_state import TurnState
+from docket.agent.loop_steps import ToolStep
 from docket.agent.loop_types import LoopConfig
 from docket.agent.ports import (
     ChatMessage,
@@ -270,6 +271,49 @@ class TestOnlyARequestThatDoesNotFitCompactsTheSession:
         assert stored[0].content.endswith("the summary")
         assert before[0] not in stored
         assert stored[-1].content == "the task"
+
+
+class TestTheSummaryRequestPassesItsOwnFitPreflight:
+    """The summarizer prompt is bounded as the preflight counts it: serialized, where each line
+    break costs two characters, so a history of short lines is not admitted by its text size."""
+
+    def test_a_history_of_short_lines_compacts_instead_of_failing_the_fit(
+        self, make_turn_state: MakeState
+    ) -> None:
+        backend = _OneReply(ChatResponse(ok=True, message=assistant("the summary")))
+        state = make_turn_state(backend=backend, context_window=4_000, output_reserve=100)
+        for n in range(6):
+            append_messages(state.session_key, [user("a\n" * 1_500), assistant(f"ok {n}")])
+        compaction = _compaction(state)
+        compaction.seed_task_message("t" * 8_000)
+
+        *_, error, stop, _kind = compaction.fit_task_request()
+
+        assert (error, stop) == ("", None)
+        assert len(backend.calls) >= 1
+
+
+class TestACompactionMakesTheLoopForgetWhatItSaw:
+    """A compaction takes the earlier tool results out of the model's context, so fetching one
+    again is not a repeat (agent-loop.spec.md requirement 78)."""
+
+    def test_a_round_seen_before_the_compaction_is_new_after_it(
+        self, make_turn_state: MakeState
+    ) -> None:
+        backend = _OneReply(ChatResponse(ok=True, message=assistant("the summary")))
+        state = make_turn_state(
+            LoopConfig(no_progress_rounds=1), backend=backend, context_window=100_000
+        )
+        for n in range(4):
+            append_messages(state.session_key, [user(f"ask {n} " + "x" * 2_000), assistant("ok")])
+        step = ToolStep(state)
+        seen = [("glob", "{}", True, "digest-of-the-files")]
+        assert step.stop_if_no_progress(seen) is None
+
+        result, _stop = _compaction(state).run_compaction((0, 6))
+
+        assert result.compacted
+        assert step.stop_if_no_progress(seen) is None
 
 
 class TestTheRequestProjectionFollowsTheWindow:

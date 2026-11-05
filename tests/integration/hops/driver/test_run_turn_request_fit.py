@@ -159,12 +159,15 @@ class TestRunTurn:
         assert backend.injected
         assert dispatches == 1
         assert [bool(tools) for tools in backend.tools_seen] == [True, False, False, True]
+        # Each summarizer request is estimated twice: once to bound its prompt, once by the fit preflight.
         assert backend.prospectives == [
             ("task", 200),
             ("task", 1_220),
             ("compaction", 700),
+            ("compaction", 700),
             ("task", 700),
             ("task", 1_100),
+            ("compaction", 700),
             ("compaction", 700),
             ("task", 700),
         ]
@@ -327,11 +330,14 @@ class TestRunTurn:
         assert result.output == "done"
         assert dispatches == 1
         assert [bool(tools) for tools in backend.tools_seen] == [True, False, False, True]
+        # Each summarizer request is estimated twice: once to bound its prompt, once by the fit preflight.
         assert backend.prospectives == [
             ("task", 200),
             ("task", 1_220),
             ("compaction", 700),
+            ("compaction", 700),
             ("task", 1_100),
+            ("compaction", 700),
             ("compaction", 700),
             ("task", 700),
         ]
