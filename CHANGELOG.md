@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A tool result the model has not answered yet is never condensed.** A round of parallel `fetch` results
+  that exceeded the keep count and the character budget had its oldest results replaced by "already seen and
+  omitted; call fetch again" before the model read them, so it fetched again until the turn budget ended. The
+  results after the last assistant message now stay whole (session-history requirement 30); older answered
+  results make room for them.
 - **A compaction converges on a unit larger than its prompt, and never ends a turn that fits.** A raw unit
   whose summary prompt does not fit (three or four parallel `fetch` results) is summarized from a projection
   with each tool result cut and marked, a batch never holds a compaction summary alone, and a pre-turn

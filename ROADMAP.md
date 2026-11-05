@@ -366,7 +366,7 @@ today:
   (P68-1, P68-2, P68-3, P68-5). (4) the search provider was decided 2026-11-05: a local SearXNG by default (measured 20 of 20 queries, free;
   Marginalia 1 of 20), Brave Search API as the option (its storage terms are read before it ships), and the plan of
   record sees and sets the provider (P68-4, P68-8); Tavily and Exa search by POST, which docket reads as `send`.
-  Open: P68-7 and P68-6, the real run.
+  P68-7 is done; open: P68-4, P68-8 and P68-6, the real run.
 - **Push `develop`.** 148 commits since 2026-11-02 (Phase 58's last waves through Phase 67) are local only
   (`git log origin/develop..develop`); pushing is the maintainer's call.
 - **The implementer's re-sent context** (a fired trigger on `TODO.md`): its measurement spends

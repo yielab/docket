@@ -140,7 +140,7 @@ from `main`.
 > | --- | --- | --- |
 > | 1 | P68-1 ∥ P68-2 ∥ P68-3 | P68-1 owns `agent/session_compaction.py`, `agent/loop_compaction.py`, `session-history.spec.md`, `agent-loop.spec.md` 37; P68-2 owns `governance/policy.py`, the policy templates, the corpus, `security-gates.spec.md`; P68-3 owns `teams/builtin_roles.py`, `role-archetypes.spec.md` |
 > | 2 | P68-4 ∥ P68-5 | P68-4 owns the `web-research` recipe, `services/`, the `setup search` command and `teams/apply/needs.py`; P68-5 owns `agent/tools/capability_gap.py`, `hops/application/driver_support.py` `pod_offer`, `serve-read-api.spec.md` |
-> | 2b | P68-7 | `agent/session.py`, `session-history.spec.md` requirement 30; before P68-6 |
+> | 2b | P68-7 (done) | `agent/session.py`, `session-history.spec.md` requirement 30; before P68-6 |
 > | 2c | P68-8 | after P68-4: `needs.py`, the recipe, the pod report, `operator-api.spec.md`; Brave and the Tack surface |
 > | 3 | P68-6 | the integrator's real run, which also closes P67-5 |
 >
@@ -268,6 +268,20 @@ from `main`.
 - **Gate:** the recipe and command tests; `validate-specs.sh`; `gen_recipe_docs.py --check`; `gen_cli_docs.py
   --check`; the measurement spends no model tokens.
 
+### P68-7 — A tool result the model has not answered is never condensed
+
+**Status:** DONE 2026-11-05 (`53f5c26a` cherry-picked; session-history 1.14.0, requirement 30) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** the P67-5 run: a round of parallel fetches returned more whole results than `HISTORY_KEEP_FULL_RESULTS`
+  and the budget allow, so the request projection replaced the oldest results of the current round with "already
+  seen and omitted; call fetch again" before the model read them; it fetched again until the turn budget ended.
+- **Done:** a `tool` message is answered once an assistant message follows it; `condense_history` clamps its cut to
+  the answered results (`_unanswered_count`), and an unanswered result still counts as whole in the keep/budget
+  arithmetic, so older answered results make room for it. Tests in `test_session__condense.py`
+  (`TestCondenseHistoryUnansweredRound`); the unanswered `write` case passes before the change and guards it.
+- **Open, measured by P68-6:** a turn whose round is larger than its request window is still bounded by request-fit,
+  not by this projection.
+
 ### P68-8 — Brave Search API as the option, and Tack sees and sets the provider
 
 **Status:** TODO (decided 2026-11-05; after P68-4: both edit `needs.py`, the recipe and `pod-blueprints.spec.md`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** P68-4
@@ -324,7 +338,7 @@ from `main`.
 
 ### P68-6 — The research task again, through to a report with sources
 
-**Status:** TODO (P68-1, P68-2, P68-3 and P68-5 done and installed; P68-7 first; needs `web-research` reapplied from the app's `onboard/tack`, so its writer loses `fetch`, and the maintainer's go in Tack's session) · **Size:** M · **Model:** Opus (integrator) · **Kind:** real run
+**Status:** TODO (P68-1, P68-2, P68-3 and P68-5 done and installed; P68-7 done; needs `web-research` reapplied from the app's `onboard/tack`, so its writer loses `fetch`, and the maintainer's go in Tack's session) · **Size:** M · **Model:** Opus (integrator) · **Kind:** real run
 
 - **Goal:** P67-5's acceptance, on the installed build (`./install.sh`, service restarted), the user's go given in
   Tack's session: Tack task `4C9BAB` from **Run again**, nobody writing `fetchDomains`.
