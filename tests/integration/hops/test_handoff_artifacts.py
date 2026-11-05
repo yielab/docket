@@ -31,6 +31,7 @@ from docket.hops.application import executor as _executor
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel import handoff as _handoff
 from docket.kernel.home import Home, use_home
+from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _plan
 from docket.tasks.application import queue as _queue
@@ -102,6 +103,7 @@ class TestHandoffArtifactModel:
             "assumptions",
             "questions",
             "verdict",
+            "sources",
         }
 
     def test_model_is_frozen(self) -> None:
@@ -281,6 +283,86 @@ class TestDispatchBuildsTypedArtifacts:
                 # the card's own "not a string" acceptance criterion.
                 assert not isinstance(hop.artifact, str)
                 assert hop.artifact.summary == hop.output
+
+    def test_the_pages_a_hop_fetched_travel_to_the_next_hop_with_their_stored_copies(
+        self, tmp_path: Path
+    ) -> None:
+        stored = "/pod/cache/artifacts/aa11.txt"
+        messages: dict[str, str] = {}
+
+        def _event(kind: str, role: str, payload: dict[str, Any]) -> None:
+            _trace.trace_event(
+                "demo", "agent:demo:t5", role, kind, json.dumps(payload), task_id="t5"
+            )
+
+        def _fetch(call_id: str, url: str, **result: Any) -> None:
+            _event(
+                "tool_call",
+                "lead",
+                {"tool": "fetch", "callId": call_id, "arguments": json.dumps({"url": url})},
+            )
+            _event(
+                "tool_result",
+                "lead",
+                {"tool": "fetch", "callId": call_id, "executed": True, "ok": True, **result},
+            )
+
+        def runner(
+            agent_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> Any:
+            from docket.agent.ports import TurnResult
+
+            role = agent_id.rsplit("-", 1)[-1]
+            messages[role] = message
+            if role == "lead":
+                _fetch("c1", "https://a.test/one", artifact=stored)
+                _fetch("c2", "https://b.test/two")
+                _fetch("c3", "https://a.test/one", artifact=stored)
+                _event(
+                    "tool_call",
+                    "lead",
+                    {
+                        "tool": "fetch",
+                        "callId": "c4",
+                        "arguments": json.dumps({"url": "https://c.test/denied"}),
+                    },
+                )
+                _event(
+                    "tool_result",
+                    "lead",
+                    {"tool": "fetch", "callId": "c4", "executed": False, "ok": False},
+                )
+                _event(
+                    "tool_call",
+                    "lead",
+                    {"tool": "read", "callId": "c5", "arguments": json.dumps({"path": "/x"})},
+                )
+                _event(
+                    "tool_result",
+                    "lead",
+                    {"tool": "read", "callId": "c5", "executed": True, "ok": True},
+                )
+            return TurnResult(True, f"{role} done", {})
+
+        with _seed_pod(tmp_path):
+            task = TaskRecord(id="t5", description="work")
+            res = _executor.dispatch_task("demo", task, runner=runner)
+
+        assert res.status == "done"
+        lead = res.hops[0].artifact
+        assert lead is not None
+        assert [(s.url, s.artifact) for s in lead.sources] == [
+            ("https://a.test/one", stored),
+            ("https://b.test/two", ""),
+        ]
+        assert res.hops[1].artifact is not None and res.hops[1].artifact.sources == []
+        assert f"Sources read: https://a.test/one (read: {stored})" in messages["implementer"]
+        assert "Sources read: https://b.test/two\n" in messages["implementer"]
+        assert "denied" not in messages["implementer"]
 
     def test_verdict_gated_hop_artifact_carries_the_parsed_verdict(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, full=True):

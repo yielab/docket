@@ -232,6 +232,7 @@ class TestCompileArtifact:
             "assumptions",
             "questions",
             "verdict",
+            "sources",
         )
 
         art = HandoffArtifact(

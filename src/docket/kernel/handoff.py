@@ -5,7 +5,7 @@ hop otherwise has nothing to reason about except opaque prior-hop text — no
 notion of which part of a reply is a one-line verdict, which is the file list
 a code change touched, or which fields are safe to shed first once a token
 budget gets tight. The shape (``summary``, ``files_changed``, ``diff_ref``, ``diff``,
-``verdict``) plus a declared drop order gives a size-constrained
+``verdict``, ``sources``) plus a declared drop order gives a size-constrained
 consumer (``agent/context.py``'s token-budget compiler) an order to shed
 fields in without inventing one itself.
 
@@ -44,6 +44,9 @@ other field at its default).
 - ``assumptions`` / ``questions`` — what the hop's ``handoff`` tool call declared
   (``HandoffCall``); empty for a hop that closed with text alone. A question informs the next hop
   and the operator's view; it never parks a task (a question that needs an answer is a consult).
+- ``sources`` — the pages the hop fetched, each with the stored copy's path when the result was
+  stored (``tasks/application/record.py`` reads them from the task's trace); addresses only, never
+  page text. Empty for a hop that fetched nothing, and under ``DOCKET_NO_TRACE``.
 - ``brief`` — the Lead's typed intake output (``parse_brief``), when its raw
   reply's last fenced ``json`` block validates as a ``TaskBrief``. ``None``
   for every other hop, and for a Lead hop with no parseable brief -- a brief
@@ -197,6 +200,20 @@ def _is_empty(value: object) -> bool:
     return not value
 
 
+class HandoffSource(BaseModel):
+    """One page a hop read: its address and, when the result was stored whole, where."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    url: str
+    #: The stored copy's path (readable with ``read``); ``""`` when the result was not stored.
+    artifact: str = ""
+
+    def render(self) -> str:
+        read = f" (read: {self.artifact})" if self.artifact else ""
+        return f"Sources read: {self.url}{read}"
+
+
 class HandoffArtifact(BaseModel):
     """One hop's structured output, handed to the next hop instead of raw text.
 
@@ -226,6 +243,9 @@ class HandoffArtifact(BaseModel):
     #: (``parse_brief``) -- ``None`` for every other hop. Never shed: excluded
     #: from ``DROP_ORDER`` on purpose, the same posture as ``summary``.
     brief: TaskBrief | None = None
+    #: The pages the hop fetched (see the module docstring); last of the droppable fields, so a
+    #: tight budget loses the list before it cuts the summary.
+    sources: list[HandoffSource] = Field(default_factory=list, exclude_if=_is_empty)
 
     #: Least-valuable-first shedding order for a token-budgeted consumer.
     DROP_ORDER: ClassVar[tuple[str, ...]] = (
@@ -235,6 +255,7 @@ class HandoffArtifact(BaseModel):
         "assumptions",
         "questions",
         "verdict",
+        "sources",
     )
 
     #: The "reset to empty" value for each droppable field — used by ``dropped()``.
@@ -245,6 +266,7 @@ class HandoffArtifact(BaseModel):
         "assumptions": [],
         "questions": [],
         "verdict": None,
+        "sources": [],
     }
 
     @classmethod
@@ -270,6 +292,7 @@ class HandoffArtifact(BaseModel):
         line in the diff's place; a diff that is present wins over it.
         """
         lines = [self.summary]
+        lines.extend(source.render() for source in self.sources)
         if self.diff:
             lines.append(f"Diff:\n{self.diff}")
         elif diff_omitted:

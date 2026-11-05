@@ -12,9 +12,11 @@ from __future__ import annotations
 import pytest
 
 from docket.agent import context as _ctx
+from docket.agent import ports as _ports
 from docket.kernel.brief import TaskBrief
 from docket.kernel.handoff import (
     HandoffArtifact,
+    HandoffSource,
     cap_diff,
     parse_brief,
     parse_handoff_call,
@@ -252,3 +254,45 @@ class TestAssumptionsAndQuestions:
     def test_an_empty_pair_is_absent_from_the_dump(self) -> None:
         assert "assumptions" not in HandoffArtifact(summary="s").model_dump()
         assert HandoffArtifact(summary="s", questions=["q"]).model_dump()["questions"] == ["q"]
+
+
+class TestSources:
+    def test_each_source_renders_on_its_own_line_right_after_the_summary(self) -> None:
+        art = HandoffArtifact(
+            summary="s",
+            verdict="approve",
+            sources=[
+                HandoffSource(url="https://a.test/x", artifact="/cache/artifacts/1.txt"),
+                HandoffSource(url="https://b.test/y"),
+            ],
+        )
+
+        assert art.render() == (
+            "s\nSources read: https://a.test/x (read: /cache/artifacts/1.txt)"
+            "\nSources read: https://b.test/y\nVerdict: approve"
+        )
+
+    def test_no_sources_is_absent_from_render_and_from_the_dump(self) -> None:
+        art = HandoffArtifact(summary="s")
+
+        assert art.render() == "s"
+        assert "sources" not in art.model_dump()
+
+    def test_sources_round_trip_through_the_dump(self) -> None:
+        art = HandoffArtifact(summary="s", sources=[HandoffSource(url="u", artifact="p")])
+
+        assert HandoffArtifact.model_validate(art.model_dump()) == art
+
+    def test_sources_are_the_last_field_shed_and_before_the_summary_is_cut(self) -> None:
+        assert HandoffArtifact.DROP_ORDER[-1] == "sources"
+        art = HandoffArtifact(
+            summary="the summary that must survive whole",
+            sources=[HandoffSource(url="https://a.test/page", artifact="/c/artifacts/1.txt")],
+        )
+        # Fits the summary alone, not the summary plus the sources.
+        compiled = _ctx.compile_artifact(art, _ports.estimate_tokens(art.summary))
+
+        assert compiled.dropped_fields == ("sources",)
+        assert compiled.text == art.summary
+        assert compiled.summary_truncated is False
+        assert art.dropped("sources").sources == []

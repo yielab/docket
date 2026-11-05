@@ -93,6 +93,25 @@ class TestTheWriterDraftsFromTheHandoff:
         assert "fetch" not in STARTER_ARCHETYPES["researcher"].denied_tools
 
 
+class TestAPageIsReadOnceAcrossTheResearchHandoff:
+    """The researcher keeps claims beside their URLs; the analyst reads the stored copy, not the web."""
+
+    def test_the_analyst_checks_a_sample_from_the_stored_copies_with_read(self) -> None:
+        analyst = STARTER_ARCHETYPES["analyst"]
+        soul = render(analyst.soul_template, {**_SAMPLE_VARIABLES, "role": "analyst"})
+
+        assert "sample of the sources" in soul
+        assert "stored cop" in soul and "`read`" in soul
+        assert "do not `fetch` a page a researcher already read" in soul
+        assert "fetch" not in analyst.denied_tools
+
+    def test_the_researcher_keeps_each_claim_next_to_its_url(self) -> None:
+        researcher = STARTER_ARCHETYPES["researcher"]
+        soul = render(researcher.soul_template, {**_SAMPLE_VARIABLES, "role": "researcher"})
+
+        assert "next to its URL" in soul
+
+
 class TestTheMethodBlockFollowsTheWorkspaceKind:
     @pytest.mark.parametrize("name", ["lead", "implementer", "writer", "reviewer"])
     def test_a_workdir_method_names_no_repository_or_code(self, name: str) -> None:

@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 12.8.0
+**Version**: 12.9.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -1693,7 +1693,7 @@ parsing for any verdict-gated step (`parse_verdict`).
 
 ### Structured handoff artifacts
 
-1. Every hop **MUST** produce a typed `HandoffArtifact` -- a Pydantic model with exactly nine
+1. Every hop **MUST** produce a typed `HandoffArtifact` -- a Pydantic model with exactly ten
    fields: `summary` (the `summary` of the hop's `handoff` call when it gave one, else the hop's
    full reply text -- always populated), `verdict` (the `handoff` call's `verdict`, else the parsed
    gate marker, for a `VerdictGate`-gated hop; else `None`), `assumptions` and `questions` (the
@@ -1701,13 +1701,15 @@ parsing for any verdict-gated step (`parse_verdict`).
    operator and **MUST NOT** park a task), `files_changed` (populated by a real git
    probe for any hop that changed the tree -- see "Implementer diff producer" below), `diff_ref` (the
    same probe, Implementer hops only), `diff` (the capped text of what a hop that changed the tree
-   wrote, `""` otherwise), `brief` (a parsed `TaskBrief`, see "Task brief", else `None`). `HopResult.artifact` **MUST** always be set once a hop is constructed -- a hop built
+   wrote, `""` otherwise), `brief` (a parsed `TaskBrief`, see "Task brief", else `None`), `sources` (the pages the hop
+   read, requirement 7; `[]` when it fetched none). `HopResult.artifact` **MUST** always be set once a hop is constructed -- a hop built
    without one backfills `HandoffArtifact.from_output(output)` (the raw text as `summary`, every other
    field at its default).
 2. The next hop's prompt **MUST** be composed from the prior hop's *rendered artifact*
    (`HandoffArtifact.render()`), never from its raw `output` string directly. `render()` returns
    exactly `summary` unchanged when every other field is at its default; otherwise it appends, in
-   this fixed order, a `"Diff:"` block, a `"Brief:"` block, a `"Verdict: <value>"` line, an
+   this fixed order, one `"Sources read: <url> (read: <artifact path>)"` line per source (requirement 7),
+   a `"Diff:"` block, a `"Brief:"` block, a `"Verdict: <value>"` line, an
    `"Assumptions:"` block, a `"Questions:"` block (one `- ` line per item), a
    `"Files changed: ..."` line, a `"Diff ref: ..."` line for each field
    that is set, so the next hop sees structure the raw reply does not carry, and the diff only once.
@@ -1718,7 +1720,7 @@ parsing for any verdict-gated step (`parse_verdict`).
    a persisted artifact's normalized `verdict` without reparsing its raw model prose. A record whose
    artifact carries no verdict falls back to parsing the hop's raw output.
 4. `HandoffArtifact.DROP_ORDER` **MUST** declare a least-valuable-first field-shedding order
-   (`diff`, `diff_ref`, `files_changed`, `assumptions`, `questions`, `verdict` -- `summary` and `brief` are never
+   (`diff`, `diff_ref`, `files_changed`, `assumptions`, `questions`, `verdict`, `sources` -- `summary` and `brief` are never
    included; `summary` is the artifact's minimum viable content) and a `dropped(field)` helper that
    returns a copy with *field* reset to empty. The context compiler (`compile_artifact`) walks
    `DROP_ORDER` to budget one hop's carryover against its role's token budget (see "Bounded hop
@@ -1734,6 +1736,20 @@ parsing for any verdict-gated step (`parse_verdict`).
    guardrail rewrote derives its artifact from the reply text as before. The artifact's
    `assumptions` and `questions` are omitted from its persisted dump while empty, so a record
    written before they existed loads and dumps unchanged.
+7. The artifact **MUST** name the pages its hop read, so the next hop reads the stored copy and does
+   not fetch the page again. `sources` is a list of `{url, artifact}`, built by `build_hop_result`
+   from the hop's `fetch` calls in the task's trace (same task, same role, at or after the hop's
+   start): the `url` is the call's `url` argument, and `artifact` is the path the result named
+   (`[full output: <path> ...]`, the artifact store of agent-loop.spec.md) when the result was
+   stored, else `""`. Only a call that ran and succeeded counts (a denied or failed `fetch` read
+   nothing); a URL fetched twice is listed once, keeping the path of whichever result had one, in
+   the order first fetched. `render()` puts one `Sources read: <url> (read: <artifact path>)` line
+   per source directly after `summary` (`Sources read: <url>` when there is no path), and the
+   budget compiler sheds `sources` last of the droppable fields, so a tight budget keeps the
+   summary and loses the list before it truncates the summary. It is omitted from the persisted
+   dump while empty, so a record written before it existed loads and dumps unchanged. Under
+   `DOCKET_NO_TRACE` the hop has no trace to read and `sources` is `[]`. The handoff carries
+   addresses, never page text.
 
 ### Implementer diff producer
 

@@ -320,6 +320,41 @@ def _hop_trace_link(ctx: UnitContext, first_ts: str) -> dict[str, str] | None:
     }
 
 
+def _fetch_sources(ctx: UnitContext, role: str, first_ts: str) -> list[_handoff.HandoffSource]:
+    """The pages *role*'s hop fetched since *first_ts*, from the task's trace: each `fetch` that ran
+    and succeeded, with its URL from the call and its stored copy from the result, once per URL, in
+    first-fetched order. `[]` with no trace (`DOCKET_NO_TRACE`)."""
+    if not first_ts:
+        return []
+    tracefile = _trace.project_trace_dir(ctx.project) / f"{ctx.session_id}.jsonl"
+    urls: dict[str, str] = {}
+    pending: dict[str, str] = {}
+    for record in _trace.read_trace(tracefile):
+        payload = record.get("payload")
+        if (
+            record.get("task_id") != ctx.task_id
+            or record.get("agent_role") != role
+            or str(record.get("ts") or "") < first_ts
+            or not isinstance(payload, dict)
+            or payload.get("tool") != "fetch"
+        ):
+            continue
+        call_id = str(payload.get("callId") or "")
+        if record.get("event_type") == "tool_call":
+            try:
+                args = _json.loads(payload.get("arguments") or "")
+            except (TypeError, ValueError):
+                continue
+            url = args.get("url") if isinstance(args, dict) else None
+            if isinstance(url, str) and url:
+                pending[call_id] = url
+        elif record.get("event_type") == "tool_result" and call_id in pending:
+            url = pending.pop(call_id)
+            if payload.get("executed") and payload.get("ok"):
+                urls[url] = urls.get(url) or str(payload.get("artifact") or "")
+    return [_handoff.HandoffSource(url=url, artifact=path) for url, path in urls.items()]
+
+
 def build_hop_result(
     ctx: UnitContext,
     node: _orch.PlannedUnit,
@@ -382,6 +417,7 @@ def build_hop_result(
         diff_ref=diff_ref,
         diff=diff,
         brief=brief,
+        sources=_fetch_sources(ctx, role, first_ts),
     )
     served = run_res.model
     if served and run_res.provider and "/" not in served:

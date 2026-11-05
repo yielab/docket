@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 5.11.0
+**Version**: 5.12.0
 **Status**: Implemented. Three built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
 **Last Updated**: 2026-11-05
@@ -283,6 +283,12 @@ This specification does NOT cover:
     person alone can make. It **MUST NOT** say the Lead cannot reach the human, and it
     **MUST NOT** name a second channel such as a `NEEDS-INPUT` marker: that marker belongs to the
     `intake` recipe's own step instructions, which replace the Lead's hop instruction.
+11. The researcher's and the analyst's identity prompts **MUST** agree on how a page travels
+    between them (pod-dispatch.spec.md "Structured handoff artifacts" requirement 7). The
+    researcher's `SOUL.md` tells it to keep each claim next to the URL it came from. The
+    analyst's tells it to check a sample of the sources the handoff lists from their stored
+    copies with `read`, and not to `fetch` a page a researcher already read; a page the handoff
+    does not list is the analyst's to fetch.
 
 ### Hop instructions
 
