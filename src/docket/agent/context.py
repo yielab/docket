@@ -11,7 +11,7 @@ carried forward across any number of prior hops never reaches the total
 budget, while the most recent, most relevant hop is squeezed the least. Once
 a hop's share is exceeded, ``compile_artifact`` sheds the artifact's own
 less-valuable fields first, in ``HandoffArtifact.DROP_ORDER``'s declared
-order (``diff_ref`` -> ``files_changed`` -> ``verdict``),
+order (``diff`` first, ``sources`` last; see ``kernel/handoff.py``),
 checking the budget after each drop and stopping the moment it fits.
 ``summary`` is never in ``DROP_ORDER`` — it is the artifact's minimum viable
 content — so the worst case is an explicitly *marked* truncation of
@@ -81,12 +81,10 @@ TOOL_SCHEMA_RESERVE_TOKENS = 1500
 
 #: Share of the resolved model window (after the output-token reserve and
 #: ``TOOL_SCHEMA_RESERVE_TOKENS``) a budget may claim once nothing overrides
-#: it. Chosen so today's only registered window (16384 tokens, 8192 reserved
-#: for output — see ``models/catalog.py``'s local-endpoint defaults) still
-#: resolves to each budget's existing floor: half of the ~6.7K tokens left
-#: after reserving output and tool-schema room is well under the 6000-token
-#: floor, so a 16k endpoint's behaviour is unchanged. A large hosted window
-#: (100K+ tokens) clears the floor by a wide margin instead.
+#: it. The window is the one the role's model resolves to (its model profile
+#: or provider-model row, ``contextWindow``; see ``models/catalog.py``), never a
+#: constant in this module. A window whose share falls under the floor resolves
+#: to the floor, so a small window still gets each budget's floor.
 WINDOW_SHARE = 0.5
 
 
@@ -214,8 +212,8 @@ def compile_artifact(artifact: HandoffArtifact, budget_tokens: int) -> CompiledA
        the common case (a small hop composes exactly as if there were no
        budget at all).
     2. Otherwise shed ``HandoffArtifact.DROP_ORDER`` fields one at a time
-       (``diff_ref``, then ``files_changed``, then
-       ``verdict``), re-measuring after each drop and stopping the moment it
+       (its declared order, from ``diff`` through ``sources``; see
+       ``kernel/handoff.py``), re-measuring after each drop and stopping the moment it
        fits. A field that is already empty (``files_changed``/``diff_ref`` are only
        populated for a successful Implementer hop, see `kernel/handoff.py`/
        `tasks/application/record.py`) is skipped rather than reported as "dropped": there
