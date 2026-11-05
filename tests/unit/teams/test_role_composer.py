@@ -12,6 +12,7 @@ all. No real subprocess.
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 from pathlib import Path
 
 from tests.support.roles import write_role_overlay, write_vetter_overlay
@@ -21,7 +22,9 @@ from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import store as _store
 from docket.teams.pod import member_id as _pod_member_id
-from docket.teams.role_composer import registry_for_role
+from docket.teams.role_composer import TeamsRoleComposer, registry_for_role
+from docket.teams.workspace import repo_view as _repo_view
+from docket.teams.workspace.repo_view import RepoView
 
 SUBJECT = "docket.teams.role_composer"
 
@@ -603,3 +606,31 @@ class TestMinimalSurfaceOffersRecordTools:
             )
 
             assert {n for n in narrowed.names() if n.startswith("rec__")} == {"rec__query"}
+
+
+_HISTORY_PROMPT = (
+    "---\nkind: prompt\nname: history\nversion: 1.0.0\nlayer: compaction\nfor: any\n"
+    "inputs:\n  label: string\n  turns: text\n---\nREPOSITORY ${label}\n\n${turns}\n"
+)
+
+
+class TestTheCompactionPromptReachesTheRepositoryScope:
+    """The live compaction path reads the repository's prompt through the view registered for
+    the pod's first root, like every other prompt; without a root it starts at the pod scope."""
+
+    def test_a_registered_view_serves_its_compaction_prompt(self, tmp_path: Path) -> None:
+        served = {".docket/prompts/compaction/history.md": _HISTORY_PROMPT.encode()}
+        view = RepoView("a" * 40, served.get, lambda _rel: [])
+        token = _repo_view.register(tmp_path, view)
+        try:
+            text, sha = TeamsRoleComposer().compaction_prompt("", (tmp_path,))
+        finally:
+            _repo_view.unregister(token)
+
+        assert text.startswith("REPOSITORY ${label}")
+        assert sha == hashlib.sha256(text.encode()).hexdigest()
+
+    def test_without_a_root_the_shipped_prompt_answers(self) -> None:
+        text, _sha = TeamsRoleComposer().compaction_prompt("", ())
+
+        assert "${turns}" in text and not text.startswith("REPOSITORY")

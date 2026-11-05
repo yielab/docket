@@ -45,9 +45,8 @@ class TurnState:
     system_prompt: str
     tool_specs: list[ToolSpec]
 
-    # The ratio the model's last turn measured (seeds the first request's estimate), and the
-    # one this turn's first task call measured (agent-loop.spec.md requirement 46a).
-    estimate_ratio: float | None = None
+    # The ratio this turn's first task call measured over its raw estimate, for the driver to
+    # record against the model (agent-loop.spec.md requirement 46a).
     first_call_ratio: float | None = None
     trace_task_id: str = ""
     total_usage: TokenUsage = field(default_factory=TokenUsage)

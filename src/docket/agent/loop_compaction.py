@@ -15,6 +15,7 @@ from docket.agent.loop_request import (
     _accumulate,
     _build_reduction_candidates,
     _fallback_input_estimate,
+    _message_tokens,
     _segment_revision,
     _usage_delta,
     send_request,
@@ -40,7 +41,8 @@ from docket.agent.session import (
 from docket.agent.session_compaction import CompactionResult, compact_session
 from docket.agent.session_units import group_atomic_units
 
-# The room an accepted summary's own text takes up, kept clear when sizing what a reduction must cover.
+# Slack over the overflow when sizing what one reduction must cover: the summary's header line.
+# The summary's body is not known before the call; a request still over after it is reduced again.
 _FIT_MARGIN_TOKENS = 32
 
 
@@ -61,7 +63,7 @@ def covering_range(
         group_atomic_units(projected[start:end]),
         strict=True,
     ):
-        covered += max(1, _fallback_input_estimate(projected_unit, [], None, None) - 16)
+        covered += _message_tokens(projected_unit)
         cursor += len(raw_unit)
         if covered >= need:
             return start, cursor
@@ -271,7 +273,7 @@ class TurnCompaction:
         elapsed_now = self.state.clock() - self.state.started
         remaining_now = max(1, int(self.state.cfg.wall_clock_timeout_s - elapsed_now))
         prompt_text, prompt_sha256 = role_composer.compaction_prompt(
-            self.state.ctx.role, self.state.project
+            self.state.project, self.state.ctx.roots
         )
         result = compact_session(
             self.state.session_key,
@@ -340,11 +342,15 @@ class TurnCompaction:
         fixed = _fallback_input_estimate(others, self.state.tool_specs, None, None)
         return window_results_budget(window - max(0, self.state.output_reserve) - fixed)
 
+    def projected(self, durable: list[ChatMessage]) -> tuple[list[ChatMessage], int]:
+        """*durable* as the request carries it, with the whole-results budget that shaped it."""
+        budget = self.whole_results_budget(durable)
+        return condense_history(durable, budget=budget), budget
+
     def messages_for_durable(self, durable: list[ChatMessage]) -> RequestProjection:
         """The request for *durable*: the system prompt, then the history as projected. Remembered
         as ``self.projection``."""
-        budget = self.whole_results_budget(durable)
-        projected = condense_history(durable, budget=budget)
+        projected, budget = self.projected(durable)
         results = [(m, p) for m, p in zip(durable, projected, strict=True) if m.role == "tool"]
         condensed = sum(1 for m, p in results if p.content != m.content)
         self.projection = RequestProjection(
@@ -468,7 +474,7 @@ class TurnCompaction:
             )
         overflow = estimated_input + self.state.output_reserve - self.state.context_window
         candidate_ranges = _build_reduction_candidates(durable, task_index, protected_segments)
-        projected = condense_history(durable, budget=self.whole_results_budget(durable))
+        projected, _budget = self.projected(durable)
 
         progressed = False
         accepted_segment = ""

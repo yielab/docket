@@ -708,7 +708,7 @@ from `main`.
 
 ### P66-4 — The compaction prompt is a shipped prompt document with sections, reached through the port
 
-**Status:** DONE 2026-11-05 (`28934292`; the recall test `tests/agent/context/test_compaction_recall.py` is written and runs at phase close; `compaction_prompt(role, project)` has no `RepoView`, so a repository override is unreachable from the live compaction path until a card passes a view; `prompt_sha256` is on `CompactionResult`, P66-3 puts it on the event) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** P68-1
+**Status:** DONE 2026-11-05 (`28934292`; the recall test `tests/agent/context/test_compaction_recall.py` is written and runs at phase close; the port is `compaction_prompt(project, project_roots)` and reads the repository view registered for the first root, so all four scopes are reachable from the live path (integrator's cleanup, 2026-11-05); `prompt_sha256` is on `CompactionResult`, P66-3 puts it on the event) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** P68-1
 
 - **Trigger:** the audit §6.3: `_summarization_message` (`agent/session_compaction.py` ~38) is a fixed
   string asking for "a concise summary"; no plantilla, no scope override, no hash on the trace, no recall

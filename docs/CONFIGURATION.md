@@ -71,6 +71,7 @@ noted.
     ├── docket-runs.json                dispatch     one record per dispatch invocation
     ├── docket-conversations.json       setup notify Telegram conversation registry
     ├── sessions/<session-key>/session.json dispatch durable per-session turn history
+    ├── sessions/<session-key>/compactions/<seq>.json dispatch the messages one compaction replaced, and its summary
     ├── traces/<pod>/<session>.jsonl    dispatch     observable events per session
     ├── approvals/<id>.json             gated call   pending/granted/denied approvals
     ├── consult-parked/<q-id>.json      consult      a parked question, until dispatch reads it
@@ -1313,6 +1314,7 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 | `state/docket-runs.json` | `runs[{id,source,project,state,taskIds,…}]` | every dispatch | `docket task list`, `/runs` | no (never pruned) |
 | `state/docket-conversations.json` | `conversations[{id,agentId,peerId,topic,status,…}]` | Telegram | Telegram channel | no |
 | `state/sessions/<key>/session.json` | `messages[]`, `usage{inputTokens,outputTokens,turns}` | every turn | every turn (history, compaction) | no |
+| `state/sessions/<key>/compactions/<seq>.json` | `{sessionKey, at, range, replaced[], summary, promptSha256}`: the messages one compaction replaced in `session.json`, byte for byte, and the summary that stands for them; `seq` counts up from 1 | each compaction that replaced messages | nothing reads it back; the `session_compaction` trace event names it | no. It goes with the session directory. |
 | `state/traces/<pod>/<session>.jsonl` | one event per line `{ts,session_id,agent_role,event_type,payload}` | every turn | `docket task trace`, `docket status`, `/traces`; each record also reaches the enabled exporters as it is written | no. `docket task prune` prunes after `TRACE_RETENTION_DAYS`. |
 | `state/approvals/<id>.json` | `{token,project,role,action,state,created,context}` | gated calls | the approval wait | no. Answer with `docket task answer <escalation-id> --option ...`. |
 | `state/escalations/esc-<id>.json` (+ `settled/`, `_seq.json`) | one `Escalation` (`id,task,pod,kind,prompt,options,state,resolution,seq,…`); a settled record moves to `settled/` | every pause: gated call, consult, `input` step, gate, changed check | `docket inbox`, `GET /escalations`, `docket task answer`, the claim that applies an answer | no. `docket start`'s sweep deletes settled records after `TRACE_RETENTION_DAYS`. |

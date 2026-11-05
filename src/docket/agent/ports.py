@@ -432,10 +432,11 @@ class RoleComposer(Protocol):
         """*agent_id*'s system prompt, fit to this turn's resolved model bounds."""
         ...
 
-    def compaction_prompt(self, role: str, project: str) -> tuple[str, str]:
-        """The summarizer prompt for *role*'s session in *project*, as ``(text, sha256)``: the
-        ``compaction/history`` document resolved through the scopes, still holding its ``${label}``
-        and ``${turns}`` inputs, and the hash of that text."""
+    def compaction_prompt(self, project: str, project_roots: tuple[Path, ...]) -> tuple[str, str]:
+        """The summarizer prompt for a session of pod *project*, as ``(text, sha256)``: the
+        ``compaction/history`` document resolved through the four scopes (the repository view
+        registered for the first of *project_roots*, the pod, the operator, then the shipped
+        copy), still holding its ``${label}`` and ``${turns}`` inputs, and the hash of that text."""
         ...
 
 

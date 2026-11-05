@@ -20,6 +20,7 @@ from docket.teams import prompts as _prompts
 from docket.teams import role_composer as _role_composer
 from docket.teams import roles as _roles
 from docket.teams.roles import BUILTIN_TOOL_KINDS, load_registry
+from docket.teams.workspace import repo_view as _repo_view
 
 
 class TeamsRoleComposer:
@@ -61,8 +62,9 @@ class TeamsRoleComposer:
             max_output_tokens=max_output_tokens,
         )
 
-    def compaction_prompt(self, role: str, project: str) -> tuple[str, str]:
-        loaded = _prompts.resolve_prompt("compaction", "history", project=project)
+    def compaction_prompt(self, project: str, project_roots: tuple[Path, ...]) -> tuple[str, str]:
+        view = _repo_view.view_for(project_roots[0]) if project_roots else None
+        loaded = _prompts.resolve_prompt("compaction", "history", project=project, view=view)
         return loaded.text, loaded.sha256
 
 

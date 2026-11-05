@@ -215,12 +215,6 @@ def _resolve_context_bounds(
     return context_window, output_reserve, request_max_tokens
 
 
-def _resolve_estimate_ratio(backend: ChatBackend) -> float | None:
-    """The ratio the backend's model last measured, or ``None`` when it reports none."""
-    ratio = getattr(backend, "estimate_ratio", None)
-    return float(ratio) if isinstance(ratio, int | float) and ratio > 0 else None
-
-
 def _resolve_trace_coordinates(
     ctx: ToolContext,
     session_key: str,
@@ -336,7 +330,6 @@ class _TurnState(TurnState):
             registry=registry,
             system_prompt=system_prompt,
             tool_specs=tool_specs,
-            estimate_ratio=_resolve_estimate_ratio(backend),
             trace_task_id=trace_task_id,
         )
 

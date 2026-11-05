@@ -13,7 +13,7 @@ from docket.agent.loop_request import _estimate_input_tokens, _usage_delta
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_budget_notice, _trace_request_fit
 from docket.agent.loop_types import AgentLoopResult, StopReason, limit_origin
-from docket.agent.ports import ChatMessage, ChatResponse, ToolSpec
+from docket.agent.ports import ChatBackend, ChatMessage, ChatResponse, ToolSpec
 
 _TOKEN_BUDGET_ERROR_PREFIX = "token budget:"
 # The fewest output tokens a budget-clamped request may keep (agent-loop requirement 46).
@@ -57,12 +57,19 @@ def budget_notice(state: TurnState) -> str:
     return _NOTICE.format(left=left)
 
 
+def _observed_estimate_ratio(backend: ChatBackend) -> float | None:
+    """The ratio the backend's model measured on its last turn, or ``None`` when it reports none."""
+    ratio = getattr(backend, "estimate_ratio", None)
+    return float(ratio) if isinstance(ratio, int | float) and ratio > 0 else None
+
+
 class TurnBudget:
     """Fit preflight, token-budget accounting and the per-iteration ceilings."""
 
     def __init__(self, state: TurnState) -> None:
         self.state = state
-        self.calibration = max(1.0, state.estimate_ratio or 1.0)
+        # Seeded by the model's observed ratio (agent-loop.spec.md requirement 46a), never under 1.
+        self.calibration = max(1.0, _observed_estimate_ratio(state.backend) or 1.0)
         self.pending_raw_estimate = 0
 
     def preflight_request(

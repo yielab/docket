@@ -101,6 +101,16 @@ def _usage_delta(current: TokenUsage, previous: TokenUsage) -> TokenUsage:
     )
 
 
+# What a request costs beyond its messages and tools in the fallback estimate: the envelope.
+_REQUEST_ENVELOPE_TOKENS = 16
+
+
+def _message_tokens(messages: list[ChatMessage]) -> int:
+    """*messages* alone, counted as the fallback request estimate counts them: the size a unit
+    takes in the request, comparable with an overflow measured on the same estimate."""
+    return _fallback_input_estimate(messages, [], None, None) - _REQUEST_ENVELOPE_TOKENS
+
+
 def _fallback_input_estimate(
     messages: list[ChatMessage],
     tools: list[ToolSpec],
@@ -133,7 +143,10 @@ def _fallback_input_estimate(
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
-    return max(1, _ports.estimate_tokens(json.dumps(payload, ensure_ascii=False))) + 16
+    return (
+        max(1, _ports.estimate_tokens(json.dumps(payload, ensure_ascii=False)))
+        + _REQUEST_ENVELOPE_TOKENS
+    )
 
 
 def _estimate_input_tokens(

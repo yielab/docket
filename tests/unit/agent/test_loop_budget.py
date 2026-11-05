@@ -94,10 +94,11 @@ class TestCalibrate:
 
 
 class _RawEstimate:
-    """A backend whose raw input estimate is fixed; it makes no exchange."""
+    """A backend whose raw input estimate and observed ratio are fixed; it makes no exchange."""
 
-    def __init__(self, raw: int) -> None:
+    def __init__(self, raw: int = 1, ratio: float | None = None) -> None:
         self.raw = raw
+        self.estimate_ratio = ratio
 
     def estimate_input_tokens(self, *args: object, **kwargs: object) -> int:
         return self.raw
@@ -116,21 +117,21 @@ class TestFirstRequestCalibration:
         return estimated
 
     def test_an_observed_ratio_scales_the_first_estimate(self, make_turn_state: MakeState) -> None:
-        state = make_turn_state(backend=_RawEstimate(1_001), estimate_ratio=1.5)
+        state = make_turn_state(backend=_RawEstimate(1_001, ratio=1.5))
         assert self._first_estimate(state) == math.ceil(1_001 * 1.5)
 
     def test_no_ratio_leaves_the_first_estimate_raw(self, make_turn_state: MakeState) -> None:
-        state = make_turn_state(backend=_RawEstimate(1_001), estimate_ratio=None)
+        state = make_turn_state(backend=_RawEstimate(1_001))
         assert self._first_estimate(state) == 1_001
 
     def test_a_ratio_below_one_never_shrinks_the_first_estimate(
         self, make_turn_state: MakeState
     ) -> None:
-        state = make_turn_state(backend=_RawEstimate(1_001), estimate_ratio=0.7)
+        state = make_turn_state(backend=_RawEstimate(1_001, ratio=0.7))
         assert self._first_estimate(state) == 1_001
 
     def test_the_first_measured_call_replaces_the_seed(self, make_turn_state: MakeState) -> None:
-        budget = TurnBudget(make_turn_state(estimate_ratio=1.5))
+        budget = TurnBudget(make_turn_state(backend=_RawEstimate(ratio=1.5)))
         assert budget.calibration == 1.5
         budget.pending_raw_estimate = 100
         budget.calibrate(120)
@@ -139,7 +140,7 @@ class TestFirstRequestCalibration:
     def test_the_first_call_ratio_is_measured_over_the_raw_estimate_and_kept(
         self, make_turn_state: MakeState
     ) -> None:
-        state = make_turn_state(estimate_ratio=1.5)
+        state = make_turn_state(backend=_RawEstimate(ratio=1.5))
         budget = TurnBudget(state)
         budget.pending_raw_estimate = 1_000
         budget.calibrate(1_600)

@@ -220,6 +220,34 @@ class _RoundOutcome:
     refused_by_guard: bool = False
 
 
+def _untouched(
+    before_count: int,
+    before_estimated: int,
+    *,
+    ok: bool,
+    rounds: _RoundOutcome | None = None,
+    prompt_sha256: str = "",
+    error: str = "",
+    failure_kind: FailureKind | None = None,
+) -> CompactionResult:
+    """A result whose history is as it was: a no-op (``ok``) or a fail-closed refusal, with the
+    figures of the *rounds* that ran before it, when any did."""
+    return CompactionResult(
+        ok=ok,
+        groups_summarized=rounds.groups_summarized if rounds else 0,
+        summary_rounds=rounds.rounds if rounds else 0,
+        max_summary_prompt_estimated_tokens=rounds.max_prompt_estimated if rounds else 0,
+        prompt_sha256=prompt_sha256,
+        before_message_count=before_count,
+        after_message_count=before_count,
+        before_estimated_tokens=before_estimated,
+        after_estimated_tokens=before_estimated,
+        error=error,
+        failure_kind=failure_kind,
+        refused_by_guard=rounds.refused_by_guard if rounds else False,
+    )
+
+
 def _candidate_refusal(
     candidate: Sequence[ChatMessage], current: Sequence[ChatMessage]
 ) -> tuple[str, bool] | None:
@@ -445,12 +473,10 @@ def _plan_and_apply_compaction(
 
     range_bounds = _validate_compaction_range(original_messages, compact_range, keep_latest_unit)
     if range_bounds is None:
-        return None, CompactionResult(
+        return None, _untouched(
+            before_count,
+            before_estimated,
             ok=False,
-            before_message_count=before_count,
-            after_message_count=before_count,
-            before_estimated_tokens=before_estimated,
-            after_estimated_tokens=before_estimated,
             error="compaction range must be atomic and leave a verbatim message anchor",
             failure_kind="invalid_output",
         )
@@ -461,14 +487,7 @@ def _plan_and_apply_compaction(
 
     initial_plan = plan_compaction(working, budget, keep_latest_unit=keep_latest_unit)
     if not initial_plan.needed:
-        return None, CompactionResult(
-            ok=True,
-            compacted=False,
-            before_message_count=before_count,
-            after_message_count=before_count,
-            before_estimated_tokens=before_estimated,
-            after_estimated_tokens=before_estimated,
-        )
+        return None, _untouched(before_count, before_estimated, ok=True)
 
     round_result = _run_compaction_rounds(
         working,
@@ -485,19 +504,14 @@ def _plan_and_apply_compaction(
         summarizer=summarizer,
     )
     if not round_result.ok:
-        return None, CompactionResult(
+        return None, _untouched(
+            before_count,
+            before_estimated,
             ok=False,
-            groups_summarized=round_result.groups_summarized,
-            summary_rounds=round_result.rounds,
-            max_summary_prompt_estimated_tokens=round_result.max_prompt_estimated,
+            rounds=round_result,
             prompt_sha256=prompt_sha256,
-            before_message_count=before_count,
-            after_message_count=before_count,
-            before_estimated_tokens=before_estimated,
-            after_estimated_tokens=before_estimated,
             error=round_result.error,
             failure_kind=round_result.failure_kind,
-            refused_by_guard=round_result.refused_by_guard,
         )
 
     span: tuple[int, int] | None = None
@@ -516,16 +530,12 @@ def _plan_and_apply_compaction(
                 prompt_sha256=prompt_sha256,
             )
         except (OSError, RuntimeError) as exc:
-            return None, CompactionResult(
+            return None, _untouched(
+                before_count,
+                before_estimated,
                 ok=False,
-                groups_summarized=round_result.groups_summarized,
-                summary_rounds=round_result.rounds,
-                max_summary_prompt_estimated_tokens=round_result.max_prompt_estimated,
+                rounds=round_result,
                 prompt_sha256=prompt_sha256,
-                before_message_count=before_count,
-                after_message_count=before_count,
-                before_estimated_tokens=before_estimated,
-                after_estimated_tokens=before_estimated,
                 error=f"could not write the compaction record: {exc}",
                 failure_kind="daemon_error",
             )

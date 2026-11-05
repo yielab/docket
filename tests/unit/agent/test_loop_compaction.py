@@ -462,10 +462,10 @@ class _OverlayComposer(TeamsRoleComposer):
     """The real composer except for the compaction prompt, which it answers with a fixed one."""
 
     def __init__(self) -> None:
-        self.asked: list[tuple[str, str]] = []
+        self.asked: list[tuple[str, tuple[Path, ...]]] = []
 
-    def compaction_prompt(self, role: str, project: str) -> tuple[str, str]:
-        self.asked.append((role, project))
+    def compaction_prompt(self, project: str, project_roots: tuple[Path, ...]) -> tuple[str, str]:
+        self.asked.append((project, project_roots))
         return "FROM THE PORT\n${turns}", "ab" * 32
 
 
@@ -486,7 +486,7 @@ class TestRunCompactionAsksThePortForThePrompt:
 
         assert result.compacted, result.error
         assert stop is None
-        assert composer.asked == [("implementer", "demo")]
+        assert composer.asked == [("demo", state.ctx.roots)]
         sent = backend.calls[0]["messages"][0].content
         assert sent.startswith("FROM THE PORT\n[user] first ask")
         assert result.prompt_sha256 == "ab" * 32
