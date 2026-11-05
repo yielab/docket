@@ -1,0 +1,13 @@
+# SearXNG settings for the `search` service of the web-research recipe. `docket setup search
+# searxng` writes this file under the home with a random secret_key; a pod never applies it.
+use_default_settings: true
+server:
+  secret_key: "__SECRET_KEY__"
+  # The instance listens on loopback only. Its limiter allows 4 JSON calls an hour per address
+  # and treats a client without Accept-Language as a bot, so it is off.
+  limiter: false
+  image_proxy: false
+search:
+  formats:
+    - html
+    - json

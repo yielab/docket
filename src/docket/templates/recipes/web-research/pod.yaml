@@ -1,5 +1,5 @@
 kind: pod
 name: web-research
-description: Three cheap-tier Researchers in parallel (two over the web through a search site and fetch, one over the repository), then Analyst and Writer.
+description: Three cheap-tier Researchers in parallel (two over the web through a search service and fetch, one over the repository), then Analyst and Writer.
 members: [researcher, analyst, writer]
 needs: [fetch-hosts, search-host, isolation]

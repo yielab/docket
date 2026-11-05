@@ -21,7 +21,7 @@
     {
       "kind": "search-host",
       "name": "search-host",
-      "fix": "docket pod set fetchDomains 'html.duckduckgo.com' --pod ops",
+      "fix": "docket setup search searxng --pod ops",
       "satisfied": false,
       "blocking": false
     }

@@ -2,8 +2,9 @@ kind: pipeline
 name: web-research
 description: >-
   The Lead splits a question into sub-questions, three cheap-tier Researchers work the
-  sub-questions concurrently (two over the allowed web hosts, one over the repository), the
-  Analyst draws conclusions from their replies, and the Writer drafts the answer.
+  sub-questions concurrently (two over the web through the pod's search service and fetch, one
+  over the repository), the Analyst draws conclusions from their replies, and the Writer drafts
+  the answer.
 steps:
   - lead: lead
     instructions: >-
@@ -15,15 +16,15 @@ steps:
         - web-a: researcher
           model: cheap
           instructions: >-
-            Work the first half of the Lead's sub-questions. Fetch a search page from an
-            allowed search site, then read the most relevant pages on the allowed hosts. Reply
-            with the findings and the URL of every page you used.
+            Work the first half of the Lead's sub-questions. Search with svc__search__search,
+            passing q and format=json, then read the most relevant results with fetch. Reply with
+            the findings and the URL of every page you used.
         - web-b: researcher
           model: cheap
           instructions: >-
-            Work the second half of the Lead's sub-questions. Fetch a search page from an
-            allowed search site, then read the most relevant pages on the allowed hosts. Reply
-            with the findings and the URL of every page you used.
+            Work the second half of the Lead's sub-questions. Search with svc__search__search,
+            passing q and format=json, then read the most relevant results with fetch. Reply with
+            the findings and the URL of every page you used.
         - repo: researcher
           model: cheap
           instructions: >-

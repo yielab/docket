@@ -25,6 +25,7 @@ from docket.interfaces.cli.commands import setup_mcp as _setup_mcp
 from docket.interfaces.cli.commands import setup_model as _setup_model
 from docket.interfaces.cli.commands import setup_notify as _setup_notify
 from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
+from docket.interfaces.cli.commands import setup_search as _setup_search
 from docket.interfaces.cli.commands import setup_secret as _setup_secret
 from docket.interfaces.cli.commands import setup_service as _setup_service
 from docket.interfaces.cli.commands import setup_shell as _setup_shell
@@ -87,6 +88,7 @@ _setup.setup_app.add_typer(_setup_export.export_app)
 _setup.setup_app.add_typer(_setup_mcp.mcp_app)
 _setup.setup_app.add_typer(_setup_secret.secret_app)
 _setup.setup_app.add_typer(_setup_service.service_app)
+_setup.setup_app.add_typer(_setup_search.search_app)
 _pod.pod_app.command("update")(_pod_config.cmd_update)
 _pod.pod_app.command("export")(_pod_config.cmd_export)
 _pod.pod_app.command("validate")(_pod_config.cmd_validate)

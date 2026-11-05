@@ -1,9 +1,9 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.14.0
+**Version**: 5.15.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
-**Last Updated**: 2026-11-03
+**Last Updated**: 2026-11-05
 
 ## Purpose
 
@@ -659,7 +659,7 @@ the message naming it (`'abc' is not an entry count or a command. Usage: docket 
 #### docket setup
 **Purpose**: Set up this workstation. `docket setup` with no verb is the first run: a flow, not a
 catalog, idempotent, in two modes chosen by the terminal (the interaction contract's rule).
-**Syntax**: `docket setup [--json] [--fix]` · `docket setup profile|shell|provider|model|sandbox|notify|export|mcp|secret|service ...`
+**Syntax**: `docket setup [--json] [--fix]` · `docket setup profile|shell|provider|model|sandbox|notify|export|mcp|secret|service|search ...`
 **Bare `setup`** always starts with a report: one line per piece with its state and the exact
 command that fixes it — the model endpoint (the only required piece: a provider, its credential,
 and `lead`/`implementer` resolving to a model), notifications (`console only (nobody is told)` is
@@ -881,6 +881,23 @@ document (`service-client.spec.md`); this registers and lists them, it makes no 
   secret names it references, never an auth value; `--json` prints the same as objects
 - `remove <name>`: Delete a stored service and audit `services.remove`; an unknown name exits 1
 **Return**: 0 on success, 1 on a refused document or name, 2 on a usage error
+
+**`setup search`**
+**Purpose**: Give a pod a web search it declares as a service, so its researchers search with a tool and
+read the pages they pick with `fetch` (`pod-blueprints.spec.md` requirement 16)
+**Syntax**: `docket setup search searxng [--pod <pod>]` (a real sub-app of `setup`; the pod is `--pod`,
+then `DOCKET_POD`, then the registered codebase containing the current directory)
+**Subcommands**:
+- `searxng`: Write SearXNG's `settings.yml` (JSON on, limiter off, loopback only; a random
+  `secret_key`) to `<home>/config/searxng/settings.yml` and the shipped `search.yaml` service document
+  (`kind: service`, name `search`, `http://127.0.0.1:8888`) into the pod's own `services/`, then
+  print one `docker run` line that mounts that settings path and publishes `127.0.0.1:8888`. It
+  starts, stops and supervises nothing and makes no network call. Running it again is idempotent: an
+  existing settings file is kept (so is its key), a service document that already matches is
+  reported unchanged, and the `docker run` line is printed each time. It exits 1 writing nothing when
+  no pod can be chosen, the pod does not exist or an operator service named `search` exists (a pod service never
+  shadows an operator's)
+**Return**: 0 on success, 1 on a refused pod or name
 
 #### docket start
 **Purpose**: Start the background service — refresh fleet status, serve the local HTTP API and
@@ -1160,6 +1177,7 @@ when the error names its fix — optionally followed by a usage or recovery hint
 - `src/docket/interfaces/cli/commands/setup_mcp.py`: `setup mcp`
 - `src/docket/interfaces/cli/commands/setup_secret.py`: `setup secret`
 - `src/docket/interfaces/cli/commands/setup_service.py`: `setup service`
+- `src/docket/interfaces/cli/commands/setup_search.py`: `setup search`
 - `src/docket/interfaces/cli/commands/pod_records.py`: `pod records`
 - `src/docket/interfaces/cli/commands/service.py`: `docket start`, `docket stop`
 - `src/docket/interfaces/cli/render/ui.py`: `TAGLINE`, `guide`, `header`, `section`, `table`, `error`, `hint`, plain mode

@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 4.9.0
+**Version**: 4.10.0
 **Status**: Implemented
-**Last Updated**: 2026-11-03
+**Last Updated**: 2026-11-05
 
 ## Purpose
 
@@ -510,8 +510,8 @@ overlay, policies, members, pipeline binding, settings) into one command.
 
 16. **A recipe says what its work still needs (ADR 0036 decision 17).** `pod.yaml`'s optional
     `needs:` is a list drawn from exactly three names: `fetch-hosts` (the pod's `fetch` reaches the
-    web: a declared host, or open read on a folder pod under the jail), `search-host` (a known search
-    site is among the hosts `fetch` reaches, or a search service is declared) and `isolation` (a jail enforces: isolation is recorded on and a sandbox backend
+    web: a declared host, or open read on a folder pod under the jail), `search-host` (a search service
+    is declared and answers) and `isolation` (a jail enforces: isolation is recorded on and a sandbox backend
     exists). A value that is not a list, or an entry outside the three names, **MUST** be rejected
     naming `needs` before anything is written. Every apply **MUST** record the Lead's `needs`
     setting: the union, in first-seen order, of the pod's recorded list and the names that
@@ -528,12 +528,20 @@ overlay, policies, members, pipeline binding, settings) into one command.
       <fix>` where `<fix>` is `fetch_reach`'s: `docket pod set fetchDomains <host> --pod <pod>` on a
       repository pod, `docket setup sandbox on` (or `docket setup sandbox backend docker`) on a
       folder pod whose jail is not running;
-    - `needs search-host: ready`, else `needs search-host: no search site is allowed ->
-      docket pod set fetchDomains '<current hosts>,html.duckduckgo.com' --pod <pod>` (the quoted value is the effective hosts, comma-joined, then the search site). A search site
-      is one of a short constant list of known search hosts (`html.duckduckgo.com` first) that the
-      hosts `fetch` reaches allow by `platform/fetch.py` `host_allowed`, the matcher `fetch` itself uses; a
-      declared `kind: service` (the pod's own or the operator's) whose name or an operation name
-      contains `search` also counts;
+    - `needs search-host: ready`, else, when no search service is declared, `needs search-host: no
+      search service: SearXNG is free and runs in Docker, or use a Brave Search API key (see the
+      recipe README) -> docket setup search searxng --pod <pod>`; the line names one command, and
+      the Brave option is text only.
+      A search service is a declared `kind: service` (the pod's own, which wins, or the
+      operator's) named `search`; the reach of `fetch` never satisfies the need, so a pod under
+      open read without that service is not satisfied. A declared service is satisfied only when its
+      base URL answers: docket sends one `GET` of it through the service call
+      (`platform/service_http.py`, 2 seconds, no credential) and any HTTP status counts as an
+      answer; a refusal, a timeout or a refused connection does not, and the line is then
+      `needs search-host: the search service 'search' does not answer at <baseUrl> -> <fix>`
+      where `<fix>` is `docket setup search searxng --pod <pod>` for the base URL that command
+      writes (it prints the one `docker run` line again) and `docket setup service list` for any
+      other. The probe is informational: it never fails an apply or writes anything;
     - `needs isolation: ready`, else, when isolation is not recorded on, `needs isolation: PDFs, and
       the web on a folder team, are not read: isolation is off -> docket setup sandbox on`, and when
       it is on but this machine has no sandbox backend, `needs isolation: PDFs, and the web on a
@@ -556,6 +564,14 @@ overlay, policies, members, pipeline binding, settings) into one command.
     `fetch` tool, write `fetchDomains` or change `network`: `fetch` is bounded by the hosts a person
     names or by open read, which `fetch_reach` decides from facts that already exist. A pod without a
     `researcher` records nothing.
+    **The `web-research` recipe ships its search (D-89 choice 4).** It carries `services/search.yaml`,
+    a `kind: service` named `search` whose base URL is `http://127.0.0.1:8888` (a local SearXNG),
+    `hosts: [127.0.0.1]` and one `GET /search` operation `search` (`q`, `format=json`; access
+    `read`, so a researcher keeps `fetch`), described as a web search whose result links are read
+    with `fetch`; and `searxng/settings.yml`, an asset that `apply` does not write (only the
+    directories requirement 1 names are read; the lock digests the whole directory). One
+    service named `search` per pod: a later search provider replaces the same file. `docket setup
+    search searxng` (cli-interface.spec.md) writes both and starts nothing.
 
 ### Pod manifests: export
 

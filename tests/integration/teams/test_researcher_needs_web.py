@@ -40,11 +40,14 @@ def _need_lines(output: str) -> list[str]:
     return [ln.strip() for ln in output.splitlines() if ln.strip().startswith("needs ")]
 
 
+_SEARCH_FIX = "docket setup search searxng --pod demo"
+
+
 def _wire(kind: str, fix: str, *, satisfied: bool, blocking: bool) -> dict[str, object]:
     return {"kind": kind, "name": kind, "fix": fix, "satisfied": satisfied, "blocking": blocking}
 
 
-def test_a_respond_pod_under_the_jail_reads_openly_and_its_three_needs_are_met(
+def test_a_respond_pod_under_the_jail_reads_openly_but_has_no_search_service(
     tmp_path: Path, bind_launcher: Callable[..., Launcher]
 ) -> None:
     bind_launcher(landlock=True)
@@ -61,7 +64,7 @@ def test_a_respond_pod_under_the_jail_reads_openly_and_its_three_needs_are_met(
     }
     assert report["needs"] == [
         _wire("fetch-hosts", "", satisfied=True, blocking=True),
-        _wire("search-host", "", satisfied=True, blocking=False),
+        _wire("search-host", _SEARCH_FIX, satisfied=False, blocking=False),
         _wire("isolation", "", satisfied=True, blocking=False),
     ]
     assert report["fetchDomains"] == []
@@ -81,12 +84,7 @@ def test_a_respond_pod_without_the_jail_reads_nothing_and_only_fetch_hosts_block
     assert report["webRead"]["fix"] == "docket setup sandbox on"
     assert report["needs"] == [
         _wire("fetch-hosts", "docket setup sandbox on", satisfied=False, blocking=True),
-        _wire(
-            "search-host",
-            "docket pod set fetchDomains 'html.duckduckgo.com' --pod demo",
-            satisfied=False,
-            blocking=False,
-        ),
+        _wire("search-host", _SEARCH_FIX, satisfied=False, blocking=False),
         _wire("isolation", "docket setup sandbox on", satisfied=False, blocking=False),
     ]
 

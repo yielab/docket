@@ -1,26 +1,24 @@
 """What a recipe's work still needs once it is applied: the ``needs:`` list in ``pod.yaml`` and the
-readiness lines computed from facts the pod report already serves (``effective_fetch_domains``,
-``jail_enforces``). Informational: nothing here writes a setting or fails an apply."""
+readiness lines computed from facts the pod report already serves (``fetch_reach``,
+``jail_enforces``) and from the search service the pod declares. Informational: nothing here writes
+a setting or fails an apply."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
 
-from docket.platform.fetch import host_allowed
 from docket.teams import fleet as _fleet
 from docket.teams import network_posture as _network_posture
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import services as _services
 from docket.teams.apply.model import PodApplyError
+from docket.teams.apply.search_probe import search_service, service_answers
 
 FETCH_HOSTS = "fetch-hosts"
 SEARCH_HOST = "search-host"
 ISOLATION = "isolation"
 NEEDS = (FETCH_HOSTS, SEARCH_HOST, ISOLATION)
-
-# Search sites a researcher can read through `fetch`; the first is what the command suggests.
-SEARCH_HOSTS = ("html.duckduckgo.com", "lite.duckduckgo.com", "www.bing.com", "www.google.com")
 
 
 @dataclass(frozen=True)
@@ -69,16 +67,6 @@ def declared_needs(manifest: dict[str, Any]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(raw))
 
 
-def _declares_search(project: str) -> bool:
-    """True when a declared service (the pod's own or the operator's) is for search: its name or
-    one of its operations' names contains ``search``."""
-    for service in _services.load_services(project):
-        names = (service.name, *(op.name for op in service.operations))
-        if any("search" in name.lower() for name in names):
-            return True
-    return False
-
-
 def _fetch_line(reach: _network_posture.FetchReach) -> NeedLine:
     if reach.hosts:
         if _pod_settings.FETCH_ANY in reach.hosts:
@@ -97,16 +85,27 @@ def _fetch_line(reach: _network_posture.FetchReach) -> NeedLine:
     )
 
 
-def _search_line(project: str, hosts: tuple[str, ...]) -> NeedLine:
-    if any(host_allowed(site, hosts) for site in SEARCH_HOSTS) or _declares_search(project):
+def _search_line(project: str) -> NeedLine:
+    command = f"docket setup search searxng --pod {project}"
+    config = search_service(project)
+    if config is None:
+        return NeedLine(
+            SEARCH_HOST,
+            SEARCH_HOST,
+            False,
+            "no search service: SearXNG is free and runs in Docker, or use a Brave Search API key "
+            "(see the recipe README)",
+            command,
+        )
+    if service_answers(config):
         return NeedLine(SEARCH_HOST, SEARCH_HOST, True, "ready")
-    value = ",".join((*hosts, SEARCH_HOSTS[0]))
+    fix = command if config.baseUrl == _services.SEARXNG_URL else "docket setup service list"
     return NeedLine(
         SEARCH_HOST,
         SEARCH_HOST,
         False,
-        "no search site is allowed",
-        f"docket pod set fetchDomains '{value}' --pod {project}",
+        f"the search service '{config.name}' does not answer at {config.baseUrl}",
+        fix,
     )
 
 
@@ -128,7 +127,7 @@ def readiness(project: str, needs: tuple[str, ...]) -> tuple[NeedLine, ...]:
     reach = _network_posture.fetch_reach(project)
     builders = {
         FETCH_HOSTS: lambda: _fetch_line(reach),
-        SEARCH_HOST: lambda: _search_line(project, reach.hosts),
+        SEARCH_HOST: lambda: _search_line(project),
         ISOLATION: _isolation_line,
     }
     return tuple(builders[need]() for need in needs)

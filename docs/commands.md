@@ -943,6 +943,23 @@ Remove a stored service.
 
 Example: docket setup service remove crm
 
+### setup search
+
+**Usage:** `docket setup search`
+
+Web search for a pod's researchers, declared as the service 'search'.
+
+### setup search searxng
+
+**Usage:** `docket setup search searxng`
+
+Set a pod up to search through a local SearXNG, free, and print the docker command that serves it.
+
+Writes the SearXNG settings under the home and the pod's services/search.yaml, then prints
+the one docker run line; docket never starts or supervises the container. Running it again
+changes nothing.
+Example: docket setup search searxng --pod research
+
 
 ---
 

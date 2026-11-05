@@ -10,7 +10,7 @@ _docket_verbs() {
     "pod memory") echo "list approve refuse revert reset" ;;
     "pod routine") echo "list" ;;
     "log") echo "verify" ;;
-    "setup") echo "profile shell provider model sandbox notify export mcp secret service" ;;
+    "setup") echo "profile shell provider model sandbox notify export mcp secret service search" ;;
     "setup provider") echo "add list show remove export rotate" ;;
     "setup model") echo "list set preset reset" ;;
     "setup sandbox") echo "status on off backend network classes read" ;;
@@ -20,6 +20,7 @@ _docket_verbs() {
     "setup mcp") echo "list add remove" ;;
     "setup secret") echo "set list remove" ;;
     "setup service") echo "list add remove" ;;
+    "setup search") echo "searxng" ;;
   esac
 }
 
@@ -132,12 +133,14 @@ _docket_options() {
     "setup service list") echo "--json --help" ;;
     "setup service add") echo "--from-openapi --operations --base-url --auth-header --secret --help" ;;
     "setup service remove") echo "--help" ;;
+    "setup search") echo "--help" ;;
+    "setup search searxng") echo "--pod --help" ;;
   esac
 }
 
 _docket_takes_pod() {
   case "$1" in
-    "status"|"run"|"task add"|"task list"|"task show"|"task diff"|"task trace"|"task prune"|"task pregrant"|"task answer"|"task retry"|"task cancel"|"pod show"|"pod add"|"pod remove"|"pod reset"|"pod delete"|"pod records"|"pod set"|"pod unset"|"pod update"|"pod export"|"pod plan"|"pod check"|"pod roles"|"pod policies"|"pod test"|"pod memory list"|"pod memory approve"|"pod memory refuse"|"pod memory revert"|"pod memory reset"|"pod routine list") echo yes ;;
+    "status"|"run"|"task add"|"task list"|"task show"|"task diff"|"task trace"|"task prune"|"task pregrant"|"task answer"|"task retry"|"task cancel"|"pod show"|"pod add"|"pod remove"|"pod reset"|"pod delete"|"pod records"|"pod set"|"pod unset"|"pod update"|"pod export"|"pod plan"|"pod check"|"pod roles"|"pod policies"|"pod test"|"pod memory list"|"pod memory approve"|"pod memory refuse"|"pod memory revert"|"pod memory reset"|"pod routine list"|"setup search searxng") echo yes ;;
   esac
 }
 

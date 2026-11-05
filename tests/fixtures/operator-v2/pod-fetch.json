@@ -348,7 +348,7 @@
       {
         "kind": "search-host",
         "name": "search-host",
-        "fix": "docket pod set fetchDomains 'docs.python.org,html.duckduckgo.com' --pod research",
+        "fix": "docket setup search searxng --pod research",
         "satisfied": false,
         "blocking": false
       },

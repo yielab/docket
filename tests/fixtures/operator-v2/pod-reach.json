@@ -377,8 +377,8 @@
       {
         "kind": "search-host",
         "name": "search-host",
-        "fix": "",
-        "satisfied": true,
+        "fix": "docket setup search searxng --pod research",
+        "satisfied": false,
         "blocking": false
       },
       {

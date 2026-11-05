@@ -53,6 +53,7 @@ noted.
 │   ├── policies/*.yaml                 init         6 baseline guardrail policies (JSON also loads)
 │   ├── docket-mcp-servers.json         setup mcp    external MCP tool servers
 │   ├── services.json                   setup service  declared HTTP services: address, auth header, operations (a token is only a `${secret:<name>}` reference)
+│   ├── searxng/settings.yml            setup search searxng  settings for the local SearXNG container the pod's `search` service reaches (docket never starts it)
 │   ├── docket-exporters.json           setup export your kind: exporter overrides (built-ins ship in the wheel, all off)
 │   ├── docket-channels.json            setup notify your kind: channel overrides (built-ins ship in the wheel, only console on)
 │   └── pods/<pod>/                     a recipe or `pod update` applied  the pod's own overlay: roles/, prompts/, policies/, services/, records/, applied.lock

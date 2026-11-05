@@ -1,0 +1,15 @@
+kind: service
+name: search
+baseUrl: http://127.0.0.1:8888
+hosts: [127.0.0.1]
+operations:
+  - name: search
+    method: GET
+    path: /search
+    description: >-
+      Search the web. Pass q (the query) and always format=json. The answer lists results with a
+      title, a url and a short content; it is not the pages themselves, so read the pages you pick
+      with fetch.
+    params:
+      - {name: q, in: query, type: string, required: true}
+      - {name: format, in: query, type: string}

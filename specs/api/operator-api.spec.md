@@ -496,7 +496,9 @@ bound pipeline, and a file that does not load carries an `error` string. `needs`
 pod's applied recipes recorded as `{kind, name, fix, satisfied, blocking}`, recomputed on every call;
 `blocking` says whether the need, when unmet, stops the work (`fetch-hosts`: the researchers read
 nothing) or only degrades it (`search-host`: pages the agent knows still read; `isolation`: every
-format but PDF still reads), a fact of the kind, not of the pod. A client probes for the three with
+format but PDF still reads), a fact of the kind, not of the pod. `search-host` is met only by a
+declared service named `search` whose base URL answers one `GET` within two seconds, so that call
+includes the probe (`pod-blueprints.spec.md` requirement 16). A client probes for the three with
 the `podContract` feature.
 Each entry of `members` also carries `capabilities`, what its role can reach after the role's and the
 pod's denials, computed by `registry_for_role` over the tools docket declares (the built-ins and the

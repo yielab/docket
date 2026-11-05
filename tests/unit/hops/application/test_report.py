@@ -197,8 +197,8 @@ class TestPodReportNeeds:
             {
                 "kind": "search-host",
                 "name": "search-host",
-                "fix": "",
-                "satisfied": True,
+                "fix": "docket setup search searxng --pod demo",
+                "satisfied": False,
                 "blocking": False,
             },
         ]

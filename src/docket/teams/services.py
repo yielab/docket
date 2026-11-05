@@ -17,6 +17,10 @@ from docket.kernel.service import ServiceConfig, ServiceRegistry, secret_names
 from docket.platform import read_json, read_modify_write
 from docket.teams import mcp_servers as _mcp_servers
 
+# The pod's web search is the service with this name; the shipped one reaches a local SearXNG.
+SEARCH_SERVICE = "search"
+SEARXNG_URL = "http://127.0.0.1:8888"
+
 
 class ServiceDocError(InvalidInput):
     """A ``kind: service`` document is unreadable or invalid; the message names the file."""
