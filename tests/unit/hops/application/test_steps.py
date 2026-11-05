@@ -393,7 +393,7 @@ class TestTaskPipeline:
         _seed_lean_pod("myapp")
         text = (
             "name: wide\nsteps:\n  - plan: lead\n  - review: reviewer\n  - build: implementer\n"
-            "  - audit: auditor\n  - recheck: reviewer\n"
+            "  - draft: writer\n  - recheck: reviewer\n"
         )
         loaded = _pipeline.load_pipeline(text, roles=_archetypes.load_registry("myapp").names())
         assert loaded.spec is not None
@@ -403,7 +403,7 @@ class TestTaskPipeline:
 
         assert str(raised.value) == (
             "pipeline 'wide' (pod:wide) names roles this pod does not have: "
-            "reviewer (steps review, recheck), auditor (step audit)"
+            "reviewer (steps review, recheck), writer (step draft)"
         )
 
     def test_a_pipeline_the_pod_can_staff_passes_the_unstaffed_check(self, pod_home: Path) -> None:

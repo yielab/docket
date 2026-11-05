@@ -10,7 +10,7 @@ from docket.pipeline.domain.spec import load_pipeline
 SUBJECT = "docket.pipeline.domain.short_form"
 
 _BASE = frozenset({"lead", "implementer", "reviewer"})
-_WITH_AUDITOR = _BASE | {"auditor"}
+_WITH_WRITER = _BASE | {"writer"}
 
 
 def _only_step(target: str, roles: frozenset[str]) -> dict[str, str | None]:
@@ -20,19 +20,19 @@ def _only_step(target: str, roles: frozenset[str]) -> dict[str, str | None]:
     return {"role": step.role, "agent": step.agent}
 
 
-@pytest.mark.parametrize("target", ["shop-auditor", "shop-auditor-2"])
+@pytest.mark.parametrize("target", ["shop-writer", "shop-writer-2"])
 def test_a_member_id_of_a_known_role_is_an_agent_step(target: str) -> None:
-    assert _only_step(target, _WITH_AUDITOR) == {"role": None, "agent": target}
+    assert _only_step(target, _WITH_WRITER) == {"role": None, "agent": target}
 
 
-@pytest.mark.parametrize("target", ["shop-auditor", "shop-auditor-2"])
+@pytest.mark.parametrize("target", ["shop-writer", "shop-writer-2"])
 def test_the_same_target_without_that_role_stays_a_role(target: str) -> None:
     assert _only_step(target, _BASE) == {"role": target, "agent": None}
 
 
-@pytest.mark.parametrize("roles", [_BASE, _WITH_AUDITOR])
+@pytest.mark.parametrize("roles", [_BASE, _WITH_WRITER])
 def test_a_bare_role_name_is_a_role_either_way(roles: frozenset[str]) -> None:
-    assert _only_step("auditor", roles) == {"role": "auditor", "agent": None}
+    assert _only_step("writer", roles) == {"role": "writer", "agent": None}
 
 
 def test_a_hyphenated_role_name_is_a_role_and_its_member_id_an_agent() -> None:
@@ -45,9 +45,9 @@ def test_a_hyphenated_role_name_is_a_role_and_its_member_id_an_agent() -> None:
 
 
 def test_a_parallel_child_reads_the_same_role_names() -> None:
-    text = "name: p\nsteps:\n  - fan:\n      parallel:\n        - a: shop-auditor\n        - b: reviewer\n"
-    loaded = load_pipeline(text, roles=_WITH_AUDITOR)
+    text = "name: p\nsteps:\n  - fan:\n      parallel:\n        - a: shop-writer\n        - b: reviewer\n"
+    loaded = load_pipeline(text, roles=_WITH_WRITER)
     assert loaded.spec is not None, loaded.errors
     first, second = loaded.spec.steps[0].parallel or []
-    assert (first.agent, first.role) == ("shop-auditor", None)
+    assert (first.agent, first.role) == ("shop-writer", None)
     assert (second.role, second.agent) == ("reviewer", None)
