@@ -396,6 +396,89 @@ class TestHtmlArrivesAsText:
         )
 
 
+def _page(body: str, title: str = "Shop Item") -> bytes:
+    return f"<!doctype html><html><head><title>{title}</title></head><body>{body}</body></html>".encode()
+
+
+_NAV = "<nav>" + "menu " * 400 + "</nav>"
+_FOOTER = "<footer>" + "legal " * 170 + "</footer>"
+_MAIN_TEXT = "The widget weighs two kilograms. " * 90
+
+
+class TestOnlyTheMainContentArrives:
+    def test_a_main_page_returns_the_title_and_the_main_text_alone(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        body = f"{_NAV}<main><p>{_MAIN_TEXT}</p></main>{_FOOTER}"
+        _, _, text = _fetch_with(monkeypatch, _page(body), "text/html").partition("\n\n")
+        assert text == "Shop Item\n\n" + _MAIN_TEXT.strip()
+        assert len(_NAV) + len(_FOOTER) > 3_000
+
+    def test_links_inside_main_keep_their_text(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        body = '<nav><a href="/x">Menu item</a></nav><main><a href="/spec">the spec</a></main>'
+        _, _, text = _fetch_with(monkeypatch, _page(body), "text/html").partition("\n\n")
+        assert text == "Shop Item\n\nthe spec (/spec)"
+
+    def test_a_single_article_is_kept_when_there_is_no_main(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        body = (
+            f"{_NAV}<div>sidebar words</div><article><h2>Story</h2><p>Body.</p></article>{_FOOTER}"
+        )
+        _, _, text = _fetch_with(monkeypatch, _page(body), "text/html").partition("\n\n")
+        assert text == "Shop Item\n\n## Story\n\nBody."
+
+    def test_several_articles_fall_back_to_the_body(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        body = f"{_NAV}<article>one</article><article>two</article>{_FOOTER}"
+        _, _, text = _fetch_with(monkeypatch, _page(body), "text/html").partition("\n\n")
+        assert text == "Shop Item\n\none\ntwo"
+
+    def test_a_page_with_no_landmarks_is_the_body_minus_the_dropped_elements(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        body = (
+            f"{_NAV}<header>banner words</header><div><p>Visible one.</p></div>"
+            "<aside>related</aside><form><label>Email</label></form>"
+            "<script>var x = 1;</script><style>p {}</style><noscript>enable js</noscript>"
+            "<template><p>inert</p></template><p>Visible two.</p>"
+            f"{_FOOTER}"
+        )
+        _, _, text = _fetch_with(monkeypatch, _page(body), "text/html").partition("\n\n")
+        assert text == "Shop Item\n\nVisible one.\n\nVisible two."
+
+    def test_an_empty_main_leaves_the_body_rule_in_force(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        body = f"{_NAV}<main> </main><div>Real text outside.</div>{_FOOTER}"
+        _, _, text = _fetch_with(monkeypatch, _page(body), "text/html").partition("\n\n")
+        assert text == "Shop Item\n\nReal text outside."
+
+    def test_a_landmark_role_drops_its_element_whatever_the_tag(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        body = "".join(
+            f'<div role="{role}"><div>inner</div>{role} words</div>'
+            for role in ("navigation", "banner", "contentinfo", "complementary")
+        )
+        body += (
+            '<div role="main">kept</div><div role="navigation search"><div>x</div></div>kept too'
+        )
+        _, _, text = _fetch_with(monkeypatch, _page(body), "text/html").partition("\n\n")
+        assert text == "Shop Item\n\nkept\nkept too"
+
+    def test_a_form_around_the_main_does_not_hide_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        body = "<form><nav>menu</nav><main>the content</main></form>"
+        _, _, text = _fetch_with(monkeypatch, _page(body), "text/html").partition("\n\n")
+        assert text == "Shop Item\n\nthe content"
+
+    def test_a_nested_dropped_element_closes_with_its_own_end_tag(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        body = "<nav><nav>inner</nav>still nav</nav><p>after</p>"
+        _, _, text = _fetch_with(monkeypatch, _page(body), "text/html").partition("\n\n")
+        assert text == "Shop Item\n\nafter"
+
+
 class TestGatedExactlyLikeABuiltin:
     """The registration itself must not create a second execution path."""
 

@@ -1,11 +1,11 @@
 # Security Gates Specification
 
-**Version**: 3.16.0
+**Version**: 3.17.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
 closed when on without a usable backend.
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-05
 
 ## Purpose
 
@@ -1215,7 +1215,13 @@ material, may be read as saying otherwise.
    - **A page arrives as text.** When the response `Content-Type` is `text/html`, or the body
      starts with `<!doctype html` or `<html`, the body **MUST** be converted to plain text in
      docket's own process with the standard library's `html.parser` before the output cap applies:
-     `script`, `style`, `noscript` and `svg` are dropped; block elements and `br` are line breaks;
+     `script`, `style`, `noscript`, `template`, `svg`, `nav`, `header`, `footer`, `aside` and
+     `form` are dropped, with everything inside them, and so is an element whose `role` is
+     `navigation`, `banner`, `contentinfo` or `complementary`; when the page has exactly one
+     `main` element the text is that element's alone, else when it has exactly one `article`
+     element that one's, else the body's (the same rule applies when that one element holds no
+     text), and no scoring or class-name rule is applied; the page's `title` is the first line,
+     then a blank line, whichever subtree is kept; block elements and `br` are line breaks;
      `h1` to `h3` are one to three `#` and a space; a list item is a dash and a space; `pre` and
      `code` are kept verbatim; a link is `text (href)` when the text differs from the href;
      whitespace is collapsed to at most one blank line. The header line of a converted page reads

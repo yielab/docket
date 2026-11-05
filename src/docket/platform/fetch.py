@@ -59,7 +59,11 @@ _TEXT_TYPES = frozenset(
 )
 _FIX = "list the exact host in the pod's fetchDomains to permit it"
 
-_DROPPED = frozenset({"script", "style", "noscript", "svg"})
+_DROPPED = frozenset(
+    {"script", "style", "noscript", "template", "svg", "nav", "header", "footer", "aside", "form"}
+)
+_DROPPED_ROLES = frozenset({"navigation", "banner", "contentinfo", "complementary"})
+_LANDMARKS = ("main", "article")
 _PARAGRAPHS = frozenset(
     {"p", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "ul", "ol", "blockquote", "table", "hr"}
 )
@@ -67,7 +71,7 @@ _LINES = frozenset(
     {
         "div", "section", "article", "header", "footer", "nav", "main", "aside", "li", "tr",
         "br", "dl", "dt", "dd", "form", "fieldset", "figure", "figcaption", "address", "details",
-        "summary", "title",
+        "summary",
     }
 )  # fmt: skip
 _VERBATIM = frozenset({"pre", "code"})
@@ -78,13 +82,19 @@ _HEADING_MARK = {"h1": "# ", "h2": "## ", "h3": "### "}
 class _TextExtractor(HTMLParser):
     """Collects a page's readable text; the rules are security-gates.spec.md's `fetch` bullet."""
 
-    def __init__(self) -> None:
+    def __init__(self, scope: str = "") -> None:
         super().__init__(convert_charrefs=True)
+        self.landmarks = dict.fromkeys(_LANDMARKS, 0)
+        self._scope = scope
+        self._scope_depth = 0
+        self._title: list[str] | None = None
+        self._title_done = False
         self._lines: list[str] = []
         self._cur: list[str] = []
         self._raw = False
         self._fresh = True
-        self._dropped = 0
+        self._drop_tag = ""
+        self._drop_depth = 0
         self._verbatim = 0
         self._skip_newline = False
         self._href = ""
@@ -112,10 +122,39 @@ class _TextExtractor(HTMLParser):
         """A line's leading marker (`#`, `-`): the text after it is still the line's first."""
         self._cur.append(marker)
 
+    def _within(self, tag: str, start: bool) -> bool:
+        """Whether a tag lies in the kept subtree; the scope element itself adds nothing."""
+        if not self._scope:
+            return True
+        if tag != self._scope:
+            return self._scope_depth > 0
+        if start:
+            if not self._scope_depth:
+                self._drop_tag, self._drop_depth = "", 0
+            self._scope_depth += 1
+            return self._scope_depth > 1
+        if not self._scope_depth:
+            return False
+        self._scope_depth -= 1
+        if not self._scope_depth:
+            self._break(True)
+        return self._scope_depth > 0
+
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in _DROPPED:
-            self._dropped += 1
-        if self._dropped:
+        if tag == "title" and self._title is None and not self._title_done:
+            self._title = []
+            return
+        if tag in self.landmarks:
+            self.landmarks[tag] += 1
+        if not self._within(tag, start=True):
+            return
+        if self._drop_tag:
+            self._drop_depth += tag == self._drop_tag
+            return
+        if tag in _DROPPED or _DROPPED_ROLES.intersection(
+            (dict(attrs).get("role") or "").lower().split()
+        ):
+            self._drop_tag, self._drop_depth = tag, 1
             return
         if tag in _PARAGRAPHS or tag in _LINES:
             self._break(tag in _PARAGRAPHS)
@@ -133,10 +172,16 @@ class _TextExtractor(HTMLParser):
             self._skip_newline = tag == "pre"
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in _DROPPED:
-            self._dropped = max(0, self._dropped - 1)
+        if tag == "title" and self._title is not None and not self._title_done:
+            self._title_done = True
             return
-        if self._dropped:
+        if not self._within(tag, start=False):
+            return
+        if self._drop_tag:
+            if tag == self._drop_tag:
+                self._drop_depth -= 1
+                if not self._drop_depth:
+                    self._drop_tag = ""
             return
         if tag in _VERBATIM:
             self._verbatim = max(0, self._verbatim - 1)
@@ -149,7 +194,10 @@ class _TextExtractor(HTMLParser):
             self._break(tag in _PARAGRAPHS)
 
     def handle_data(self, data: str) -> None:
-        if self._dropped:
+        if self._title is not None and not self._title_done:
+            self._title.append(data)
+            return
+        if self._drop_tag or (self._scope and not self._scope_depth):
             return
         if not self._verbatim:
             data = one_line(data).join(
@@ -170,7 +218,10 @@ class _TextExtractor(HTMLParser):
                 self._raw = True
                 self._put(piece)
 
-    def text(self) -> str:
+    def title(self) -> str:
+        return one_line("".join(self._title or ()))
+
+    def body(self) -> str:
         self._flush()
         return "\n".join(self._lines).strip("\n")
 
@@ -184,12 +235,22 @@ def _looks_like_html(content_type: str, body: str) -> bool:
     )
 
 
-def _html_to_text(html: str) -> str:
-    """Plain text of an HTML page: what a reader sees, without markup, scripts or styles."""
-    extractor = _TextExtractor()
+def _extract(html: str, scope: str = "") -> _TextExtractor:
+    extractor = _TextExtractor(scope)
     extractor.feed(html)
     extractor.close()
-    return extractor.text()
+    return extractor
+
+
+def _html_to_text(html: str) -> str:
+    """Plain text of an HTML page: its title, then the one `main` or `article`, else the body."""
+    page = _extract(html)
+    body = page.body()
+    for landmark in _LANDMARKS:
+        if page.landmarks[landmark] == 1:
+            body = _extract(html, landmark).body() or body
+            break
+    return f"{page.title()}\n\n{body}".strip() if page.title() else body
 
 
 def host_allowed(host: str, allowed: Iterable[str]) -> bool:
