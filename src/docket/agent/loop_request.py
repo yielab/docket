@@ -231,6 +231,12 @@ def _finalization_messages(current: list[ChatMessage], stop: BudgetStop) -> list
     return [*current, user(_finalization_instruction(stop))]
 
 
+def _notice_messages(current: list[ChatMessage], notice: str) -> list[ChatMessage]:
+    # Request-only, like the landing's ask: the budget notice trails the persisted history and
+    # is never stored, so the history a later turn loads does not carry it (requirement 108).
+    return [*current, user(notice)]
+
+
 def _closing_messages(current: list[ChatMessage], reply: str, tool: str) -> list[ChatMessage]:
     # Request-only, like the finalization instruction: the reply and the instruction trail the
     # persisted history, so the closing call's own message is the one that is stored.

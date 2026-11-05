@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.9.0
+**Version**: 4.10.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -950,18 +950,22 @@ This specification does NOT cover:
     `failure_kind="timeout"` with `stop_reason="backend_error"` and is not a budget stop; one whose
     timeout was the wall clock left is requirement 109's.
 
-108. The first time any bound has a quarter or less left, the loop **MUST** append one line to the
-    last tool result of that round, before the round is persisted: `[docket] This step's budget is
-    running out: <what is left>. Do not start new reads or searches; finish from what you have,
-    run the checks, leave the tree consistent; when it ends you will be asked for a report.` The
-    four bounds are rounds, tool calls, measured counted tokens (requirement 10) and the wall
-    clock; `<what is left>` names each
-    bound at or under a quarter as `<left> of <limit> <unit> left`. The notice **MUST** appear at
-    most once per turn, **MUST NOT** be added to a round whose batch ends the turn through a closing
-    tool, a cancellation or an unanswered approval, and **MUST** emit one
+108. The first time any bound has a quarter or less left, the loop **MUST** send one line as the
+    last, trailing `user` message of the request it builds for the next round: `[docket] This
+    step's budget is running out: <what is left>. Do not start new reads or searches; finish from
+    what you have, run the checks, leave the tree consistent; when it ends you will be asked for a
+    report.` The line is request-only, like the landing's ask (requirement 51) and the closing
+    call's: it **MUST NOT** be written to a tool result, to the session or to `load_messages`, and
+    the tool results `dispatch_tool_batch` persists are byte-identical to what `dispatch_tool`
+    returned. The four bounds are rounds, tool calls, measured counted tokens (requirement 10) and
+    the wall clock; `<what is left>` names each bound at or under a quarter as
+    `<left> of <limit> <unit> left`, where the rounds left count the round that request starts. The
+    notice **MUST** be sent at most once per turn, **MUST NOT** be carried by a request that is the
+    landing (requirement 51) or the closing call (requirement 96), and **MUST** emit one
     `budget_warning` event with `action="notice"` carrying the bound names with their `left` and
-    `limit` figures and no message or tool content. With `max_iterations=8` the notice is in round
-    6's last tool result and in no other.
+    `limit` figures and no message or tool content. A landing built while the line is due carries
+    the landing's ask only, and the line is then never sent. With `max_iterations=8` the notice is
+    the last message of round 7's request and of no other, and no stored message contains it.
 
 Requirement numbers 21, 22 and 76 are unused; the numbers above are cited by tests and code.
 

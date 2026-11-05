@@ -97,6 +97,24 @@ class TestDispatchToolBatch:
         assert messages == appended[0]
         assert appended[0][1].content == "hi"
 
+    def test_the_persisted_results_are_byte_identical_to_what_dispatch_returned(
+        self, make_turn_state: MakeState, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A due budget notice is a request matter: it is not appended to a stored result."""
+        appended: list[list[ChatMessage]] = []
+        monkeypatch.setattr(
+            _steps, "append_messages", lambda key, msgs, **kw: appended.append(list(msgs))
+        )
+        state = make_turn_state(
+            LoopConfig(max_tool_calls=4), registry=_echo_registry(), tool_calls_executed=2
+        )
+        message = assistant("", [ToolCall(id="c1", name="echo", arguments='{"text": "hi"}')])
+        messages: list[ChatMessage] = []
+        assert ToolStep(state).dispatch_tool_batch(messages, message, TokenUsage()) is None
+        assert [m.content for m in appended[0] if m.role == "tool"] == ["hi"]
+        assert messages[-1].content == "hi"
+        assert not state.notice_sent
+
     def test_consecutive_denials_reach_the_configured_limit(
         self, make_turn_state: MakeState, monkeypatch: pytest.MonkeyPatch
     ) -> None:

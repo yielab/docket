@@ -89,9 +89,9 @@ models are all handled by one structure?
    persisted, but it is never a success. A verdict in it is never parsed, so a Reviewer that runs
    out cannot approve.
 
-   One notice reaches the model when any bound first has a quarter or less left. It is appended to
-   that round's last tool result, so the model can verify and leave the tree consistent before the
-   end.
+   One notice reaches the model when any bound first has a quarter or less left. It trails the
+   next request as a user message and is never stored, so the model can verify and leave the tree
+   consistent before the end.
 4. **A retry re-runs the step that failed, and continues it.**
    - Replay treats a failed hop like a parked one: its index runs again, with the rework state it
      carried.

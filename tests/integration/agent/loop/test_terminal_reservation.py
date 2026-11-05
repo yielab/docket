@@ -530,3 +530,67 @@ class TestTerminalResponseReservation:
         stored = load_session(session_key)
         assert [message.role for message in stored.messages] == ["user", "assistant", "tool"]
         assert not _session_units.find_unanswered_tool_calls(stored.messages)
+
+
+_NOTICE = "[docket] This step's budget is running out:"
+
+
+def _echo_rounds(count: int) -> list[ChatResponse]:
+    return [
+        _tool_call_response(f"c{n}", "echo", json.dumps({"text": f"round {n}"}))
+        for n in range(count)
+    ]
+
+
+class TestTheBudgetNotice:
+    """The one steering line is sent with the request, never stored (requirement 108)."""
+
+    def test_it_trails_round_seven_of_eight_and_no_other_request_and_is_never_stored(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        backend = ScriptedBackend([*_echo_rounds(8), _final("report")])
+        session_key = "agent:notice-sent:default"
+        _loop.run_agent_turn(
+            backend,
+            registry,
+            ctx,
+            session_key,
+            "go",
+            config=_loop.LoopConfig(max_iterations=8, max_tool_calls=100),
+        )
+
+        carrying = [i for i, call in enumerate(backend.calls) if _NOTICE in call[-1].content]
+        assert carrying == [6]
+        last = backend.calls[6][-1]
+        assert last.role == "user"
+        assert last.content.endswith("when it ends you will be asked for a report.")
+        assert "2 of 8 rounds left" in last.content
+        assert not any(_NOTICE in m.content for call in backend.calls for m in call[:-1])
+        assert not any(_NOTICE in m.content for m in load_session(session_key).messages)
+
+    def test_a_landing_built_while_the_line_is_due_carries_the_landing_ask_only(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        backend = ScriptedBackend([*_echo_rounds(1), _final("report")])
+        session_key = "agent:notice-landing:default"
+        _loop.run_agent_turn(
+            backend,
+            registry,
+            ctx,
+            session_key,
+            "go",
+            config=_loop.LoopConfig(max_tool_calls=1),
+            trace_project="notice-landing-audit",
+            trace_session_key="notice-landing",
+        )
+
+        assert len(backend.calls) == 2 and backend.tool_specs[1] == []
+        landing = backend.calls[1]
+        assert "used all of its tool calls" in landing[-1].content
+        assert not any(_NOTICE in m.content for m in landing)
+        trace = current_home().traces_dir / "notice-landing-audit" / "notice-landing.jsonl"
+        assert not any(
+            json.loads(line)["payload"].get("action") == "notice"
+            for line in trace.read_text().splitlines()
+            if json.loads(line)["event_type"] == "budget_warning"
+        )

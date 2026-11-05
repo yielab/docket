@@ -151,12 +151,13 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
-from docket.agent.loop_budget import MIN_OUTPUT_TOKENS, TurnBudget
+from docket.agent.loop_budget import MIN_OUTPUT_TOKENS, TurnBudget, budget_notice
 from docket.agent.loop_compaction import TurnCompaction
 from docket.agent.loop_request import (
     _accumulate,
     _closing_messages,
     _finalization_messages,
+    _notice_messages,
     send_request,
 )
 from docket.agent.loop_state import TurnState
@@ -363,9 +364,17 @@ class _TurnState(TurnState):
                 normal_estimated_input, purpose="tool-enabled task"
             )
             if not normal_budget_error:
-                return messages, self.tool_specs, False, None
+                return self.with_budget_notice(messages), self.tool_specs, False, None
             self.land("token_budget", normal_budget_error)
         return self.enter_landing(messages, normal_estimated_input)
+
+    def with_budget_notice(self, messages: list[ChatMessage]) -> list[ChatMessage]:
+        """The tool-enabled request, plus the budget notice (requirement 108) when it is due.
+        The closing call and the landing carry none, and a notice not sent stays due."""
+        if self.close_forced:
+            return messages
+        notice = budget_notice(self)
+        return _notice_messages(messages, notice) if notice else messages
 
     def enter_landing(
         self, messages: list[ChatMessage], normal_estimated_input: int

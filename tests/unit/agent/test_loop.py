@@ -235,8 +235,6 @@ def test_the_loop_bounds_default_to_the_current_home(tmp_path: Path) -> None:
 
 # ── the landing and the notice ───────────────────────────────────────────────
 
-_NOTICE = "[docket] This step's budget is running out:"
-
 
 class _TimedBackend(ScriptedBackend):
     """A scripted backend that advances a fake clock per call and records each request timeout."""
@@ -351,25 +349,7 @@ class TestTheLanding:
 
 
 class TestTheNotice:
-    """One line reaches the model the first time a bound has a quarter or less left."""
-
-    def test_it_is_in_round_six_of_eight_and_in_no_other(
-        self, registry: ToolRegistry, ctx: ToolContext
-    ) -> None:
-        """The line ends round 6's last tool result; the rest of the history has none."""
-        backend = ScriptedBackend([*_echo_rounds(8), _final("report")])
-        _loop.run_agent_turn(
-            backend, registry, ctx, "agent:notice:default", "go",
-            config=_loop.LoopConfig(max_iterations=8, max_tool_calls=100),
-        )  # fmt: skip
-        tools = [m for m in _stored("agent:notice:default") if m.role == "tool"]
-        marked = [i for i, m in enumerate(tools) if _NOTICE in m.content]
-        assert marked == [5]
-        assert (
-            tools[5].content.endswith("when it ends you will be asked for a report.")
-            and "2 of 8 rounds" in tools[5].content
-        )
-        assert _NOTICE not in "".join(m.content for m in backend.calls[5][:-1] if m.role != "tool")
+    """The first time a bound has a quarter or less left is traced once."""
 
     def test_it_is_traced_once_as_a_budget_warning_notice(
         self, registry: ToolRegistry, ctx: ToolContext

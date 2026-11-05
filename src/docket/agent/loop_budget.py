@@ -30,13 +30,14 @@ _NOTICE_UNITS = {"rounds": "rounds", "toolCalls": "tool calls", "tokens": "token
 
 def budget_notice(state: TurnState) -> str:
     """The line telling the model a bound has a quarter or less left (requirement 108), traced and
-    returned the first time any of the four is there; ``""`` after that and while none is."""
+    returned the first time any of the four is there; ``""`` after that and while none is. The
+    round in flight is the one the request starts, so the rounds left include it."""
     if state.notice_sent:
         return ""
     cfg = state.cfg
     remaining_time = cfg.wall_clock_timeout_s - (state.clock() - state.started)
     figures = (
-        ("rounds", cfg.max_iterations - state.iteration, cfg.max_iterations),
+        ("rounds", cfg.max_iterations - state.iteration + 1, cfg.max_iterations),
         ("toolCalls", cfg.max_tool_calls - state.tool_calls_executed, cfg.max_tool_calls),
         ("tokens", cfg.token_budget - state.total_usage.counted_tokens, cfg.token_budget),
         ("time", int(remaining_time), int(cfg.wall_clock_timeout_s)),

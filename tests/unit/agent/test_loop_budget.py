@@ -266,7 +266,7 @@ class TestBudgetNotice:
     def test_nothing_is_said_while_every_bound_has_more_than_a_quarter(
         self, make_turn_state: MakeState
     ) -> None:
-        state = make_turn_state(LoopConfig(max_iterations=8, max_tool_calls=8), iteration=5)
+        state = make_turn_state(LoopConfig(max_iterations=8, max_tool_calls=8), iteration=6)
         assert budget_notice(state) == ""
         assert not state.notice_sent
 
@@ -305,13 +305,21 @@ class TestBudgetNotice:
     def test_the_notice_tells_the_model_to_stop_reading_and_finish(
         self, make_turn_state: MakeState
     ) -> None:
-        state = make_turn_state(LoopConfig(max_iterations=4), iteration=3)
+        state = make_turn_state(LoopConfig(max_iterations=4), iteration=4)
         assert "do not start new reads or searches; finish from what you have" in (
             budget_notice(state).lower()
         )
 
+    def test_the_rounds_left_count_the_round_the_request_starts(
+        self, make_turn_state: MakeState
+    ) -> None:
+        """Round 7 of 8 is in flight: rounds 7 and 8 are left, six are done."""
+        assert budget_notice(make_turn_state(LoopConfig(max_iterations=8), iteration=6)) == ""
+        notice = budget_notice(make_turn_state(LoopConfig(max_iterations=8), iteration=7))
+        assert "2 of 8 rounds left" in notice
+
     def test_it_is_said_once(self, make_turn_state: MakeState) -> None:
-        state = make_turn_state(LoopConfig(max_iterations=4), iteration=3)
+        state = make_turn_state(LoopConfig(max_iterations=4), iteration=4)
         assert budget_notice(state) != ""
         assert budget_notice(state) == ""
 
