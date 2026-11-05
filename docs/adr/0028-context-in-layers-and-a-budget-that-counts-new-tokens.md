@@ -88,7 +88,7 @@ code (`develop` at `5dda9d37`). Answers recorded in "Decisions taken".
 
 4. **History inside a step does not grow quadratically.** When a request is built, a tool
    result older than the last K results becomes a one-line notice
-   (`[read src/x.ts: 340 lines, omitted; read it again if needed]`), and so do large
+   (`[read src/x.ts: 340 lines, 9,100 characters. You read this earlier in this session; its text is no longer in this view. Call read again only for text you still need.]`), and so do large
    `write`/`edit` arguments (`[wrote content/x.md: 8,329 characters]`). The newest result stays
    whole; errors stay short. The projection is deterministic and applied to the request only,
    never to `session.json`, so the prefix before the newest condensed message is byte-identical

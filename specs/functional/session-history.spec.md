@@ -1,6 +1,6 @@
 # Session History Specification
 
-**Version**: 1.14.0
+**Version**: 1.15.0
 **Status**: Implemented and live. The agent loop loads, compacts and appends this durable history
 on the production `DocketDriver` path; every pod-dispatch step has its own history key.
 **Last Updated**: 2026-11-05
@@ -188,17 +188,22 @@ This specification does NOT cover:
     mark (half of `budget`; the last `keep` stay whole regardless) and does not move again until
     the whole results exceed `budget` once more. A turn whose history budget is unset
     (`LoopConfig.history_budget_tokens` is `None`) projects with the default `budget`. Every result older than the cut **MUST** have its
-    `content` replaced by `[<tool> <target>: N lines, M characters, already seen and omitted; call
-    <tool> again only for exact text you still need]`, built from the matching call, unless the
-    notice is not shorter than the content. `<target>` is the call's first non-empty argument among
-    `path`, `file_path`, `command`, `pattern`, `url`, `query`, cut to its first line and 80
-    characters (ending `...`), and is omitted when the call has none. Each message keeps its role, `tool_call_id` and `name`. A result beginning
+    `content` replaced by `[<tool> <target>: N lines, M characters. You read this earlier in this
+    session; its text is no longer in this view. Call <tool> again only for text you still need.]`,
+    built from the matching call, unless the notice is not shorter than the content. The notice
+    speaks for the history, never for the tool: it **MUST** say that the model read the result and
+    that the text is not in this view, and **MUST NOT** use the word "omitted" or any wording a
+    model could take as the tool refusing a repeated call. `<target>` is the call's first non-empty
+    argument among `path`, `file_path`, `command`, `pattern`, `url`, `query`, cut to its first line
+    and 80 characters (ending `...`), and is omitted when the call has none. Each message keeps
+    its role, `tool_call_id` and `name`. A result beginning
     `ERROR:`, `REFUSED [` or `AWAITING APPROVAL:` stays whole up to 400 characters and is
     otherwise cut to its first 400 with a count of the rest. User and system messages are never
     changed. A result that carries an artifact line (`agent-loop.spec.md` requirement 91) has its
-    notice end `the full output is in <path>: read it with read(path, offset, limit)` in place of
-    the invitation to call the tool again, because a second call may return something else; a cut
-    error result keeps the path on a final `[full output: <path>]` line.
+    notice read `[<tool> <target>: N lines, M characters. You read this earlier in this session;
+    its text is no longer in this view; the full output is in <path>: read it with read(path,
+    offset, limit)]` in place of the invitation to call the tool again, because a second call may
+    return something else; a cut error result keeps the path on a final `[full output: <path>]` line.
 31. For a call whose result was condensed, the string arguments `content` (`write`),
     `new_string` and `old_string` (`edit`) **MUST** be replaced by `[wrote <path>: N characters]`
     (`[replaced <path>: N characters]` for `old_string`; without a `path` argument,

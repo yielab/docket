@@ -277,15 +277,13 @@ def _result_notice(call: ToolCall | None, message: ChatMessage) -> str:
     lines = message.content.count("\n") + 1 if message.content else 0
     head = f"{name} {target}" if target else name
     artifact = artifact_path_in(message.content)
-    if artifact:
-        return (
-            f"[{head}: {lines} lines, {len(message.content):,} characters, already seen and "
-            f"omitted; the full output is in {artifact}: read it with read(path, offset, limit)]"
-        )
-    return (
-        f"[{head}: {lines} lines, {len(message.content):,} characters, already seen and "
-        f"omitted; call {name} again only for exact text you still need]"
+    seen = (
+        f"[{head}: {lines} lines, {len(message.content):,} characters. "
+        "You read this earlier in this session; its text is no longer in this view"
     )
+    if artifact:
+        return f"{seen}; the full output is in {artifact}: read it with read(path, offset, limit)]"
+    return f"{seen}. Call {name} again only for text you still need.]"
 
 
 def _condense_result(call: ToolCall | None, message: ChatMessage) -> ChatMessage:

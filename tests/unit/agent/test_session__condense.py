@@ -45,8 +45,8 @@ class TestCondenseHistory:
         assert (len(whole), len(notices)) == (2, 4)
         assert [m.tool_call_id for m in results] == [f"c{n}" for n in range(6)]
         assert results[0].content == (
-            "[read src/f0.py: 40 lines, 501 characters, already seen and omitted; "
-            "call read again only for exact text you still need]"
+            "[read src/f0.py: 40 lines, 501 characters. You read this earlier in this session; "
+            "its text is no longer in this view. Call read again only for text you still need.]"
         )
         assert all(m.content.count("\n") > 5 for m in results[-2:])
 
@@ -175,7 +175,7 @@ class TestCondenseHistoryUnansweredRound:
         assert [m.content.startswith("[fetch https://h") for m in results] == [True] * 3 + [
             False
         ] * 2
-        assert "already seen and omitted" in results[0].content
+        assert "You read this earlier in this session" in results[0].content
 
     def test_the_call_of_an_unanswered_write_keeps_its_body(self) -> None:
         """A write whose result is unanswered keeps its large argument too."""
@@ -308,9 +308,32 @@ class TestCondenseHistorySmallResults:
         out = _sess.condense_history(messages, keep=1, budget=0)
 
         notice = next(m for m in out if m.role == "tool").content
+        assert "You read this earlier in this session; its text is no longer in this view" in notice
         assert "the full output is in /pod/cache/artifacts/abc.txt" in notice
         assert "read it with read(path, offset, limit)" in notice
         assert "call grep again" not in notice
+
+    def test_no_notice_says_omitted_or_can_be_read_as_the_tool_refusing_a_repeat(self) -> None:
+        """Both notices say whose view it is; neither uses a word that reads as the tool's answer."""
+        line = "[full output: /pod/cache/artifacts/abc.txt \u2014 read it with read(path, offset, limit)]"
+        messages = [
+            user("t"),
+            *self._exchange(0, "fetch", '{"url":"https://a.example/p"}', "a" * 3_000),
+            *self._exchange(1, "grep", '{"pattern":"hit"}', "hit\n" * 600 + "\n" + line),
+            *self._exchange(2, "read", '{"path":"b"}', "b" * 3_000),
+        ]
+
+        out = _sess.condense_history(messages, keep=1, budget=0)
+
+        notices = [m.content for m in out if m.role == "tool" and m.content.startswith("[")]
+        assert len(notices) == 2
+        for notice in notices:
+            assert "omitted" not in notice
+            assert "already seen" not in notice
+            assert (
+                "You read this earlier in this session; its text is no longer in this view"
+                in notice
+            )
 
     def test_a_cut_error_result_keeps_the_artifact_path(self) -> None:
         line = "[full output: /pod/cache/artifacts/abc.txt \u2014 read it with read(path, offset, limit)]"
