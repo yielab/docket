@@ -19,12 +19,14 @@ from docket.agent.ports import (
     ChatResponse,
     ToolCall,
     assistant,
+    role_composer_port,
     system,
     tool_result,
     user,
 )
 from docket.agent.session import _session_path, append_messages, load_messages
 from docket.kernel.home import current_home
+from docket.teams.role_composer import TeamsRoleComposer
 
 SUBJECT = "docket.agent.loop_compaction"
 
@@ -391,3 +393,37 @@ class TestAPreTurnCompactionTheGuardRefuses:
         assert result.stop_reason == "compaction_failed"
         assert load_messages(state.session_key) == before
         assert self._events(state)[0]["status"] == "failed"
+
+
+class _OverlayComposer(TeamsRoleComposer):
+    """The real composer except for the compaction prompt, which it answers with a fixed one."""
+
+    def __init__(self) -> None:
+        self.asked: list[tuple[str, str]] = []
+
+    def compaction_prompt(self, role: str, project: str) -> tuple[str, str]:
+        self.asked.append((role, project))
+        return "FROM THE PORT\n${turns}", "ab" * 32
+
+
+class TestRunCompactionAsksThePortForThePrompt:
+    """The summarizer prompt is whatever the role composer resolves for this role and pod."""
+
+    def test_the_prompt_text_and_hash_come_from_the_port(self, make_turn_state: MakeState) -> None:
+        backend = _OneReply(ChatResponse(ok=True, message=assistant("the summary")))
+        state = make_turn_state(backend=backend)
+        append_messages(
+            state.session_key,
+            [user("first ask " + "detail " * 200), assistant("reply " * 200), user("second")],
+        )
+        composer = _OverlayComposer()
+
+        with role_composer_port.use(composer):
+            result, stop = _compaction(state).run_compaction(budget_tokens=1)
+
+        assert result.compacted, result.error
+        assert stop is None
+        assert composer.asked == [("implementer", "demo")]
+        sent = backend.calls[0]["messages"][0].content
+        assert sent.startswith("FROM THE PORT\n[user] first ask")
+        assert result.prompt_sha256 == "ab" * 32

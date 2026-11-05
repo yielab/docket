@@ -23,7 +23,14 @@ from docket.agent.loop_request import (
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_compaction, _trace_llm_call
 from docket.agent.loop_types import AgentLoopResult, StopReason
-from docket.agent.ports import ChatMessage, FailureKind, TurnResult, system, user
+from docket.agent.ports import (
+    ChatMessage,
+    FailureKind,
+    TurnResult,
+    role_composer,
+    system,
+    user,
+)
 from docket.agent.session import (
     HISTORY_FULL_RESULTS_CHARS,
     append_messages,
@@ -216,11 +223,16 @@ class TurnCompaction:
         self.compaction_failure_stop_reason = None
         elapsed_now = self.state.clock() - self.state.started
         remaining_now = max(1, int(self.state.cfg.wall_clock_timeout_s - elapsed_now))
+        prompt_text, prompt_sha256 = role_composer.compaction_prompt(
+            self.state.ctx.role, self.state.project
+        )
         result = compact_session(
             self.state.session_key,
             role=self.state.ctx.role,
             agent_id=self.state.ctx.agent_id,
             summarizer=self.summarize_without_reentry,
+            prompt_text=prompt_text,
+            prompt_sha256=prompt_sha256,
             summarizer_session_key=f"{self.state.session_key}:compaction",
             budget_tokens=budget_tokens,
             summary_input_budget_tokens=self.state.cfg.summary_input_budget_tokens,

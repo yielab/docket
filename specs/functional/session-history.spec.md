@@ -1,6 +1,6 @@
 # Session History Specification
 
-**Version**: 1.16.0
+**Version**: 1.17.0
 **Status**: Implemented and live. The agent loop loads, compacts and appends this durable history
 on the production `DocketDriver` path; every pod-dispatch step has its own history key.
 **Last Updated**: 2026-11-05
@@ -115,7 +115,19 @@ This specification does NOT cover:
 
 17. `compact_session`'s injected summarizer **MUST** have the five-argument driver-shaped port
     (`SessionSummaryRunner`). The live adapter that satisfies it is specified by
-    `agent-loop.spec.md` requirement 33.
+    `agent-loop.spec.md` requirement 33. The summarizer's prompt is a document, not a string in
+    code: `compact_session` **MUST** take its text and sha256 from its caller (`prompt_text`,
+    `prompt_sha256`), and the live caller (`TurnCompaction.run_compaction`) asks the
+    `RoleComposer` port, whose adapter resolves the shipped `compaction/history` prompt through
+    the four scopes (`config-format.spec.md`, "The `prompt` kind"), so a repository, pod or
+    operator overrides it like any prompt. The text **MUST** use the input `${turns}`
+    (the rendered units); a text that does not is refused before any summarizer call, with
+    `ok=False` and `failure_kind="invalid_output"`. The result **MUST** report the hash in
+    `prompt_sha256` for a call that ran summarisation rounds (`""` otherwise). The shipped body
+    names the summary as the only memory the next request has of the turns and asks for six
+    sections in order (objective and current state; decisions and why; files touched; commands
+    run and their result; errors seen and whether resolved; open items and the next step), each
+    one line when empty.
 18. If the summarisation call fails, or replies with nothing usable, compaction **MUST** leave
     the session's stored history completely unchanged and report failure — mirroring the
     fail-closed call pattern decision D-18 set for docket's self-originated model calls.
@@ -132,8 +144,9 @@ This specification does NOT cover:
 22. Every result **MUST** report before/after message counts and before/after *estimated* tokens.
     Failure reports identical before/after values; no-op reports the unchanged values; success
     reports the persisted candidate. These fields **MUST NOT** be presented as measured usage.
-23. The complete summarizer prompt for each compaction round **MUST** fit a bounded estimated-token
-    input budget. By default that input budget is the role's configured history budget (independent
+23. The complete summarizer prompt for each compaction round (the resolved prompt document with
+    `${label}` and `${turns}` substituted, so the document's own length counts) **MUST** fit a
+    bounded estimated-token input budget. By default that input budget is the role's configured history budget (independent
     of a caller's one-off target-budget override); an explicit input override exists for
     deterministic tests, not as a second role-budget registry.
 24. When all units selected by the compaction plan do not fit one summary prompt, compaction
@@ -274,7 +287,7 @@ def append_messages(
 # the shape a caller's driver must satisfy
 SessionSummaryRunner = Callable[[str, str, str, int, dict[str, str] | None], TurnResult]
 
-class CompactionResult:                        # plus summary rounds/prompt max and before/after counts
+class CompactionResult:                        # plus summary rounds/prompt max, prompt_sha256, before/after counts
     ...
 
 def compact_session(
@@ -283,6 +296,8 @@ def compact_session(
     role: str,
     agent_id: str,
     summarizer: SessionSummaryRunner,
+    prompt_text: str,                          # the resolved compaction prompt; uses ${turns}, may use ${label}
+    prompt_sha256: str,                        # its hash, reported on the result
     summarizer_session_key: str | None = None, # default: derived key distinct from session_key
     budget_tokens: int | None = None,          # default: context.budget_for_role(role)
     summary_input_budget_tokens: int | None = None, # default: context.budget_for_role(role)
@@ -387,7 +402,8 @@ def failing_driver(agent_id, session_key, message, timeout, env=None):
 
 result = sess.compact_session(
     "agent:demo-lead:demo", role="lead", agent_id="demo-lead",
-    summarizer=failing_driver, budget_tokens=1,
+    summarizer=failing_driver, prompt_text="Summarize:\n${turns}", prompt_sha256="...",
+    budget_tokens=1,
 )
 # result.ok is False; sess.load_messages(...) is byte-identical to before the call.
 ```
@@ -399,7 +415,8 @@ result = sess.compact_session(
 - A session key **MUST** be a non-empty string; the store treats it as opaque (it does not parse or
   validate the `agent:<id>:<project>` shape itself; see `session-scoping.spec.md` for where that
   format is defined and enforced).
-- `compact_session` **MUST** be given a `summarizer` matching the documented 5-argument shape.
+- `compact_session` **MUST** be given a `summarizer` matching the documented 5-argument shape and
+  a `prompt_text` that uses `${turns}`.
 
 ### Post-conditions
 

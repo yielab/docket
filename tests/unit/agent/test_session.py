@@ -32,6 +32,8 @@ from docket.agent.ports import (
 
 _isolate_sessions_dir = _support_home.isolate_sessions_dir
 
+_PROMPT = "Summarize ${label}.\n${turns}"
+_PROMPT_SHA = "0" * 64
 SUBJECT = "docket.agent.session"
 
 # ── driver test doubles (matches SessionSummaryRunner's 5-arg shape) ──────────
@@ -288,6 +290,8 @@ class TestCompactSessionFailClosed:
             role="lead",
             agent_id="x-lead",
             summarizer=_failing_driver,
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
         )
 
@@ -304,6 +308,8 @@ class TestCompactSessionFailClosed:
             role="lead",
             agent_id="x-lead",
             summarizer=_empty_reply_driver,
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
         )
 
@@ -327,6 +333,8 @@ class TestCompactSessionFailClosed:
             role="lead",
             agent_id="x-lead",
             summarizer=_failing_driver,
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
         )
         assert not result.ok
@@ -346,6 +354,8 @@ class TestCompactSessionSuccess:
             role="lead",
             agent_id="x-lead",
             summarizer=_summarizing_driver("tool outcome retained"),
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
             compact_range=(1, 3),
             keep_latest_unit=False,
@@ -371,6 +381,8 @@ class TestCompactSessionSuccess:
             role="lead",
             agent_id="x-lead",
             summarizer=_summarizing_driver(),
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
             compact_range=(2, 3),
             keep_latest_unit=False,
@@ -389,6 +401,8 @@ class TestCompactSessionSuccess:
             role="lead",
             agent_id="x-lead",
             summarizer=driver,
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
             budget_tokens=100_000,
         )
 
@@ -415,6 +429,8 @@ class TestCompactSessionSuccess:
             role="lead",
             agent_id="x-lead",
             summarizer=_driver,
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
         )
 
@@ -441,6 +457,8 @@ class TestCompactSessionSuccess:
                     role="lead",
                     agent_id="y-lead",
                     summarizer=_driver,
+                    prompt_text=_PROMPT,
+                    prompt_sha256=_PROMPT_SHA,
                     budget_tokens=1,
                 )
             )
@@ -451,6 +469,8 @@ class TestCompactSessionSuccess:
             role="lead",
             agent_id="x-lead",
             summarizer=_driver,
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
         )
 
@@ -469,6 +489,8 @@ class TestCompactSessionSuccess:
             role="lead",
             agent_id="x-lead",
             summarizer=_summarizing_driver("the gist of it"),
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
             budget_tokens=5,
         )
 
@@ -516,6 +538,8 @@ class TestCompactSessionSuccess:
             role="lead",
             agent_id="large-lead",
             summarizer=_driver,
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
             budget_tokens=80,
             summary_input_budget_tokens=180,
         )
@@ -560,6 +584,8 @@ class TestCompactSessionSuccess:
             role="lead",
             agent_id="late-failure-lead",
             summarizer=_driver,
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
             budget_tokens=60,
             summary_input_budget_tokens=180,
         )
@@ -581,6 +607,8 @@ class TestCompactSessionSuccess:
             role="lead",
             agent_id="oversized-lead",
             summarizer=driver,
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
             budget_tokens=10,
             summary_input_budget_tokens=150,
         )
@@ -601,6 +629,8 @@ class TestCompactSessionSuccess:
             role="lead",
             agent_id="x-lead",
             summarizer=_summarizing_driver(),
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
         )
         record = _sess.load_session("agent:x:default")
@@ -617,6 +647,8 @@ class TestCompactSessionSuccess:
             role="lead",
             agent_id="x-lead",
             summarizer=driver,
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
         )
         assert calls
@@ -630,6 +662,8 @@ class TestCompactSessionSuccess:
             role="not-a-real-role",
             agent_id="x-lead",
             summarizer=_summarizing_driver(),
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
             budget_tokens=1,
         )
         assert result.ok

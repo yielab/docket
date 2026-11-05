@@ -361,3 +361,74 @@ def test_a_repository_variant_is_read_before_its_plain_file() -> None:
     assert prompts.resolve_prompt("hop", "implementer", view=view, model_class="strong").text == (
         "PLAIN"
     )
+
+
+_HISTORY_SECTIONS = (
+    "Objective and current state",
+    "Decisions taken and why",
+    "Files touched",
+    "Commands run and their result",
+    "Errors seen and whether resolved",
+    "Open items and the next step",
+)
+
+
+def test_the_shipped_compaction_prompt_declares_its_inputs_and_six_sections_in_order() -> None:
+    loaded = prompts.shipped_prompt("compaction", "history")
+    parsed = prompts.load_prompt_file(_templates.PROMPT_TEMPLATES_DIR / "compaction" / "history.md")
+
+    assert (loaded.layer, loaded.scope, loaded.model_class, loaded.for_role) == (
+        "compaction",
+        "shipped",
+        "any",
+        "any",
+    )
+    assert parsed.inputs == {"label": "string", "turns": "text"}
+    headings = [line[3:] for line in loaded.text.splitlines() if line.startswith("## ")]
+    assert headings == list(_HISTORY_SECTIONS)
+    assert "only memory the next request has" in loaded.text
+    assert loaded.text.endswith("Reply with the sections only.")
+
+
+def test_a_pod_overlay_of_the_compaction_prompt_beats_what_ships() -> None:
+    overlay = current_home().pod_config_dir("acme") / "prompts" / "compaction" / "history.md"
+    overlay.parent.mkdir(parents=True)
+    overlay.write_text(
+        "---\nkind: prompt\nname: history\nversion: 1.1.0\nlayer: compaction\nfor: any\n"
+        "inputs:\n  turns: text\n---\nPOD SUMMARY RULES\n${turns}\n",
+        encoding="utf-8",
+    )
+
+    loaded = prompts.resolve_prompt("compaction", "history", project="acme")
+
+    assert (loaded.text, loaded.scope) == ("POD SUMMARY RULES\n${turns}", "pod")
+    assert loaded.sha256 == hashlib.sha256(loaded.text.encode("utf-8")).hexdigest()
+    assert prompts.resolve_prompt("compaction", "history", project="other").scope == "shipped"
+
+
+def test_a_repository_compaction_prompt_is_read_from_the_view_never_the_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worktree = tmp_path / ".docket" / "prompts" / "compaction" / "history.md"
+    worktree.parent.mkdir(parents=True)
+    worktree.write_text(_HISTORY_FILE.format(text="WORKTREE ${turns}"), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    served = {
+        ".docket/prompts/compaction/history.md": _HISTORY_FILE.format(
+            text="BASE COMMIT ${turns}"
+        ).encode()
+    }
+    view = RepoView("a" * 40, served.get, lambda _rel: [])
+
+    assert prompts.resolve_prompt("compaction", "history", view=view).text == "BASE COMMIT ${turns}"
+    assert prompts.resolve_prompt("compaction", "history").scope == "shipped"
+
+
+_HISTORY_FILE = (
+    "---\nkind: prompt\nname: history\nversion: 1.3.0\nlayer: compaction\nfor: any\n"
+    "inputs:\n  turns: text\n---\n{text}\n"
+)
+
+
+def test_the_compaction_layer_supplies_a_label_and_the_turns() -> None:
+    assert prompts.SUPPLIED_INPUTS["compaction"] == frozenset({"label", "turns"})

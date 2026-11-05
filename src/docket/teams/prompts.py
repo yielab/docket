@@ -29,7 +29,7 @@ from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.teams.workspace.repo_view import RepoView
 
-Layer = Literal["identity", "task", "hop"]
+Layer = Literal["identity", "task", "hop", "compaction"]
 OutputSchema = Literal["handoff/v1"]
 InputType = Literal["string", "text", "int", "bool", "list"]
 
@@ -269,7 +269,8 @@ def role_prompt(role: str, layer: str, text: str, version: int) -> LoadedPrompt:
 # The variables each layer's consumer supplies when it renders a prompt of that layer: a prompt
 # declaring any other input could never be rendered. An identity text is rendered with the
 # member's variables (`roles.validate_archetype_dict` samples exactly these); the task and hop
-# layers are composed by `hops/application/compose.py`, which substitutes none.
+# layers are composed by `hops/application/compose.py`, which substitutes none; the compaction
+# layer is rendered by `agent/session_compaction.py` with the session label and the replaced turns.
 SUPPLIED_INPUTS: dict[str, frozenset[str]] = {
     "identity": frozenset(
         {
@@ -288,6 +289,7 @@ SUPPLIED_INPUTS: dict[str, frozenset[str]] = {
     ),
     "task": frozenset(),
     "hop": frozenset(),
+    "compaction": frozenset({"label", "turns"}),
 }
 
 _REFERENCE = re.compile(

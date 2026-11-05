@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 5.12.0
+**Version**: 5.13.0
 **Status**: Implemented. Three built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
 **Last Updated**: 2026-11-05
@@ -72,7 +72,8 @@ This specification does NOT cover:
    document that carries either **MUST** be refused as `ArchetypeError` naming the key and saying
    that a step declares only its `timeout`. `floor` (a list of prompt references `<layer>/<name>`; see `model-profiles.spec.md`, "Prompt
    variants and the floor") **MAY** be present and defaults to `()`; an entry that is not a
-   `<layer>/<name>` with `layer` one of `identity`, `task`, `hop` is refused naming the field. `hopInstruction` absent or empty means "no declared instruction", not "no instruction at
+   `<layer>/<name>` with `layer` one of `identity`, `task`, `hop` is refused naming the field (`compaction` is a prompt layer but never a floor: a role has
+   no compaction floor). `hopInstruction` absent or empty means "no declared instruction", not "no instruction at
    all". `from_wire` reads only the fields above; it refuses a `kind:` other than `role`, a
    `policyRole` key, and `maxToolCalls` or `maxIterations`, and does not read any other key.
 2. `scope` **MUST** be exactly `"pod"`, a closed enum of one value; any other value is refused.

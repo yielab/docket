@@ -19,6 +19,8 @@ from docket.agent.ports import ChatMessage, ToolCall, assistant, system, tool_re
 
 _isolate_sessions_dir = _support_home.isolate_sessions_dir
 
+_PROMPT = "Summarize ${label}.\n${turns}"
+_PROMPT_SHA = "0" * 64
 SUBJECT = "docket.agent.session_units"
 
 # ── driver test doubles (matches SessionSummaryRunner's 5-arg shape) ──────────
@@ -192,6 +194,8 @@ class TestPlanCompactionAtomicityBoundary:
             role="lead",
             agent_id="x-lead",
             summarizer=_summarizing_driver(),
+            prompt_text=_PROMPT,
+            prompt_sha256=_PROMPT_SHA,
             budget_tokens=budget,
         )
 

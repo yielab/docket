@@ -23,6 +23,8 @@ _isolate_sessions_dir = _support_home.isolate_sessions_dir
 SUBJECT = "docket.agent.session_compaction"
 
 _BUDGET = 6_000
+_PROMPT = "MEMORY RULES for ${label}.\n${turns}\nReply with the sections only."
+_PROMPT_SHA = "f" * 64
 _KEY = "agent:reader:default"
 _MARKER = re.compile(
     r"\[\.\.\. \d+ characters of this tool result not shown to the summarizer \.\.\.\]"
@@ -81,6 +83,8 @@ def _compact(
         role="writer",
         agent_id="reader",
         summarizer=summarizer,
+        prompt_text=_PROMPT,
+        prompt_sha256=_PROMPT_SHA,
         budget_tokens=overrides.get("budget_tokens", _BUDGET),
         summary_input_budget_tokens=overrides.get("summary_input_budget_tokens", _BUDGET),
     )
@@ -180,3 +184,69 @@ class TestTheGuardRefusesWithoutWriting:
         result = _compact(_summarizing_driver("short"), budget_tokens=10)
 
         assert result.ok and result.compacted and not result.refused_by_guard
+
+
+def _padded_history() -> list[ChatMessage]:
+    pad = "padding words " * 200
+    return [user("UNIT-A ask " + pad), assistant("UNIT-B reply " + pad), user("UNIT-C ask")]
+
+
+class TestThePromptIsTheCallersDocument:
+    """The summarizer prompt is the caller's resolved text with both inputs substituted."""
+
+    def test_it_starts_with_the_document_and_carries_the_rendered_units(self) -> None:
+        _sess.append_messages(_KEY, _padded_history())
+        driver, prompts = _recording_summarizer(tokens=20)
+
+        result = _compact(driver, budget_tokens=50)
+
+        assert result.compacted
+        assert prompts[0].startswith(f"MEMORY RULES for {_KEY}.\n[user] UNIT-A ask")
+        assert "[assistant] UNIT-B reply" in prompts[0]
+        assert prompts[0].endswith("\nReply with the sections only.")
+        assert "${" not in prompts[0]
+
+    def test_the_result_reports_the_hash_of_the_prompt_it_ran(self) -> None:
+        _sess.append_messages(_KEY, _padded_history())
+        driver, _ = _recording_summarizer(tokens=20)
+
+        assert _compact(driver, budget_tokens=50).prompt_sha256 == _PROMPT_SHA
+
+    def test_the_input_budget_counts_the_documents_own_length(self) -> None:
+        _sess.append_messages(_KEY, _padded_history())
+        driver, prompts = _recording_summarizer()
+
+        result = _session_compaction.compact_session(
+            _KEY,
+            role="writer",
+            agent_id="reader",
+            summarizer=driver,
+            prompt_text="LONG RULES " * 2_000 + "${turns}",
+            prompt_sha256=_PROMPT_SHA,
+            budget_tokens=1,
+            summary_input_budget_tokens=500,
+        )
+
+        assert not result.ok
+        assert result.refused_by_guard
+        assert prompts == []
+
+    def test_a_prompt_that_never_places_the_turns_is_refused_before_any_call(self) -> None:
+        _sess.append_messages(_KEY, _padded_history())
+        before = _sess.load_messages(_KEY)
+        driver, prompts = _recording_summarizer()
+
+        result = _session_compaction.compact_session(
+            _KEY,
+            role="writer",
+            agent_id="reader",
+            summarizer=driver,
+            prompt_text="Summarize the history.",
+            prompt_sha256=_PROMPT_SHA,
+            budget_tokens=1,
+        )
+
+        assert (result.ok, result.failure_kind) == (False, "invalid_output")
+        assert "${turns}" in result.error
+        assert prompts == []
+        assert _sess.load_messages(_KEY) == before

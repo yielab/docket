@@ -243,14 +243,14 @@ class TestLiveSessionCompaction:
             "new request",
             config=_loop.LoopConfig(
                 history_budget_tokens=80,
-                summary_input_budget_tokens=180,
+                summary_input_budget_tokens=250,
             ),
         )
 
         rounds = len(backend.summary_prompts)
         assert result.ok
         assert rounds > 1
-        assert all(_ports.estimate_tokens(prompt) <= 180 for prompt in backend.summary_prompts)
+        assert all(_ports.estimate_tokens(prompt) <= 250 for prompt in backend.summary_prompts)
         assert result.usage == TokenUsage(
             input_tokens=rounds * 10 + 5,
             output_tokens=rounds * 2 + 1,
@@ -259,7 +259,7 @@ class TestLiveSessionCompaction:
         assert stored.usage.input_tokens == result.usage.input_tokens
         assert stored.usage.output_tokens == result.usage.output_tokens
         assert events[0]["summaryRounds"] == rounds
-        assert events[0]["maxSummaryPromptEstimatedTokens"] <= 180
+        assert events[0]["maxSummaryPromptEstimatedTokens"] <= 250
 
     def test_successive_compaction_preflights_include_prior_summary_usage(
         self, registry: ToolRegistry, ctx: ToolContext
@@ -320,7 +320,7 @@ class TestLiveSessionCompaction:
                 token_budget=70,
                 max_tokens=10,
                 history_budget_tokens=80,
-                summary_input_budget_tokens=180,
+                summary_input_budget_tokens=250,
             ),
         )
 

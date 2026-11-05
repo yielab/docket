@@ -1,8 +1,8 @@
 """The teams adapter of the turn engine's ``RoleComposer`` port.
 
 The engine (``agent/``) asks which tools a role may see, what context budget its archetype
-declares and what system prompt its workspace composes; this module answers from
-``teams/roles.py`` and ``teams/identity.py``. ``bootstrap.bind_adapters`` binds it once per entry.
+declares, what system prompt its workspace composes and which prompt summarizes its history; this
+module answers from ``teams/roles.py``, ``teams/identity.py`` and ``teams/prompts.py``. ``bootstrap.bind_adapters`` binds it once per entry.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from docket.kernel.records import RECORDS_TOOL_PREFIX
 from docket.kernel.service import service_of_tool
 from docket.teams import identity as _identity
 from docket.teams import pod_settings as _pod_settings
+from docket.teams import prompts as _prompts
 from docket.teams import role_composer as _role_composer
 from docket.teams import roles as _roles
 from docket.teams.roles import BUILTIN_TOOL_KINDS, load_registry
@@ -59,6 +60,10 @@ class TeamsRoleComposer:
             context_window_tokens=context_window_tokens,
             max_output_tokens=max_output_tokens,
         )
+
+    def compaction_prompt(self, role: str, project: str) -> tuple[str, str]:
+        loaded = _prompts.resolve_prompt("compaction", "history", project=project)
+        return loaded.text, loaded.sha256
 
 
 # A bad stored value degrades to "no additional pod-level denial" rather than raising --

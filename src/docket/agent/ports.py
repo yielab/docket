@@ -432,6 +432,12 @@ class RoleComposer(Protocol):
         """*agent_id*'s system prompt, fit to this turn's resolved model bounds."""
         ...
 
+    def compaction_prompt(self, role: str, project: str) -> tuple[str, str]:
+        """The summarizer prompt for *role*'s session in *project*, as ``(text, sha256)``: the
+        ``compaction/history`` document resolved through the scopes, still holding its ``${label}``
+        and ``${turns}`` inputs, and the hash of that text."""
+        ...
+
 
 role_composer_port: Binding[RoleComposer] = Binding("role_composer")
 role_composer: RoleComposer = role_composer_port.proxy()

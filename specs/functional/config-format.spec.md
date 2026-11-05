@@ -1,8 +1,8 @@
 # Configuration Document Format Specification
 
-**Version**: 2.11.0
+**Version**: 2.12.0
 **Status**: Implemented
-**Last Updated**: 2026-11-03
+**Last Updated**: 2026-11-05
 
 ## Purpose
 
@@ -219,7 +219,7 @@ This specification does NOT cover:
    in `pod.yaml`'s `members` with a major (`implementer@3`) **MUST** resolve to a role of that major
    among the directory's own roles or the pod's registry, and every `${name}` input a prompt
    declares **MUST** be one its layer's consumer supplies (`identity`: the template variables a
-   role's identity text is rendered with; `task` and `hop`: none). Each failure is one line
+   role's identity text is rendered with; `task` and `hop`: none; `compaction`: `label` and `turns`). Each failure is one line
    naming the file and the reference or input, and the exit code is `1`.
 
 ### Published schemas
@@ -277,8 +277,8 @@ This specification does NOT cover:
    that is exactly `---`) followed by a Markdown body. The front matter's keys are closed
    (`PromptDocument`, `extra="forbid"`): `kind` (`prompt`), `name` (lowercase letters, digits and
    hyphens, starting with a letter), `version` (semver, `MAJOR.MINOR.PATCH`), `layer`
-   (`identity`, `task` or `hop`), `for` (a role name), `modelClass` (`cheap`, `strong` or `any`;
-   `any` when absent), `inputs` (a mapping from a variable name to its type: `string`, `text`,
+   (`identity`, `task`, `hop` or `compaction`), `for` (a role name, or `any` for a prompt no role
+   owns), `modelClass` (`cheap`, `strong` or `any`; `any` when absent), `inputs` (a mapping from a variable name to its type: `string`, `text`,
    `int`, `bool` or `list`), `output` (a schema name, one of `OUTPUT_SCHEMAS`: `handoff/v1`;
    absent for a prompt that produces none), `tests` (a relative path beside the prompt, never
    absolute and never containing `..`) and an optional `description`. `kind`, `name`, `version`,

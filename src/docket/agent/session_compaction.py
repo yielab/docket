@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
+from string import Template
 from typing import Any
 
 from docket.agent import context as _context
@@ -38,42 +39,36 @@ _COMPACTION_ACTIVE: ContextVar[bool] = ContextVar("docket_session_compaction_act
 _NOT_SHOWN_MARKER = "[... {n} characters of this tool result not shown to the summarizer ...]"
 
 
+def _render_unit(unit: Sequence[ChatMessage], tool_result_cap: int | None = None) -> str:
+    """One atomic unit as the summarizer reads it. With *tool_result_cap*, each tool result is
+    cut to it and followed by the visible marker."""
+    lines: list[str] = []
+    for m in unit:
+        if m.role == "tool":
+            content = m.content
+            if tool_result_cap is not None and len(content) > tool_result_cap:
+                marker = _NOT_SHOWN_MARKER.format(n=len(content) - tool_result_cap)
+                content = f"{content[:tool_result_cap]}\n{marker}"
+            lines.append(f"[tool result for {m.name or m.tool_call_id}]\n{content}")
+        elif m.tool_calls:
+            calls = ", ".join(f"{c.name}({c.arguments})" for c in m.tool_calls)
+            text = f"[assistant] {m.content}".rstrip()
+            lines.append(f"{text}\n[requested tool calls] {calls}")
+        else:
+            lines.append(f"[{m.role}] {m.content}")
+    return "\n".join(lines)
+
+
 def _summarization_message(
+    prompt_text: str,
     label: str,
     units: Sequence[Sequence[ChatMessage]],
     tool_result_cap: int | None = None,
 ) -> str:
-    """Build the compaction summarisation prompt from the units being replaced -- a self-contained
-    prompt over chat-message units, mirroring ``agent.memory._distillation_message``'s shape but
-    never re-reading anything from disk. With *tool_result_cap*, each tool result is cut to it."""
-    header = (
-        f"You are compacting durable turn history for '{label}'. Below are "
-        "older turns from this session, oldest first. Write a concise summary "
-        "that preserves any decision, fact, or unresolved action a later turn "
-        "would need -- including the outcome of any tool call, not just that "
-        "one was made. Reply with the summary text only -- no preamble, no "
-        "repeating the raw turns verbatim.\n"
-    )
-
-    def _render_unit(unit: Sequence[ChatMessage]) -> str:
-        lines: list[str] = []
-        for m in unit:
-            if m.role == "tool":
-                content = m.content
-                if tool_result_cap is not None and len(content) > tool_result_cap:
-                    marker = _NOT_SHOWN_MARKER.format(n=len(content) - tool_result_cap)
-                    content = f"{content[:tool_result_cap]}\n{marker}"
-                lines.append(f"[tool result for {m.name or m.tool_call_id}]\n{content}")
-            elif m.tool_calls:
-                calls = ", ".join(f"{c.name}({c.arguments})" for c in m.tool_calls)
-                text = f"[assistant] {m.content}".rstrip()
-                lines.append(f"{text}\n[requested tool calls] {calls}")
-            else:
-                lines.append(f"[{m.role}] {m.content}")
-        return "\n".join(lines)
-
-    body = "\n\n".join(_render_unit(u) for u in units)
-    return f"{header}\n{body}"
+    """The summarizer prompt: the caller's resolved *prompt_text* with ``${label}`` and ``${turns}``
+    (the *units* being replaced, oldest first) substituted. Nothing is read from disk."""
+    turns = "\n\n".join(_render_unit(u, tool_result_cap) for u in units)
+    return Template(prompt_text).safe_substitute(label=label, turns=turns)
 
 
 def _is_compacted_summary_unit(unit: Sequence[ChatMessage]) -> bool:
@@ -85,6 +80,7 @@ def _is_compacted_summary_unit(unit: Sequence[ChatMessage]) -> bool:
 
 
 def _projected_prompt(
+    prompt_text: str,
     label: str,
     summaries: Sequence[Sequence[ChatMessage]],
     unit: Sequence[ChatMessage],
@@ -95,7 +91,7 @@ def _projected_prompt(
     batch = [*summaries, list(unit)]
 
     def _fits(cap: int) -> tuple[str, int] | None:
-        prompt = _summarization_message(label, batch, tool_result_cap=cap)
+        prompt = _summarization_message(prompt_text, label, batch, tool_result_cap=cap)
         estimated = _ports.estimate_tokens(prompt)
         return (prompt, estimated) if estimated <= input_budget_tokens else None
 
@@ -114,6 +110,7 @@ def _projected_prompt(
 
 
 def _bounded_summary_batch(
+    prompt_text: str,
     label: str,
     units: Sequence[Sequence[ChatMessage]],
     input_budget_tokens: int,
@@ -126,7 +123,7 @@ def _bounded_summary_batch(
     estimated = 0
     for unit in units:
         candidate = [*selected, list(unit)]
-        candidate_prompt = _summarization_message(label, candidate)
+        candidate_prompt = _summarization_message(prompt_text, label, candidate)
         candidate_estimated = _ports.estimate_tokens(candidate_prompt)
         if candidate_estimated <= input_budget_tokens:
             selected, prompt, estimated = candidate, candidate_prompt, candidate_estimated
@@ -134,7 +131,7 @@ def _bounded_summary_batch(
         if not _is_compacted_summary_unit(unit) and all(
             _is_compacted_summary_unit(u) for u in selected
         ):
-            projected = _projected_prompt(label, selected, unit, input_budget_tokens)
+            projected = _projected_prompt(prompt_text, label, selected, unit, input_budget_tokens)
             if projected is not None:
                 selected, (prompt, estimated) = candidate, projected
         break
@@ -154,6 +151,8 @@ class CompactionResult:
     groups_summarized: int = 0
     summary_rounds: int = 0
     max_summary_prompt_estimated_tokens: int = 0
+    #: Hash of the prompt text the summarisation rounds were built from; ``""`` when none ran.
+    prompt_sha256: str = ""
     before_message_count: int = 0
     after_message_count: int = 0
     before_estimated_tokens: int = 0
@@ -217,6 +216,7 @@ def _run_compaction_rounds(
     preserved_suffix: Sequence[ChatMessage],
     budget: int,
     keep_latest_unit: bool,
+    prompt_text: str,
     display_label: str,
     summary_input_budget: int,
     agent_id: str,
@@ -255,6 +255,7 @@ def _run_compaction_rounds(
             )
 
         batch, prompt, prompt_estimated = _bounded_summary_batch(
+            prompt_text,
             display_label,
             plan.to_summarize,
             summary_input_budget,
@@ -265,7 +266,7 @@ def _run_compaction_rounds(
                 plan.to_summarize[0],
             )
             required = _ports.estimate_tokens(
-                _summarization_message(display_label, [blocking], tool_result_cap=0)
+                _summarization_message(prompt_text, display_label, [blocking], tool_result_cap=0)
             )
             return _RoundOutcome(
                 ok=False,
@@ -368,6 +369,8 @@ def _plan_and_apply_compaction(
     budget: int,
     summary_input_budget: int,
     turn_timeout: int,
+    prompt_text: str,
+    prompt_sha256: str,
     display_label: str,
     agent_id: str,
     summary_session_key: str,
@@ -418,6 +421,7 @@ def _plan_and_apply_compaction(
         preserved_suffix=preserved_suffix,
         budget=budget,
         keep_latest_unit=keep_latest_unit,
+        prompt_text=prompt_text,
         display_label=display_label,
         summary_input_budget=summary_input_budget,
         agent_id=agent_id,
@@ -431,6 +435,7 @@ def _plan_and_apply_compaction(
             groups_summarized=round_result.groups_summarized,
             summary_rounds=round_result.rounds,
             max_summary_prompt_estimated_tokens=round_result.max_prompt_estimated,
+            prompt_sha256=prompt_sha256,
             before_message_count=before_count,
             after_message_count=before_count,
             before_estimated_tokens=before_estimated,
@@ -454,6 +459,7 @@ def _plan_and_apply_compaction(
         groups_summarized=round_result.groups_summarized,
         summary_rounds=round_result.rounds,
         max_summary_prompt_estimated_tokens=round_result.max_prompt_estimated,
+        prompt_sha256=prompt_sha256,
         before_message_count=before_count,
         after_message_count=len(final_messages),
         before_estimated_tokens=before_estimated,
@@ -468,6 +474,8 @@ def compact_session(
     role: str,
     agent_id: str,
     summarizer: SessionSummaryRunner,
+    prompt_text: str,
+    prompt_sha256: str,
     summarizer_session_key: str | None = None,
     budget_tokens: int | None = None,
     summary_input_budget_tokens: int | None = None,
@@ -495,6 +503,12 @@ def compact_session(
             error="nested session compaction is not allowed",
             failure_kind="invalid_output",
         )
+    if "turns" not in Template(prompt_text).get_identifiers():
+        return CompactionResult(
+            ok=False,
+            error="compaction prompt does not place ${turns}; nothing would be summarized",
+            failure_kind="invalid_output",
+        )
 
     role_budget = _context.budget_for_role(role, project=project)
     budget = budget_tokens if budget_tokens is not None else role_budget
@@ -520,6 +534,8 @@ def compact_session(
             budget=budget,
             summary_input_budget=summary_input_budget,
             turn_timeout=turn_timeout,
+            prompt_text=prompt_text,
+            prompt_sha256=prompt_sha256,
             display_label=display_label,
             agent_id=agent_id,
             summary_session_key=summary_session_key,

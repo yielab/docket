@@ -36,7 +36,8 @@
       "enum": [
         "identity",
         "task",
-        "hop"
+        "hop",
+        "compaction"
       ],
       "title": "Layer",
       "type": "string"

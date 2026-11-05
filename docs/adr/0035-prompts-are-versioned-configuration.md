@@ -91,7 +91,7 @@ Read at `52c22f89`; every locator is a symbol or a line, re-locate with `rg -n` 
 
 1. **One authored form per kind, and a `prompt` kind.** A prompt is a file with YAML front matter
    and a Markdown body (the shape of `SKILL.md`, Prompty, dotprompt): `kind: prompt`, `name`,
-   `version` (semver), `layer: identity|task|hop`, `for: <role>`, `modelClass:
+   `version` (semver), `layer: identity|task|hop|compaction`, `for: <role>`, `modelClass:
    cheap|strong|any`, `inputs` (declared variables with a type; an undeclared `${var}` is a load
    error), `output` (a schema name such as `handoff/v1`), `tests` (a sibling file). Static text is
    the body; dynamic text is a declared slot. The kind joins the envelope table in
