@@ -29,8 +29,8 @@ from docket.teams import pod_provisioning as _pp
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import services as _services
 from docket.teams.apply import model as _model
-from docket.teams.apply import needs as _needs
 from docket.teams.apply import plan as _pod_apply
+from docket.teams.apply import search_probe as _probe
 
 SUBJECT = "docket.teams.apply.needs"
 
@@ -41,7 +41,7 @@ FETCH_NOT_READY = "needs fetch-hosts: the researchers cannot read the web -> doc
 SEARCH_FIX = "docket setup search searxng --pod demo"
 SEARCH_NOT_READY = (
     "needs search-host: no search service: SearXNG is free and runs in Docker, or use a Brave "
-    f"Search API key (see the recipe README) -> {SEARCH_FIX}"
+    f"Search API key (docket setup search brave --pod demo) -> {SEARCH_FIX}"
 )
 SEARCH_NOT_ANSWERING = f"needs search-host: the search service 'search' does not answer at http://127.0.0.1:8888 -> {SEARCH_FIX}"
 ISOLATION_OFF = "needs isolation: PDFs, and the web on a folder team, are not read: isolation is off -> docket setup sandbox on"
@@ -85,12 +85,12 @@ def _search_only_recipe(tmp_path: Path) -> Path:
 @pytest.fixture(autouse=True)
 def _port_8888_is_not_the_tests(monkeypatch: pytest.MonkeyPatch) -> None:
     """The shipped service names this machine's port 8888: no test asks it. A stub answers for itself."""
-    real = _needs.service_answers
+    real = _probe.service_answers
 
     def guarded(config: ServiceConfig) -> bool:
         return False if config.baseUrl == "http://127.0.0.1:8888" else real(config)
 
-    monkeypatch.setattr(_needs, "service_answers", guarded)
+    monkeypatch.setattr(_probe, "service_answers", guarded)
 
 
 @pytest.fixture
@@ -152,7 +152,7 @@ def test_everything_ready_after_hosts_isolation_and_an_answering_search_service(
 
         assert _needs_lines(result.output) == [
             "needs fetch-hosts: ready (1 host)",
-            "needs search-host: ready",
+            f"needs search-host: ready (custom at {base.removeprefix('http://')})",
             "needs isolation: ready",
         ]
         assert seen and {(r["method"], r["path"]) for r in seen} == {("GET", "/")}
@@ -235,7 +235,9 @@ def test_a_service_that_answers_with_an_error_status_still_answers(
 
         result = _pod_cli("update", str(_search_only_recipe(tmp_path)), "--pod", "demo")
 
-        assert _needs_lines(result.output) == ["needs search-host: ready"]
+        assert _needs_lines(result.output) == [
+            f"needs search-host: ready (custom at {base.removeprefix('http://')})"
+        ]
 
 
 def test_a_service_with_a_search_operation_but_another_name_is_not_the_search(
@@ -265,7 +267,9 @@ def test_the_operators_service_named_search_counts_when_it_answers(
 
         result = _pod_cli("update", str(_search_only_recipe(tmp_path)), "--pod", "demo")
 
-        assert _needs_lines(result.output) == ["needs search-host: ready"]
+        assert _needs_lines(result.output) == [
+            f"needs search-host: ready (custom at {base.removeprefix('http://')})"
+        ]
 
 
 def test_a_recipe_without_needs_prints_no_block(tmp_path: Path, no_backend: None) -> None:
@@ -438,7 +442,7 @@ def test_needs_is_recorded_not_settable(tmp_path: Path) -> None:
 def test_the_recipe_applies_its_service_and_leaves_the_searxng_asset_alone(
     tmp_path: Path, no_backend: None
 ) -> None:
-    """`init --recipe` copies `services/search.yaml` into the pod and writes nothing for `searxng/`."""
+    """`init --recipe` copies `services/search.yaml` into the pod and writes nothing for `searxng/` or `brave/`."""
     code, output = _init_web_research(tmp_path)
     assert code == 0, output
     overlay = current_home().pod_config_dir("demo")
@@ -447,9 +451,11 @@ def test_the_recipe_applies_its_service_and_leaves_the_searxng_asset_alone(
     assert (overlay / "services" / "search.yaml").read_bytes() == (
         shipped / "services" / "search.yaml"
     ).read_bytes()
-    assert not (overlay / "searxng").exists()
+    assert not (overlay / "searxng").exists() and not (overlay / "brave").exists()
+    assert sorted(p.name for p in (overlay / "services").iterdir()) == ["search.yaml"]
     assert list(overlay.rglob("settings.yml")) == []
     assert (shipped / "searxng" / "settings.yml").is_file()
+    assert (shipped / "brave" / "services" / "search.yaml").is_file()
     again = _pod_cli("update", "web-research", "--pod", "demo")
     assert again.exit_code == 0, again.output
 

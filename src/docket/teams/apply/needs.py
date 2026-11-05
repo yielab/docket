@@ -11,9 +11,8 @@ from typing import Any
 from docket.teams import fleet as _fleet
 from docket.teams import network_posture as _network_posture
 from docket.teams import pod_settings as _pod_settings
-from docket.teams import services as _services
+from docket.teams.apply import search_state as _search_state
 from docket.teams.apply.model import PodApplyError
-from docket.teams.apply.search_probe import search_service, service_answers
 
 FETCH_HOSTS = "fetch-hosts"
 SEARCH_HOST = "search-host"
@@ -85,28 +84,8 @@ def _fetch_line(reach: _network_posture.FetchReach) -> NeedLine:
     )
 
 
-def _search_line(project: str) -> NeedLine:
-    command = f"docket setup search searxng --pod {project}"
-    config = search_service(project)
-    if config is None:
-        return NeedLine(
-            SEARCH_HOST,
-            SEARCH_HOST,
-            False,
-            "no search service: SearXNG is free and runs in Docker, or use a Brave Search API key "
-            "(see the recipe README)",
-            command,
-        )
-    if service_answers(config):
-        return NeedLine(SEARCH_HOST, SEARCH_HOST, True, "ready")
-    fix = command if config.baseUrl == _services.SEARXNG_URL else "docket setup service list"
-    return NeedLine(
-        SEARCH_HOST,
-        SEARCH_HOST,
-        False,
-        f"the search service '{config.name}' does not answer at {config.baseUrl}",
-        fix,
-    )
+def _search_line(state: _search_state.SearchState) -> NeedLine:
+    return NeedLine(SEARCH_HOST, SEARCH_HOST, state.ready, state.need_text(), state.fix)
 
 
 def _isolation_line() -> NeedLine:
@@ -122,12 +101,15 @@ def _isolation_line() -> NeedLine:
     )
 
 
-def readiness(project: str, needs: tuple[str, ...]) -> tuple[NeedLine, ...]:
-    """One line per name in *needs*, in the order given, for pod *project* as it is now."""
+def readiness(
+    project: str, needs: tuple[str, ...], search: _search_state.SearchState | None = None
+) -> tuple[NeedLine, ...]:
+    """One line per name in *needs*, in the order given, for pod *project* as it is now. *search*
+    is the state the caller already computed, so one report probes the search service once."""
     reach = _network_posture.fetch_reach(project)
     builders = {
         FETCH_HOSTS: lambda: _fetch_line(reach),
-        SEARCH_HOST: lambda: _search_line(project),
+        SEARCH_HOST: lambda: _search_line(search or _search_state.search_state(project)),
         ISOLATION: _isolation_line,
     }
     return tuple(builders[need]() for need in needs)

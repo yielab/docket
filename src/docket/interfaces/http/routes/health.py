@@ -42,6 +42,7 @@ FEATURES: tuple[str, ...] = (
     "memoryStatus",
     "memoryDecide",
     "webRead",
+    "search",
 )
 
 

@@ -92,6 +92,7 @@ class TestBuildStatus:
             "memoryStatus",
             "memoryDecide",
             "webRead",
+            "search",
         ]
 
     def test_channels_from_acl(self, fake_home: Path) -> None:

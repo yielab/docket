@@ -358,6 +358,39 @@ def test_the_web_read_answer_is_the_recorded_fixture(server: str, tmp_path: Path
     assert actual == recorded
 
 
+def _search_directory(root: Path, name: str, source: Path) -> Path:
+    """A directory whose only file is the recipe's *source* as `services/search.yaml`."""
+    return _directory(root, name, {"services/search.yaml": source.read_text(encoding="utf-8")})
+
+
+def test_the_search_answers_are_the_recorded_fixture_and_tack_switches_provider_by_apply(
+    server: str, tmp_path: Path
+) -> None:
+    _folder_pod(server)
+    recipe = _templates.RECIPES_DIR / "web-research"
+    brave = _search_directory(tmp_path, "brave", recipe / "brave" / "services" / "search.yaml")
+    searxng = _search_directory(tmp_path, "searxng", recipe / "services" / "search.yaml")
+    assert "search" in _get(f"{server}/status.json")[1]["features"]
+    none = _get(f"{server}/pods/research")[1]["search"]
+
+    status, applied = _post(f"{server}/pods/research/apply", {"directory": str(brave)})
+    assert status == 200, applied
+    on_brave = _get(f"{server}/pods/research")[1]
+    status, applied = _post(f"{server}/pods/research/apply", {"directory": str(searxng)})
+    assert status == 200, applied
+    on_searxng = _get(f"{server}/pods/research")[1]["search"]
+
+    assert on_searxng["provider"] == "searxng"
+    assert on_brave["search"]["provider"] == "brave" and on_brave["search"]["ready"] is False
+    assert "${secret" not in json.dumps(on_brave)
+    actual = {"none": none, "brave": on_brave["search"]}
+    if record := os.environ.get("OPERATOR_RECORD_DIR"):
+        Path(record, "pod-search.json").write_text(json.dumps(actual, indent=2) + "\n", "utf-8")
+        return
+    recorded = json.loads((_FIXTURES / "pod-search.json").read_text(encoding="utf-8"))
+    assert actual == recorded
+
+
 @pytest.mark.parametrize("jail_probes", [{"landlock": False, "seatbelt": False, "docker": False}])
 def test_network_is_not_enforced_without_a_backend(server: str) -> None:
     _folder_pod(server)

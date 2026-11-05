@@ -337,6 +337,24 @@
       "reason": "reads docs.python.org",
       "fix": ""
     },
+    "search": {
+      "provider": "none",
+      "ready": false,
+      "reason": "no search service: SearXNG is free and runs in Docker, or use a Brave Search API key (docket setup search brave --pod research)",
+      "fix": "docket setup search searxng --pod research",
+      "options": [
+        {
+          "provider": "searxng",
+          "command": "docket setup search searxng --pod research",
+          "secret": ""
+        },
+        {
+          "provider": "brave",
+          "command": "docket setup search brave --pod research",
+          "secret": "brave-search"
+        }
+      ]
+    },
     "needs": [
       {
         "kind": "fetch-hosts",

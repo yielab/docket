@@ -960,6 +960,18 @@ the one docker run line; docket never starts or supervises the container. Runnin
 changes nothing.
 Example: docket setup search searxng --pod research
 
+### setup search brave
+
+**Usage:** `docket setup search brave`
+
+Set a pod up to search through the Brave Search API; the key comes from a hidden prompt or --stdin.
+
+Stores the key as the secret brave-search and writes the pod's services/search.yaml for Brave,
+replacing a SearXNG one. The key is never an argument and never leaves this machine except in
+the header of a search call; docket makes no call to Brave here. Brave's terms govern what
+may be kept of its results (see the web-research recipe README).
+Example: printf '%s' "$BRAVE_KEY" | docket setup search brave --stdin --pod research
+
 
 ---
 

@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 4.10.0
+**Version**: 4.11.0
 **Status**: Implemented
 **Last Updated**: 2026-11-05
 
@@ -528,20 +528,28 @@ overlay, policies, members, pipeline binding, settings) into one command.
       <fix>` where `<fix>` is `fetch_reach`'s: `docket pod set fetchDomains <host> --pod <pod>` on a
       repository pod, `docket setup sandbox on` (or `docket setup sandbox backend docker`) on a
       folder pod whose jail is not running;
-    - `needs search-host: ready`, else, when no search service is declared, `needs search-host: no
-      search service: SearXNG is free and runs in Docker, or use a Brave Search API key (see the
-      recipe README) -> docket setup search searxng --pod <pod>`; the line names one command, and
-      the Brave option is text only.
+    - `needs search-host: ready (<provider>)`, else, when no search service is declared, `needs
+      search-host: no search service: SearXNG is free and runs in Docker, or use a Brave Search API
+      key (docket setup search brave --pod <pod>) -> docket setup search searxng --pod <pod>`; the
+      `->` names the one command that meets the need and the Brave command is named in the text.
       A search service is a declared `kind: service` (the pod's own, which wins, or the
       operator's) named `search`; the reach of `fetch` never satisfies the need, so a pod under
-      open read without that service is not satisfied. A declared service is satisfied only when its
-      base URL answers: docket sends one `GET` of it through the service call
-      (`platform/service_http.py`, 2 seconds, no credential) and any HTTP status counts as an
-      answer; a refusal, a timeout or a refused connection does not, and the line is then
-      `needs search-host: the search service 'search' does not answer at <baseUrl> -> <fix>`
-      where `<fix>` is `docket setup search searxng --pod <pod>` for the base URL that command
-      writes (it prints the one `docker run` line again) and `docket setup service list` for any
-      other. The probe is informational: it never fails an apply or writes anything;
+      open read without that service is not satisfied. The provider is read from its base URL by one
+      function (`teams/apply/search_state.py`, which the pod report's `search` also uses): `searxng`
+      for `http://127.0.0.1:8888`, `brave` for `https://api.search.brave.com/res/v1/web`, `custom`
+      for any other. A SearXNG or custom service is satisfied only when its base URL answers:
+      docket sends one `GET` of it through the service call (`platform/service_http.py`, 2 seconds,
+      no credential) and any HTTP status counts as an answer; a refusal, a timeout or a refused
+      connection does not, and the line is then `needs search-host: the search service 'search' does
+      not answer at <baseUrl> -> <fix>` where `<fix>` is `docket setup search searxng --pod <pod>`
+      for the base URL that command writes (it prints the one `docker run` line again) and `docket
+      setup service list` for any other; when it answers the line is `ready (searxng at
+      <host:port>)` or `ready (custom at <host:port>)`. A `brave` service is satisfied only when
+      every secret its `auth` value references resolves (`teams/services.py` `resolve_auth`); docket
+      sends nothing to Brave to decide it, because a probe would spend the operator's quota, and
+      the line is `ready (brave)`. Otherwise it is `needs search-host: the Brave Search key is not
+      stored: no secret named '<name>' -> docket setup secret set <name> --stdin`. The probe is
+      informational: it never fails an apply or writes anything;
     - `needs isolation: ready`, else, when isolation is not recorded on, `needs isolation: PDFs, and
       the web on a folder team, are not read: isolation is off -> docket setup sandbox on`, and when
       it is on but this machine has no sandbox backend, `needs isolation: PDFs, and the web on a
@@ -571,7 +579,14 @@ overlay, policies, members, pipeline binding, settings) into one command.
     with `fetch`; and `searxng/settings.yml`, an asset that `apply` does not write (only the
     directories requirement 1 names are read; the lock digests the whole directory). One
     service named `search` per pod: a later search provider replaces the same file. `docket setup
-    search searxng` (cli-interface.spec.md) writes both and starts nothing.
+    search searxng` (cli-interface.spec.md) writes both and starts nothing. **Brave Search is the
+    optional provider.** The recipe also carries `brave/services/search.yaml`, an asset that `apply` does not
+    write: a `kind: service` named `search` on `https://api.search.brave.com/res/v1/web`, `hosts:
+    [api.search.brave.com]`, `auth: {header: X-Subscription-Token, value: ${secret:brave-search}}`
+    and one `GET /search` operation (`q`, `count`; access `read`). `docket setup search brave`
+    stores the key and writes that document as the pod's `services/search.yaml`, replacing the
+    SearXNG one. A plan of record switches provider by applying a directory whose
+    `services/search.yaml` is the chosen one; the key is never in a directory and never over HTTP.
 
 ### Pod manifests: export
 

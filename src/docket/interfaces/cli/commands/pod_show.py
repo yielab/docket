@@ -41,6 +41,8 @@ def render_pod(report: dict[str, Any]) -> None:
     _kv("Network:", network_text(report["network"]))
     web = report["webRead"]
     _kv("Web:", f"{web['reason']} -> {web['fix']}" if web["fix"] else web["reason"])
+    search = report["search"]
+    _kv("Search:", f"{search['reason']} -> {search['fix']}" if search["fix"] else search["reason"])
     if report["configSource"]:
         drift = report["drift"] or "unknown"
         _kv(

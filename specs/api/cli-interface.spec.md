@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.15.0
+**Version**: 5.16.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-11-05
@@ -885,8 +885,9 @@ document (`service-client.spec.md`); this registers and lists them, it makes no 
 **`setup search`**
 **Purpose**: Give a pod a web search it declares as a service, so its researchers search with a tool and
 read the pages they pick with `fetch` (`pod-blueprints.spec.md` requirement 16)
-**Syntax**: `docket setup search searxng [--pod <pod>]` (a real sub-app of `setup`; the pod is `--pod`,
-then `DOCKET_POD`, then the registered codebase containing the current directory)
+**Syntax**: `docket setup search <searxng|brave> [--pod <pod>] [--stdin]` (a real sub-app of `setup`; the
+pod is `--pod`, then `DOCKET_POD`, then the registered codebase containing the current directory;
+`--stdin` belongs to `brave` alone)
 **Subcommands**:
 - `searxng`: Write SearXNG's `settings.yml` (JSON on, limiter off, loopback only; a random
   `secret_key`) to `<home>/config/searxng/settings.yml` and the shipped `search.yaml` service document
@@ -897,7 +898,18 @@ then `DOCKET_POD`, then the registered codebase containing the current directory
   reported unchanged, and the `docker run` line is printed each time. It exits 1 writing nothing when
   no pod can be chosen, the pod does not exist or an operator service named `search` exists (a pod service never
   shadows an operator's)
-**Return**: 0 on success, 1 on a refused pod or name
+- `brave`: Read the Brave Search API key from a hidden prompt on a terminal or from standard input
+  with `--stdin`, never from an argument (a second positional is a usage error, exit 2, as for
+  `setup secret set`), store it as the secret `brave-search` (the `setup secret set` writer, so the
+  keyring backend applies) and write the recipe's `brave/services/search.yaml` (`kind: service`, name
+  `search`, `https://api.search.brave.com/res/v1/web`, `auth` header `X-Subscription-Token` with
+  `${secret:brave-search}`) as the pod's own `services/search.yaml`, replacing a SearXNG document
+  (one service named `search` per pod). It makes no network call to Brave and prints the key
+  nowhere; the audit entry `search.setup` names the pod and the provider only. An empty value, no
+  terminal without `--stdin`, no pod, an unknown pod or an operator service named `search` exit 1
+  before the secret is stored. Running it again with the same key reports the document unchanged.
+  `docket setup search searxng` after it replaces the document again and keeps the stored key
+**Return**: 0 on success, 1 on a refused pod, name or value, 2 on a usage error
 
 #### docket start
 **Purpose**: Start the background service — refresh fleet status, serve the local HTTP API and

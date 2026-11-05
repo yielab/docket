@@ -1,8 +1,8 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.29.0
+**Version**: 7.30.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-05
 
 ## Purpose
 
@@ -447,6 +447,24 @@ and `fix` is the one command that opens the web when `mode` is `none` (`docket s
 `docket setup sandbox backend docker` for a folder pod whose jail is not running, `docket pod set
 fetchDomains <host> --pod <pod>` for a repository pod); `""` otherwise. A client quotes `reason` and
 `fix` instead of spelling docket's commands. A client probes for it with the `webRead` feature.
+The same object carries `search`, the pod's web search, from the one function that decides it
+(`teams/apply/search_state.py`, also the source of the `search-host` need line): `{"provider":
+"searxng" | "brave" | "custom" | "none", "ready": boolean, "reason": string, "fix": string,
+"options": [{"provider": string, "command": string, "secret": string}]}`. `provider` is read from
+the service named `search` the pod resolves (its own, else the operator's): `searxng` for the base
+URL `docket setup search searxng` writes, `brave` for the Brave Search API's, `custom` for any other
+and `none` when no such service is declared. `ready` is, for `searxng` and `custom`, one `GET` of
+the base URL answering within two seconds (any HTTP status; the probe `search-host` uses) and, for
+`brave`, only that every secret its `auth` value references is stored (`resolve_auth`): docket
+makes no call to Brave to answer it, so the report never spends the operator's quota. `reason` is
+one sentence and `fix` the one command that makes `ready` true (`""` when it is). `options` lists
+every provider docket can set up, each with the command that sets it up on this machine and the
+name of the stored secret it needs (`""` for none). The key never travels over this API: a Brave
+service whose secret is missing reports the `fix` `docket setup secret set brave-search --stdin`,
+to be run on the machine, and no response, trace or audit line holds the value. A client sets the
+provider by applying a directory whose `services/search.yaml` is the chosen one (`POST
+/pods/<p>/apply` replaces a pod's service file by bytes); one service named `search` exists at a
+time. A client probes for it with the `search` feature.
 
 Every row of `GET /pods` and the `GET /pods/<p>` object also carry `paused` (boolean, always
 present). A pod is paused while its Lead's meta holds `paused: true`, which a spent budget sets

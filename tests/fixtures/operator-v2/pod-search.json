@@ -1,0 +1,38 @@
+{
+  "none": {
+    "provider": "none",
+    "ready": false,
+    "reason": "no search service: SearXNG is free and runs in Docker, or use a Brave Search API key (docket setup search brave --pod research)",
+    "fix": "docket setup search searxng --pod research",
+    "options": [
+      {
+        "provider": "searxng",
+        "command": "docket setup search searxng --pod research",
+        "secret": ""
+      },
+      {
+        "provider": "brave",
+        "command": "docket setup search brave --pod research",
+        "secret": "brave-search"
+      }
+    ]
+  },
+  "brave": {
+    "provider": "brave",
+    "ready": false,
+    "reason": "the Brave Search key is not stored: no secret named 'brave-search'",
+    "fix": "docket setup secret set brave-search --stdin",
+    "options": [
+      {
+        "provider": "searxng",
+        "command": "docket setup search searxng --pod research",
+        "secret": ""
+      },
+      {
+        "provider": "brave",
+        "command": "docket setup search brave --pod research",
+        "secret": "brave-search"
+      }
+    ]
+  }
+}

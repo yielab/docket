@@ -1483,7 +1483,7 @@ it declares, and there are two ways to have one:
 | --- | --- | --- |
 | Cost | free | an API key |
 | Runs | in Docker on this machine, `127.0.0.1:8888` | at the provider |
-| Set up | `docket setup search searxng` | planned; until then add the service by hand with `docket setup service add` and a stored secret |
+| Set up | `docket setup search searxng` | `docket setup search brave` (the key from a hidden prompt or `--stdin`) |
 
 The recipe ships the SearXNG service, so `docket init --recipe web-research` and `docket pod update
 web-research` already declare it in the pod (`services/search.yaml`). One command writes the
@@ -1503,6 +1503,50 @@ listens on the loopback only. One service named `search` per pod: a different pr
 
 Limits: SearXNG forwards the query to public engines, which can throttle heavy use; a burst of
 queries or a week of use has not been measured.
+
+#### Brave Search API (optional)
+
+```bash
+printf '%s' "$BRAVE_KEY" | docket setup search brave --stdin   # for the pod of the current directory; --pod NAME for another
+docket pod show                        # needs search-host: ready (brave)
+```
+
+The command reads the key from a hidden prompt on a terminal or from `--stdin`, never from an
+argument, stores it as the secret `brave-search` and writes `brave/services/search.yaml` as the
+pod's `services/search.yaml`, replacing the SearXNG document: one service named `search` per
+pod, so the pipeline does not change. The header `X-Subscription-Token` carries
+`${secret:brave-search}`; the document holds the reference, never the key. The key never travels
+over docket's HTTP API: a plan of record (Tack) sees the provider in the pod report (`search`) and
+switches it by applying a directory whose `services/search.yaml` is the one it wants, and for
+Brave the report's `fix` is the command to run on the machine (`docket setup secret set
+brave-search --stdin`). `search-host` counts Brave as ready when that secret is stored; docket
+makes no call to Brave to find out, because a probe would spend the key's quota. Switch back with
+`docket setup search searxng`, which keeps the stored key.
+
+**Brave's terms: what was verified and what was not (read 2026-11-05).** The pages were read with
+a fetch tool that summarises them, so the quotes below are the tool's, each under 125
+characters, not a copy of the page.
+
+- Verified: the API terms (api-dashboard.search.brave.com/terms-of-service) are headed "Last
+  updated: 1 Sep, 2026". Section 3(b)(i) lists, among what the customer may not do: "store, cache,
+  or create a database of Search Results, in whole or in part, other than transient storage".
+  Section 3(b)(xiii) lists using the Search Results "to create, evaluate, train, re-train,
+  fine-tune, benchmark or otherwise improve" AI models or services. Section 13(c)(ii) requires
+  destroying Search Results on termination "(except as otherwise provided in an Order Form)".
+- Verified: brave.com/search/api answers whether results may be stored with "Yes, with a plan that
+  includes storage rights.", and links no API-specific terms of its own.
+- Not verified: which plans include storage rights (the pricing documentation page rendered
+  without its plan details), and the exact wording of the transient-storage allowance, which the
+  tool paraphrased. The page's prices and free credit read differently in different sections, so
+  none is repeated here: read brave.com/search/api before you subscribe.
+- Not decided by anyone: whether docket's use fits "transient storage". docket keeps a tool
+  result after the turn that made it: it stays in the Researcher's session, so it is in the
+  context of the next turns, and it is written to the task's trace until trace retention removes
+  it (an exporter you enabled at a privacy level that carries tool output would receive it too).
+  Under the terms as read, that is storage beyond a single turn unless your plan has storage
+  rights or an Order Form says otherwise. docket does not train or evaluate a model on results.
+  Read the terms and your plan before running a production research team on Brave. SearXNG
+  involves no Brave term; the public engines it queries have their own.
 
 ### Prerequisites
 
@@ -1556,6 +1600,8 @@ without writing.
   access `read`, on `http://127.0.0.1:8888`. Applied into the pod.
 - `searxng/settings.yml` - the settings the SearXNG container reads. Not applied: `docket setup
   search searxng` copies it under the home with a random `secret_key`.
+- `brave/services/search.yaml` - the same service for the Brave Search API (`q`, `count`; access
+  `read`). Not applied: `docket setup search brave` copies it into the pod.
 
 ### Undo
 
@@ -1565,4 +1611,5 @@ docket pod remove <project>-researcher
 docket pod remove <project>-analyst
 docket pod remove <project>-writer
 docker rm -f docket-searxng           # the container, if you started it
+docket setup secret remove brave-search   # the Brave key, if you stored one
 ```

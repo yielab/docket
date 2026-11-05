@@ -20,6 +20,8 @@ from docket.teams import mcp_servers as _mcp_servers
 # The pod's web search is the service with this name; the shipped one reaches a local SearXNG.
 SEARCH_SERVICE = "search"
 SEARXNG_URL = "http://127.0.0.1:8888"
+BRAVE_URL = "https://api.search.brave.com/res/v1/web"
+BRAVE_SECRET = "brave-search"
 
 
 class ServiceDocError(InvalidInput):

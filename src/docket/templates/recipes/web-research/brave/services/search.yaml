@@ -1,0 +1,18 @@
+kind: service
+name: search
+baseUrl: https://api.search.brave.com/res/v1/web
+hosts: [api.search.brave.com]
+auth:
+  header: X-Subscription-Token
+  value: ${secret:brave-search}
+operations:
+  - name: search
+    method: GET
+    path: /search
+    description: >-
+      Search the web with the Brave Search API. Pass q (the query) and count (how many results, a
+      handful is enough). The answer lists results with a title, a url and a description; it is not
+      the pages themselves, so read the pages you pick with fetch.
+    params:
+      - {name: q, in: query, type: string, required: true}
+      - {name: count, in: query, type: integer}

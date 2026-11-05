@@ -51,6 +51,7 @@ from docket.teams import settings as _settings
 from docket.teams.apply import lock as _lock
 from docket.teams.apply import needs as _needs
 from docket.teams.apply import review as _review
+from docket.teams.apply import search_state as _search_state
 from docket.teams.models import AgentKind, AgentMeta, WorkspaceKind
 from docket.teams.workspace import skills as _skills
 
@@ -425,6 +426,7 @@ def pod_report(project: str) -> dict[str, Any]:
     caller = caller_default()
     approval = _settings.pod_approval_mode(project, caller_default=caller)
     record = _config_of_record_report(settings, project)
+    search = _search_state.search_state(project)
     return {
         "pod": project,
         "blueprint": _blueprint(project),
@@ -438,7 +440,8 @@ def pod_report(project: str) -> dict[str, Any]:
         "network": _network_report(project),
         "fetchDomains": list(settings.fetch_domains),
         "webRead": _web_read(project),
-        "needs": [line.wire() for line in _pod_needs(project, settings)],
+        "search": search.wire(),
+        "needs": [line.wire() for line in _pod_needs(project, settings, search)],
         "delivers": _delivers(project),
         "methods": _methods(project, settings),
         "budget": _budget_fields(project, settings),
@@ -467,10 +470,13 @@ def _web_read(project: str) -> dict[str, str]:
     return {"mode": reach.mode, "reason": reach.reason, "fix": reach.fix}
 
 
-def _pod_needs(project: str, settings: _pod_settings.PodSettings) -> tuple[_needs.NeedLine, ...]:
-    """The pod's recorded needs, computed as the pod is now; a recorded name this build does not
-    know is left out."""
-    return _needs.readiness(project, tuple(n for n in settings.needs if n in _needs.NEEDS))
+def _pod_needs(
+    project: str, settings: _pod_settings.PodSettings, search: _search_state.SearchState
+) -> tuple[_needs.NeedLine, ...]:
+    """The pod's recorded needs, computed as the pod is now from the *search* state the report
+    already holds; a recorded name this build does not know is left out."""
+    names = tuple(n for n in settings.needs if n in _needs.NEEDS)
+    return _needs.readiness(project, names, search)
 
 
 def _delivers(project: str) -> list[str]:

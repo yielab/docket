@@ -31,14 +31,13 @@ def _checked_name(name: str) -> str:
     return name
 
 
-def _read_value(name: str, from_stdin: bool) -> str:
-    """The value from standard input or a hidden prompt, never from an argument."""
+def read_value(name: str, from_stdin: bool, command: str) -> str:
+    """The value from standard input or a hidden prompt, never from an argument; *command* is the
+    command line the no-terminal message tells the user to pipe into."""
     if from_stdin:
         return sys.stdin.read().strip()
     if not _contract.is_tty():
-        ui.error(
-            "No terminal to ask for the value", f"Pipe it: docket setup secret set {name} --stdin"
-        )
+        ui.error("No terminal to ask for the value", f"Pipe it: {command} --stdin")
         raise typer.Exit(1)
     try:
         given: str = typer.prompt(
@@ -68,7 +67,7 @@ def cmd_set(
         )
         raise typer.Exit(2)
     _checked_name(name)
-    value = _read_value(name, stdin)
+    value = read_value(name, stdin, f"docket setup secret set {name}")
     if not value:
         ui.error("Value cannot be empty")
         raise typer.Exit(1)

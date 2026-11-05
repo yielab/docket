@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import docket.kernel.templates as _templates
+from docket.governance import secrets as _secrets
 from docket.kernel.home import current_home
 from docket.platform import mkdir_private
 from docket.teams import services as _services
@@ -61,6 +62,16 @@ def _write_settings(path: Path) -> bool:
     path.write_text(template.replace(_KEY_PLACEHOLDER, secrets.token_hex(16)), encoding="utf-8")
     path.chmod(0o644)
     return True
+
+
+def setup_brave(project: str, key: str) -> ApplyAction:
+    """Store *key* as ``brave-search`` and write the Brave ``search.yaml`` into *project*'s
+    ``services/``; returns what happened to it. Raises ``PodApplyError``, storing nothing, for an
+    operator service or MCP server named ``search``. Makes no network call."""
+    items, writes = plan_services(_templates.RECIPES_DIR / RECIPE / "brave", project)
+    _secrets.store_secret(_services.BRAVE_SECRET, key)
+    write_services(project, tuple(writes))
+    return items[0].action
 
 
 def setup_searxng(project: str) -> SearxngSetup:
