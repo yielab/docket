@@ -170,6 +170,7 @@ from docket.agent.loop_types import AgentLoopResult, LoopConfig, StopReason
 from docket.agent.ports import (
     ChatBackend,
     ChatMessage,
+    ChatResponse,
     PromptComposition,
     TokenUsage,
     ToolSpec,
@@ -261,6 +262,10 @@ class _TurnState(TurnState):
     close_attempted: bool = False
     close_forced: bool = False
     close_reply: str = ""
+    # The provider refused the request in flight for its size once already (requirement 48a), and
+    # a refusal just learned from is to be sent again after a fresh fit.
+    overflow_refused: bool = False
+    refit_requested: bool = False
     budget: TurnBudget = field(init=False, repr=False)
     compaction: TurnCompaction = field(init=False, repr=False)
     steps: ToolStep = field(init=False, repr=False)
@@ -444,6 +449,7 @@ class _TurnState(TurnState):
         if self.cancellation_requested():
             return None, TokenUsage(), self.cancelled()
         forced = self.cfg.closing_tool if self.close_forced else None
+        was_forced = self.close_forced
         carried, self.close_forced, self.close_reply = self.close_reply, False, ""
         if forced:
             messages = _closing_messages(messages, carried, forced)
@@ -488,6 +494,13 @@ class _TurnState(TurnState):
             clock_stop = self.budget.clock_cut_stop(response, request_timeout)
             if clock_stop is not None:
                 return None, response.usage, clock_stop
+            if response.context_overflow:
+                overflow_stop = self.learn_from_overflow(response)
+                if overflow_stop is not None:
+                    return None, response.usage, overflow_stop
+                if self.refit_requested:  # the request goes again; its closing state is kept
+                    self.close_forced, self.close_reply = was_forced, carried
+                    return None, response.usage, None
             return (
                 None,
                 response.usage,
@@ -576,6 +589,20 @@ class _TurnState(TurnState):
             )
         return assistant_msg, response.usage, None
 
+    def learn_from_overflow(self, response: ChatResponse) -> AgentLoopResult | None:
+        """The turn's end when a request is refused for its size twice (requirement 48a), else
+        ``None``: a first refusal asks for a fresh fit and one more send (``refit_requested``)."""
+        if self.overflow_refused:
+            return self.done(
+                ok=False,
+                stop_reason="context_fit",
+                error=self.budget.repeated_overflow_error(response.overflow_input_tokens),
+                failure_kind="invalid_output",
+            )
+        if self.budget.learn_from_overflow(response.overflow_input_tokens):
+            self.overflow_refused = self.refit_requested = True
+        return None
+
     def closing_call_due(self, finalizing: bool) -> bool:
         """Whether a reply with no tool call is to be followed by the forced closing call: the
         profile forces it, the step's closing tool is offered, and it has not been forced yet."""
@@ -593,14 +620,21 @@ class _TurnState(TurnState):
         request_timeout, stop = self.budget.check_iteration_bounds()
         if stop is not None:
             return stop
-        messages, request_tools, finalizing, stop = self.prepare_request_or_finalize()
-        if stop is not None:
-            return stop
-        assistant_msg, response_usage, stop = self.call_backend_and_handle_response(
-            messages, request_tools, finalizing, request_timeout
-        )
-        if stop is not None:
-            return stop
+        self.overflow_refused = False
+        while True:
+            notice_sent = self.notice_sent
+            messages, request_tools, finalizing, stop = self.prepare_request_or_finalize()
+            if stop is not None:
+                return stop
+            assistant_msg, response_usage, stop = self.call_backend_and_handle_response(
+                messages, request_tools, finalizing, request_timeout
+            )
+            if stop is not None:
+                return stop
+            if not self.refit_requested:
+                break
+            self.refit_requested = False
+            self.notice_sent = notice_sent  # the refused request's notice never reached the model
         if assistant_msg is None:  # a reply that asked for no tool: the closing call follows
             return None
         return self.steps.dispatch_tool_batch(messages, assistant_msg, response_usage)

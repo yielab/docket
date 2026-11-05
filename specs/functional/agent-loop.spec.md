@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.17.0
+**Version**: 4.18.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 reduces a request that does not fit, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -455,6 +455,23 @@ This specification does NOT cover:
     truncated, empty, or tool-requesting summarizer instead **MUST** retain requirement 36's
     `compaction_failed` outcome and original failure kind, abort immediately, and never try another
     range. Already-durable history remains valid and no tool call/result unit is split.
+48a. When a provider refuses a **task** request because its prompt exceeds the provider's context
+    (`ChatResponse.context_overflow`, set by the adapter from the provider's own error body,
+    never from the estimate), the loop **MUST** learn from the refusal and send that request once
+    more. The learned scale is `overflow_input_tokens / raw_estimate` of the refused request when
+    the provider stated its count (`ChatResponse.overflow_input_tokens`), else
+    `(request room + 1) / raw_estimate` (the lower bound the refusal proves, the request room
+    being the registered window less the output reserve); it is never lower than the current scale,
+    and it replaces it (requirement 46a). When the turn has no `first_call_ratio` yet and the
+    provider stated its count, that ratio is recorded as the first call's. The loop **MUST** then
+    run the request fit again (compacting if the new estimate no longer fits, requirement 47) and
+    send the result; the new `request_fit` event carries the new estimate. A second overflow on the
+    same request **MUST** end the turn with `stop_reason="context_fit"`,
+    `failure_kind="invalid_output"` and an error naming the provider's count (or that it gave none)
+    and the registered window. The refusal is not a transient failure: requirement 110 does not
+    retry it, and this retry is the only one. A refusal that does not state the count, on a turn
+    whose window is unknown, teaches nothing and stays the `backend_error` stop of requirement 11.
+    The compaction summary request is not covered: its refusal stays `compaction_failed`.
 49. Every prospective completion **MUST** emit a privacy-safe `request_fit` trace event containing
     its purpose (`task` or `compaction`), status (`fits`, `failed`, or `unknown_window`), estimated
     input, output reserve, registered window (or null), and an explicit estimate marker. It **MUST

@@ -156,6 +156,57 @@ class TestFirstRequestCalibration:
         assert state.first_call_ratio is None
 
 
+class TestLearnFromOverflow:
+    """A provider's refusal teaches the scale, never lowers it, and seeds the first-call ratio."""
+
+    def test_the_providers_count_over_the_raw_estimate_is_the_new_scale(
+        self, make_turn_state: MakeState
+    ) -> None:
+        state = make_turn_state(context_window=32_768, output_reserve=4_096)
+        budget = TurnBudget(state)
+        budget.pending_raw_estimate = 28_000
+        assert budget.learn_from_overflow(40_267) is True
+        assert budget.calibration == 40_267 / 28_000
+        assert state.first_call_ratio == 40_267 / 28_000
+
+    def test_a_refusal_without_a_count_proves_the_request_room_was_exceeded(
+        self, make_turn_state: MakeState
+    ) -> None:
+        state = make_turn_state(context_window=32_768, output_reserve=4_096)
+        budget = TurnBudget(state)
+        budget.pending_raw_estimate = 20_000
+        assert budget.learn_from_overflow(None) is True
+        assert budget.calibration == (32_768 - 4_096 + 1) / 20_000
+        assert state.first_call_ratio is None
+
+    def test_the_scale_never_falls_below_the_current_one(self, make_turn_state: MakeState) -> None:
+        budget = TurnBudget(make_turn_state(context_window=32_768, output_reserve=4_096))
+        budget.pending_raw_estimate = 1_000
+        budget.calibrate(3_000)
+        assert budget.learn_from_overflow(2_000) is True
+        assert budget.calibration == 3.0
+
+    def test_a_measured_first_call_ratio_is_kept(self, make_turn_state: MakeState) -> None:
+        state = make_turn_state(context_window=32_768, output_reserve=4_096, first_call_ratio=1.2)
+        budget = TurnBudget(state)
+        budget.pending_raw_estimate = 10_000
+        budget.learn_from_overflow(20_000)
+        assert state.first_call_ratio == 1.2
+
+    def test_with_no_count_and_no_window_nothing_is_learned(
+        self, make_turn_state: MakeState
+    ) -> None:
+        budget = TurnBudget(make_turn_state(context_window=None))
+        budget.pending_raw_estimate = 10_000
+        assert budget.learn_from_overflow(None) is False
+        assert budget.calibration == 1.0
+
+    def test_a_request_never_estimated_teaches_nothing(self, make_turn_state: MakeState) -> None:
+        budget = TurnBudget(make_turn_state(context_window=32_768))
+        assert budget.learn_from_overflow(40_000) is False
+        assert budget.calibration == 1.0
+
+
 class TestCheckIterationBounds:
     """Rounds, wall clock, tool calls and spent tokens select the landing; cancellation stops."""
 

@@ -159,6 +159,38 @@ class TurnBudget:
                 self.state.first_call_ratio = ratio
             self.calibration = max(1.0, ratio)
 
+    def learn_from_overflow(self, overflow_input_tokens: int | None) -> bool:
+        """Scale later estimates by the provider's count over the latest raw estimate, else the
+        request room plus one over it, never lowering the scale; ``False`` when that teaches nothing."""
+        # The count also seeds first_call_ratio; with no count and no window nothing is proven.
+        raw = self.pending_raw_estimate
+        if raw <= 0:
+            return False
+        if overflow_input_tokens is not None and overflow_input_tokens > 0:
+            ratio = overflow_input_tokens / raw
+            if self.state.first_call_ratio is None:
+                self.state.first_call_ratio = ratio
+        elif self.state.context_window is not None:
+            ratio = (self.request_room() + 1) / raw
+        else:
+            return False
+        self.calibration = max(self.calibration, ratio)
+        return True
+
+    def repeated_overflow_error(self, overflow_input_tokens: int | None) -> str:
+        """The error of a request the provider refused for its size a second time."""
+        window = self.state.context_window
+        count = (
+            f"its prompt was {overflow_input_tokens} tokens"
+            if overflow_input_tokens
+            else "it stated no count"
+        )
+        return (
+            "context fit: the provider refused the request again after the estimate was "
+            f"recalibrated from its first refusal; {count}, against a registered context window "
+            f"of {window if window is not None else 'unknown'}"
+        )
+
     def reserve_within_budget(self, estimated_input: int, remaining: int) -> int:
         """A known cap cut to what the budget leaves after the input (requirement 46); the
         default reserve of an unknown cap is left alone."""
