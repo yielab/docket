@@ -733,23 +733,27 @@ from `main`.
   `specs/functional/agent-lifecycle.spec.md` and `specs/test-framework.md`; `docs/recipes.md` does not mention
   `shape`; the word "adapters" in the `_execution.py` docstring and ADR 0006.
 
-**Phase 66 (2026-11-05).** Left out of the cards on purpose, or found by the real run (`internal-docs/baselines/phase-66/real-run.md`):
-- *A first call on token-dense data is under-estimated.* Random words and digits (~2.7 bytes per token) put the first
-  estimate 1.4x low and llama.cpp answered HTTP 400; the ratio is learned only after a call succeeds. Trigger: a live hop
-  that fails its first call on hashes, digits or non-Latin text; then read the provider's own count from the overflow
-  error and retry once.
-- *The replay bench cannot show this phase.* The measured tables read recorded usage and are identical before and after;
-  the `--policy` re-projections through `condense_history` send more after (a tool result after the last assistant message
-  is no longer condensed), so "no step sends more" is not met literally. Trigger: a bench that replays with the
-  projection live, or a measured rise in input tokens per hop.
-- *A compaction on a narrow window summarizes the whole range and keeps no recent unit.* Haiku 5.5 on 32k compacted five
-  times on 80 reads (the summaries kept 10-30 of 80 values) and the model re-read; the local model needed none. A summary
-  does not guarantee a value survives. Trigger: a hop on a window of 32k or less that compacts more than three times.
-- *Three driver tests encode the paired preflight* (the cap and the fit each count the summary prompt, so a fake backend
-  carries two `prospectives` per compaction): `test_run_turn_request_fit.py` and `test_run_turn_terminal_reservation.py`.
-  Trigger: a fourth test that must repeat the pair; then give the fake one helper.
-- *An orphan `compactions/<seq>.json` can remain* if the `session.json` write fails after the record write (harmless,
-  `seq` does not collide), and `compacted=True` with zero rounds writes no record. Trigger: a reader that lists records.
+**Phase 66 (2026-11-05).** Found by the real runs (`internal-docs/baselines/phase-66/real-run.md`). Fixed after the close,
+the same day: a provider's context-overflow refusal is typed and taught to the estimate, for the task request and the
+summary request, and so is a summary cut short because its prompt ate the reply room (agent-loop 48a; `635cdc7e`,
+`4a8b5024`, `69e7b823`, `7a2a1af9`); a request-fit reduction frees a quarter of the request room beyond the overflow,
+counts units as the preflight does, and a range of earlier summaries alone is not "compacted" (47; `e756d141`); a round
+takes in at most half the request room, later calls answered "not run" (115; `3a317465`, `ef34c834`). Decided, not
+defects: the replay bench sends more where P68-7 keeps an unanswered result whole; the summary prompt is estimated twice
+(a local byte count, the bound and the request's own preflight); a record written before `session.json` can be left
+orphaned, which is the order that never loses the replaced messages. Still open:
+- *The half-room intake is not measured on the local model.* The local run that motivated it (80 dense files, 30+ reads
+  per response, 32/80 values right after a compaction summarized results the model never saw) was cut: a 30k-token
+  request on the local endpoint takes over 120 s. Trigger: the next real run on the local endpoint.
+- *A slow endpoint retries a timed-out summary request whole.* A ~30k-token summary request took more than the 120 s
+  request timeout (`AGENT_LOOP_REQUEST_TIMEOUT_S`) and was sent again. Trigger: a second such retry in a live trace;
+  then size the request timeout by the model's observed time per input token.
+- *A reply cut at the output cap ends the turn.* The last two Haiku 5.5 runs (32k, `--max-tokens 4096`, 80 reads) ended
+  on a reply cut at 4,096 output tokens after replies of 3,103 and 3,511 (earlier runs stayed under 2,300); the first
+  of them deferred no call, so the intake rule did not shape it. The cost had returned to the unbounded level (265k
+  input, 11 task calls, 3 compactions, against 1.27M under the first intake rule). The loop refuses a truncated
+  tool-call reply, as before. Trigger: a hop on the live home (`--max-tokens 8192`) ending this way; then ask again for
+  a shorter reply instead of ending.
 
 **Phase 68 (2026-11-04).** Left out of the cards on purpose, or found while merging:
 - *The pod report probes SearXNG on every `GET /pods/<p>` and plain `pod show` probes it twice.* Each probe is one
