@@ -260,3 +260,73 @@ class TestOtherFailuresAreUnchanged:
 
         assert result.stop_reason == "backend_error"
         assert len(backend.calls) == 1
+
+
+def _history() -> list[ChatMessage]:
+    return [ChatMessage(role="user", content=f"old-{n} " * 160) for n in range(20)]
+
+
+class SummaryRoutedBackend(UnderCountingBackend):
+    """Answers a tool-free compaction summary request from ``summaries`` (the last one repeats)
+    and every other request from the task script."""
+
+    def __init__(self, task: Sequence[ChatResponse], summaries: Sequence[ChatResponse]) -> None:
+        super().__init__(task)
+        self._summaries = list(summaries)
+
+    def complete(self, messages: Sequence[ChatMessage], **kwargs: object) -> ChatResponse:  # type: ignore[override]
+        if not kwargs.get("tools") and "compacting durable turn history" in messages[0].content:
+            self.calls.append(list(messages))
+            self.tool_specs.append([])
+            return self._summaries.pop(0) if len(self._summaries) > 1 else self._summaries[0]
+        return super().complete(messages, **kwargs)  # type: ignore[arg-type]
+
+
+def _summary_prompts(backend: SummaryRoutedBackend) -> list[str]:
+    """The prompts of the tool-free compaction summary requests, in order."""
+    return [
+        calls[0].content
+        for calls, specs in zip(backend.calls, backend.tool_specs, strict=True)
+        if not specs and "compacting durable turn history" in calls[0].content
+    ]
+
+
+class TestSummaryRequestOverflow:
+    def test_a_refused_summary_request_is_learned_from_and_the_compaction_runs_again_smaller(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        session_key = "agent:overflow-summary:demo"
+        append_session_messages(session_key, _history())
+        backend = SummaryRoutedBackend(
+            [_overflow(8_000), _final("done")], [_overflow(9_000), _final("S" * 80)]
+        )
+
+        result = _loop.run_agent_turn(
+            backend, registry, ctx, session_key, "carry on", config=_config()
+        )
+
+        assert result.ok, result.error
+        assert result.output == "done"
+        prompts = _summary_prompts(backend)
+        assert len(prompts) >= 3
+        assert len(prompts[1]) < len(prompts[0])
+        assert any(m.content.startswith("[compacted summary of ") for m in backend.calls[-1])
+        assert backend.tool_specs[-1] != []
+
+    def test_two_refused_summary_requests_end_in_compaction_failed(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        session_key = "agent:overflow-summary-twice:demo"
+        append_session_messages(session_key, _history())
+        backend = SummaryRoutedBackend(
+            [_overflow(8_000), _final("unused")], [_overflow(9_000), _overflow(9_500)]
+        )
+
+        result = _loop.run_agent_turn(
+            backend, registry, ctx, session_key, "carry on", config=_config()
+        )
+
+        assert not result.ok
+        assert result.stop_reason == "compaction_failed"
+        assert "refused the summary request for its size twice" in result.error
+        assert len(backend.calls) == 3

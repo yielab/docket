@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.18.0
+**Version**: 4.19.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 reduces a request that does not fit, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -484,7 +484,13 @@ This specification does NOT cover:
     and the registered window. The refusal is not a transient failure: requirement 110 does not
     retry it, and this retry is the only one. A refusal that does not state the count, on a turn
     whose window is unknown, teaches nothing and stays the `backend_error` stop of requirement 11.
-    The compaction summary request is not covered: its refusal stays `compaction_failed`.
+    The compaction summary request is covered by the same rule, once: its refusal for the
+    prompt's size teaches the same scale (the summary request's own raw estimate being the one
+    scaled), and the compaction of that range **MUST** then run once more, its batches bounded
+    by the learned scale, so each summary prompt is smaller. The refused call's usage is
+    counted. A second refusal for size of the summary request ends the compaction as
+    `compaction_failed`, with an error saying the provider refused the summary request for its
+    size twice; any other summary failure stays `compaction_failed` without the repeat.
 49. Every prospective completion **MUST** emit a privacy-safe `request_fit` trace event containing
     its purpose (`task` or `compaction`), status (`fits`, `failed`, or `unknown_window`), estimated
     input, output reserve, registered window (or null), and an explicit estimate marker. It **MUST

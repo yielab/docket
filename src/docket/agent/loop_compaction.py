@@ -9,7 +9,7 @@ A session is compacted for that one reason; nothing compacts it at the start of 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from docket.agent.loop_budget import _TOKEN_BUDGET_ERROR_PREFIX, TurnBudget
 from docket.agent.loop_request import (
@@ -127,6 +127,8 @@ class TurnCompaction:
         self.compaction_failure_stop_reason: StopReason | None = None
         self.incoming: ChatMessage | None = None
         self.task_message_index = -1
+        #: The latest summary request was refused for its size and the estimate learned from it.
+        self.summary_refused_for_size = False
         #: The projection of the request most recently built; the next task call carries its figures.
         self.projection: RequestProjection | None = None
 
@@ -218,6 +220,10 @@ class TurnCompaction:
                 "run_cancelled",
             )
         if not response.ok:
+            if response.context_overflow:
+                self.summary_refused_for_size = self.budget.learn_from_overflow(
+                    response.overflow_input_tokens
+                )
             on_clock = self.budget.timed_out_on_clock(response, sent_timeout)
             self.compaction_failure_stop_reason = "timeout" if on_clock else "compaction_failed"
             return TurnResult(
@@ -275,27 +281,44 @@ class TurnCompaction:
     ) -> tuple[CompactionResult, StopReason | None]:
         """Summarize *compact_range* of the session whole, in batches the summarizer's own request
         can carry: its input is bounded by what passes the fit preflight, like any request."""
-        self.compaction_failure_stop_reason = None
         elapsed_now = self.state.clock() - self.state.started
         remaining_now = max(1, int(self.state.cfg.wall_clock_timeout_s - elapsed_now))
         prompt_text, prompt_sha256 = role_composer.compaction_prompt(
             self.state.project, self.state.ctx.roots
         )
-        result = compact_session(
-            self.state.session_key,
-            agent_id=self.state.ctx.agent_id,
-            summarizer=self.summarize_without_reentry,
-            prompt_text=prompt_text,
-            prompt_sha256=prompt_sha256,
-            summarizer_session_key=f"{self.state.session_key}:compaction",
-            budget_tokens=0,
-            summary_input_budget_tokens=self.budget.request_room(),
-            summary_estimate=self.budget.prompt_cost,
-            compact_range=compact_range,
-            keep_latest_unit=False,
-            timeout=min(self.state.cfg.request_timeout_s, remaining_now),
-            label=f"{self.state.ctx.role} session",
-        )
+
+        def attempt() -> CompactionResult:
+            # Fail-closed: a failed attempt wrote nothing, so a repeat starts from the same session.
+            self.compaction_failure_stop_reason = None
+            self.summary_refused_for_size = False
+            return compact_session(
+                self.state.session_key,
+                agent_id=self.state.ctx.agent_id,
+                summarizer=self.summarize_without_reentry,
+                prompt_text=prompt_text,
+                prompt_sha256=prompt_sha256,
+                summarizer_session_key=f"{self.state.session_key}:compaction",
+                budget_tokens=0,
+                summary_input_budget_tokens=self.budget.request_room(),
+                summary_estimate=self.budget.prompt_cost,
+                compact_range=compact_range,
+                keep_latest_unit=False,
+                timeout=min(self.state.cfg.request_timeout_s, remaining_now),
+                label=f"{self.state.ctx.role} session",
+            )
+
+        result = attempt()
+        if not result.ok and self.summary_refused_for_size:
+            # Requirement 48a: the refusal taught the scale, so the batches are smaller this time.
+            result = attempt()
+            if not result.ok and self.summary_refused_for_size:
+                result = replace(
+                    result,
+                    error=(
+                        "context fit: the provider refused the summary request for its size twice, "
+                        f"the second time after the estimate was recalibrated: {result.error}"
+                    ),
+                )
         usage_delta = _usage_delta(self.state.summary_usage, self.state.accounted_summary_usage)
         self.state.total_usage = _accumulate(self.state.total_usage, usage_delta)
         self.state.accounted_summary_usage = self.state.summary_usage
