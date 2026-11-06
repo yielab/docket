@@ -12,6 +12,7 @@ import hashlib
 import json
 from typing import Any
 
+from docket.agent.loop_budget import TurnBudget
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_tool_call, _trace_tool_result
 from docket.agent.loop_types import AgentLoopResult, limit_origin
@@ -39,6 +40,13 @@ def approval_parked_error(result: ToolResult) -> str:
         f"policy_id={result.policy_id!r} reason={result.reason!r} "
         f"approval_token={result.approval_token!r}"
     )
+
+
+# The answer to a call the round's window had no room for (agent-loop requirement 115).
+_DEFERRED_ANSWER = (
+    "[docket] not run: this round's results already fill the context window; "
+    "call it again in your next response."
+)
 
 
 def _call_arguments(raw: str) -> dict[str, Any]:
@@ -87,11 +95,50 @@ class _ProgressDetector:
         )
 
 
+class _RoundIntake:
+    """What one round's tool results may take in (agent-loop requirement 115); the rule is in
+    ``is_full``. An unknown window leaves the room unbounded."""
+
+    def __init__(self, budget: TurnBudget, assistant_msg: ChatMessage) -> None:
+        self.budget = budget
+        self.room = budget.intake_room()
+        self.calls = assistant_msg.tool_calls
+        self.taken = budget.message_cost(assistant_msg) if self.room is not None else 0
+        self.largest = 0
+        self.index = -1
+        self.full = False
+        self.deferral = (
+            budget.message_cost(tool_result(self.calls[0], _DEFERRED_ANSWER))
+            if self.room is not None and self.calls
+            else 0
+        )
+
+    def is_full(self, call: ToolCall, *, ends_turn: bool) -> bool:
+        """Whether *call* is answered "not run": never the first or a closing tool; else once the
+        answers taken, the largest of them and a deferral answer per call to come pass the room,
+        and then every later call."""
+        self.index += 1
+        if self.room is None or self.index == 0 or ends_turn:
+            return False
+        if not self.full:
+            pending = self.deferral * (len(self.calls) - self.index)
+            self.full = self.taken + self.largest + pending > self.room
+        return self.full
+
+    def take(self, answer: ChatMessage) -> None:
+        """Count a result the round took in."""
+        if self.room is not None:
+            cost = self.budget.message_cost(answer)
+            self.taken += cost
+            self.largest = max(self.largest, cost)
+
+
 class ToolStep:
     """Dispatches a tool batch and owns the denial and no-progress counters."""
 
-    def __init__(self, state: TurnState) -> None:
+    def __init__(self, state: TurnState, budget: TurnBudget | None = None) -> None:
         self.state = state
+        self.budget = budget or TurnBudget(state)
         self.consecutive_denial_kinds: list[ToolDenialKind] = []
         self.progress: _ProgressDetector | None = None
         self._compactions_seen = 0
@@ -127,6 +174,7 @@ class ToolStep:
         closing_output: str | None = None
         closing_args: dict[str, Any] | None = None
         self.state.ctx.rationale = assistant_msg.content or ""
+        intake = _RoundIntake(self.budget, assistant_msg)
         for call in assistant_msg.tool_calls:
             _trace_tool_call(
                 self.state.project,
@@ -137,6 +185,9 @@ class ToolStep:
                 call.arguments,
                 task_id=self.state.trace_task_id,
             )
+            if intake.is_full(call, ends_turn=self._ends_turn(call.name)):
+                tool_msgs.append(self._deferred(call))
+                continue
             result = dispatch_tool(call, self.state.ctx, self.state.registry)
             if result.denial_kind != "run_cancelled":
                 self.state.tool_calls_executed += 1
@@ -164,6 +215,7 @@ class ToolStep:
             elif result.decision == "allow" and result.executed:
                 self.consecutive_denial_kinds.clear()
             tool_msgs.append(tool_result(call, tool_output))
+            intake.take(tool_msgs[-1])
             round_entries.append(_ProgressDetector.entry(call, result.ok, tool_output))
             if result.denial_kind == "run_cancelled" or self.state.cancellation_requested():
                 batch_cancelled = True
@@ -235,6 +287,24 @@ class ToolStep:
                 ok=True, stop_reason="final_message", output=text, closing_args=closing_args
             )
         return self.stop_if_no_progress(round_entries)
+
+    def _deferred(self, call: ToolCall) -> ChatMessage:
+        """The answer to a call that was not run: traced as ``deferred``, never a denial."""
+        _trace_tool_result(
+            self.state.project,
+            self.state.trace_key,
+            self.state.ctx.role,
+            call.name,
+            call.id,
+            "deferred",
+            False,
+            False,
+            None,
+            reason="round intake full",
+            task_id=self.state.trace_task_id,
+            output=_DEFERRED_ANSWER,
+        )
+        return tool_result(call, _DEFERRED_ANSWER)
 
     def _ends_turn(self, tool_name: str) -> bool:
         tool = self.state.registry.get(tool_name)

@@ -273,7 +273,7 @@ class _TurnState(TurnState):
     def __post_init__(self) -> None:
         self.budget = TurnBudget(self)
         self.compaction = TurnCompaction(self, self.budget)
-        self.steps = ToolStep(self)
+        self.steps = ToolStep(self, self.budget)
 
     @classmethod
     def create(

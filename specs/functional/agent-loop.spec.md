@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.20.0
+**Version**: 4.21.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 reduces a request that does not fit, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -640,6 +640,29 @@ This specification does NOT cover:
     trace payloads **MUST NOT** invent a denial kind. When the dispatched `ToolResult` carries a
     non-empty `policy_id` or `reason`, the trace payload **MUST** include the matching
     `policyId`/`reason` field; either is omitted, not emitted empty, when the result carries none.
+
+### A round takes in what the window holds
+
+115. On a turn whose context window is registered, a response's tool-call batch **MUST** be
+    dispatched in order only while the next request can carry its results: the batch's **intake
+    room** is the request room (the registered window less the output reserve) less the estimate
+    of the task request the batch answers. The assistant message and each answer count at what the
+    preflight counts for them (requirement 47: the fallback message estimate scaled by the turn's
+    calibration). The first call of a batch **MUST** always run. A later call **MUST NOT** be
+    dispatched once the answers taken so far, the largest of them (the proxy for the next
+    result's size) and a deferral answer for every call still to come would pass the intake room;
+    that call and every later one of the batch is answered with the tool result
+    `[docket] not run: this round's results already fill the context window; call it again in your
+    next response.` A deferred call is not executed, **MUST NOT** count toward `tool_calls_executed`
+    or `max_tool_calls`, and is not a denial (it has no `denial_kind` and neither increments nor
+    resets the consecutive-denial counter of requirement 57). It is traced as a `tool_call` and a
+    `tool_result` with `decision="deferred"`, `ok=false`, `executed=false` and no `denialKind`.
+    The assistant message and every answer, run or deferred, are still persisted as one atomic
+    unit (requirement 14). A call to a tool that ends the turn (requirement 89) is never deferred.
+    A turn whose window is unknown bounds nothing. The reason is that a result the model has not
+    answered must reach it raw at least once: a batch whose results alone fill the window would
+    otherwise be summarized by the request-fit compaction (requirement 47) before the model saw
+    them.
 
 ### Run cancellation
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 
-from docket.agent.loop_request import _estimate_input_tokens, _usage_delta
+from docket.agent.loop_request import _estimate_input_tokens, _message_tokens, _usage_delta
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_budget_notice, _trace_request_fit
 from docket.agent.loop_types import AgentLoopResult, StopReason, limit_origin
@@ -132,6 +132,18 @@ class TurnBudget:
         """The most input a request may estimate to: the window less the output reserve."""
         assert self.state.context_window is not None
         return self.state.context_window - self.state.output_reserve
+
+    def intake_room(self) -> int | None:
+        """What one round's reply and tool results may add to the next request: the request room
+        less the estimate of the task request just sent (the raw estimate its preflight made, scaled
+        by the calibration the call has since measured). ``None`` when the window is unknown."""
+        if self.state.context_window is None:
+            return None
+        return self.request_room() - math.ceil(self.pending_raw_estimate * self.calibration)
+
+    def message_cost(self, message: ChatMessage) -> int:
+        """What the fit preflight counts for *message* in a request, calibration included."""
+        return math.ceil(_message_tokens([message]) * self.calibration)
 
     def prompt_cost(self, text: str) -> int:
         """What the fit preflight would estimate for a one-message, tool-free request carrying
