@@ -16,11 +16,11 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> ## ▶ BOARD — no active phase; Phases 69 (D-90) and 70 (D-91) planned 2026-11-06, awaiting the maintainer; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
+> ## ▶ BOARD — no active phase; Phases 69 (D-90) and 70 (D-91) planned and accepted 2026-11-06, claimable; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
 >
 > **Phases 69 and 70 are planned** (D-90, D-91 proposed 2026-11-06; the two `○ PLANNED` sections below): an agent eval
 > lane with hidden checks, pass@k and a base per commit that deletes the 4,200-line canary, then guardrails measured on its
-> safety suite and reduced to one source per check. Their cards are claimable once the maintainer accepts the decisions.
+> safety suite and reduced to one source per check. The decisions were accepted the same day; the cards are claimable, Phase 69 waves 0 and 1 first.
 > **Phases 67 and 68 closed 2026-11-06** (D-88, D-89; not pushed): a folder pod under the jail reads any public host and
 > says how (`webRead`), a compaction that gains nothing no longer kills a turn, a file that mentions payments is not a
 > payment, the writer drafts instead of researching, and search is a declared service. Their real run (P68-6, which
@@ -97,7 +97,7 @@ scope in one pass over the same files, parks at least once.
 by a fast-forward from `develop` when the maintainer cuts a release. Tags and release jobs originate
 from `main`.
 
-## ○ PHASE 69 PLANNED — an agent eval lane: tasks with hidden checks, pass@k and pass^k, a base per commit, and the canary deleted (D-90, proposed 2026-11-06, awaiting the maintainer)
+## ○ PHASE 69 PLANNED — an agent eval lane: tasks with hidden checks, pass@k and pass^k, a base per commit, and the canary deleted (D-90, accepted 2026-11-06)
 
 > **Trigger: the evals and guardrails audit of 2026-11-06** (`internal-docs/audits/evals-y-guardrails-2026-11-06.es.md`;
 > the plan is `internal-docs/plans/evals-y-guardrails-2026-11-06.es.md`; both gitignored, so every card below carries
@@ -124,7 +124,7 @@ from `main`.
 >    scripts keep an "old-layout home" branch (`live-dispatch-baseline.sh:25`, `capture-doc-journey.sh:56`) against the
 >    no-compatibility rule; the replay bench's `phase44` policy is the live rule under a historical name.
 >
-> **Decisions the plan takes (D-90, `Proposed` until accepted):**
+> **Decisions the plan takes (D-90, accepted 2026-11-06):**
 > 1. **An agent eval lane at `evals/`**, a development tool at the repository root, outside the wheel and outside
 >    `testpaths`. A task is a directory: `task.yaml` (id, `version`, suite, team `shape`, `origin`, the instruction of at
 >    most 500 characters, the pod blueprint and isolation, the operator's scripted answers, `graders.required` and
@@ -165,8 +165,11 @@ from `main`.
 >    and the granted share per class or policy; `/metrics` by pod and role; `online-report --trend` (the last 7 days
 >    against the 28 before, Wilson); `promote <task>` turns a real failure into a candidate task. No dashboard, no dollars.
 > 7. **Models.** `regression` on the local endpoint; `capability` and `reviewer` on `anthropic/claude-haiku-5-5`, and a
->    second family for a comparison through the shipped `ai-gateway` provider (`AI_GATEWAY_API_KEY`, the operator's).
->    Every remote run needs the maintainer's go and reports tokens, never dollars.
+>    second family for a comparison through the shipped `ai-gateway` provider (`AI_GATEWAY_API_KEY`, the operator's):
+>    **`openai/gpt-5.1-codex-mini`**, measured 2026-11-06 against five candidates on docket's Reviewer prompts (0 false
+>    approvals / 0 false rejections, the tersest review, named `tool_choice` supported; `zai/glm-5.3-flash` the economy
+>    alternate; `internal-docs/baselines/evals-v2/model-pair-2026-11-06.md`). Every remote run needs the maintainer's go
+>    and reports tokens, never dollars.
 >
 > **Not doing (each a follow-up with its trigger, below):** a model judge; a Harbor/Terminal-Bench adapter; eval scores
 > on Langfuse or OTel `gen_ai.evaluation.result`; Inspect AI; a dashboard.
@@ -296,7 +299,8 @@ from `main`.
 - **Goal:** `evals/harness/world.py` builds a trial world on `tests/support/e2e.World` (`tests/support/e2e.py:96-300`:
   `make_pod`, `add_task`, `task`, `service`, `wait_for`): fresh `DOCKET_HOME`, fake `$HOME` with the sentinel, `repo/`
   committed, the provider and model registered through the real CLI (`setup provider add`, `setup model set`) from the
-  trial's `--provider/--model`, isolation per `task.yaml`; `evals/harness/operator.py` polls the task and answers
+  trial's `--provider/--model` with `--max-tokens` of at least 4,000 (a 700-token cap cut every Reviewer verdict in the
+  2026-11-06 probe; a `finish_reason` of `length` is a `harness` failure, never a wrong verdict), isolation per `task.yaml`; `evals/harness/operator.py` polls the task and answers
   `waiting_approval` / `waiting_input` through `docket task answer` with the task's `operator` script, parks on an
   escalation the script does not name (failure class `harness`); at the end it freezes trace, audit, diff and sessions,
   copies the agent's worktree to a verifier directory and runs `hidden/` there with any earlier result deleted first;
@@ -502,8 +506,8 @@ from `main`.
 **Status:** TODO · **Size:** M · **Model:** Opus (integrator) · **Kind:** real run · **After:** every card above
 
 - **Goal:** on the merged head: `nightly` (regression, local endpoint, k=3); `capability` k=3 on `anthropic/claude-haiku-5-5`
-  (the maintainer's go, tokens reported); `reviewer` k=1 on Haiku and, through `ai-gateway`, one model of another family
-  (the maintainer names it); `context` on both; `safety` k=3 local. Save `internal-docs/baselines/evals-v2/<sha>/` with
+  (the maintainer's go, tokens reported); `reviewer` k=1 on Haiku and, through `ai-gateway`, `openai/gpt-5.1-codex-mini`
+  (the measured second family); `context` on both; `safety` k=3 local. Save `internal-docs/baselines/evals-v2/<sha>/` with
   `trials.jsonl` and `summary.md` per suite; archive `internal-docs/baselines/evals/2026-10-25-*` into
   `internal-docs/baselines/evals-v1-retired/`. Fix `CLAUDE.md`'s phase-close list and the Telegram "five verbs" line
   (gitignored; the integrator's).
@@ -512,7 +516,7 @@ from `main`.
   scheduled by the operator (a user cron line or timer, written in Status, never a systemd unit docket installs).
 - **Gate:** the phase-close list, plus `check-solutions` on every suite; the full suite once at the last merge.
 
-## ○ PHASE 70 PLANNED — guardrails with two numbers: one source per check, framed tool results, and the gaps the audit found (D-91, proposed 2026-11-06, awaiting the maintainer; starts after P69-14)
+## ○ PHASE 70 PLANNED — guardrails with two numbers: one source per check, framed tool results, and the gaps the audit found (D-91, accepted 2026-11-06; starts after P69-14)
 
 > **Trigger: the same audit** (`internal-docs/audits/evals-y-guardrails-2026-11-06.es.md` §3 and §7), each line
 > re-checked in code on `develop` `60eefd50`:
@@ -538,7 +542,7 @@ from `main`.
 >    was accepted. No check names the Rule of Two (untrusted input + private data + an outward action). Shipped templates:
 >    six; after this phase: one (`block-destructive`).
 >
-> **Decisions the plan takes (D-91, `Proposed` until accepted):**
+> **Decisions the plan takes (D-91, accepted 2026-11-06):**
 > 1. **One source for the high-risk classes.** The gate applies `HIGH_RISK_PATTERNS` to every tool's rendered call except
 >    `write` and `edit` (D-89 choice 2: file content is not an action), not only to `exec`; the three `high-risk-*`
 >    templates and the `ops-approval` pack's duplicate rule are deleted, and every program or verb only they named is
@@ -757,6 +761,9 @@ from `main`.
   bind-mounts.
 - **`HighRiskClass.bins`** (`security.py:93-96`) is display-only (`setup sandbox classes`). Delete with P70-1 if the
   display can read the pattern instead.
+- **A model that refuses a named `tool_choice` cannot serve a pod** (`meta/muse-spark-1.3` answered HTTP 400 "only auto is
+  supported" on 2026-11-06): the handoff tool is called by name. Trigger: a second such model, then `setup provider add`
+  probes it and says so (model-profiles).
 - **The judge's and the capability suite's remote tokens**: each run needs the maintainer's go; the suites report tokens
   by role and model, never a price.
 
