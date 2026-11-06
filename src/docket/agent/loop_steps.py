@@ -136,9 +136,9 @@ class _RoundIntake:
 class ToolStep:
     """Dispatches a tool batch and owns the denial and no-progress counters."""
 
-    def __init__(self, state: TurnState, budget: TurnBudget | None = None) -> None:
+    def __init__(self, state: TurnState, budget: TurnBudget) -> None:
         self.state = state
-        self.budget = budget or TurnBudget(state)
+        self.budget = budget
         self.consecutive_denial_kinds: list[ToolDenialKind] = []
         self.progress: _ProgressDetector | None = None
         self._compactions_seen = 0

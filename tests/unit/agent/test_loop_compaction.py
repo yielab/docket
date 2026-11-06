@@ -306,7 +306,7 @@ class TestACompactionMakesTheLoopForgetWhatItSaw:
         )
         for n in range(4):
             append_messages(state.session_key, [user(f"ask {n} " + "x" * 2_000), assistant("ok")])
-        step = ToolStep(state)
+        step = ToolStep(state, TurnBudget(state))
         seen = [("glob", "{}", True, "digest-of-the-files")]
         assert step.stop_if_no_progress(seen) is None
 

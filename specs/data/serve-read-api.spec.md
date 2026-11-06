@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 6.5.0
+**Version**: 6.6.0
 **Status**: Stable
 **Last Updated**: 2026-11-04
 
@@ -132,7 +132,7 @@ Prometheus text format (content-type `text/plain; version=0.0.4`).
 | `docket_agent_turns_total{agent}` | gauge | Total turns per agent. |
 | `docket_approvals_pending_total` | gauge | Pending approvals awaiting a human decision. |
 | `docket_inbox_items{section}` | gauge | Items in the derived operator inbox (`GET /inbox`), by section (`needsYou`\|`failed`\|`doneSince`\|`running`). Computed fresh on every scrape with no `since`, so `doneSince` here is every terminal task, not scoped to any consumer's cursor. |
-| `docket_tool_calls_total{decision}` | counter | Tool calls dispatched through the gated tool registry (`dispatch_tool`), by gate decision (`allow`\|`ask`\|`deny`), from `tool_result` trace events. Sum gives tool-call rate; the `deny` bucket over the sum gives denial rate. |
+| `docket_tool_calls_total{decision}` | counter | Tool calls dispatched through the gated tool registry (`dispatch_tool`), by gate decision (`allow`\|`ask`\|`deny`, and `deferred` for a call the round's window had no room for, which is never dispatched: `agent-loop.spec.md` requirement 115), from `tool_result` trace events. Sum gives tool-call rate; the `deny` bucket over the sum gives denial rate. |
 | `docket_policy_hits_total{policy_id,hook,action}` | counter | Guardrail policy hits, by policy id, hook (`pre_input`\|`pre_tool_call`\|`pre_output`) and the policy's own action (`warn`\|`redact`\|`require_approval`\|`block`). The `pre_input`/`pre_output` slice comes from `guardrail_check` trace events; the `pre_tool_call` slice comes from the audit log's `tool.deny`/`tool.ask`/`tool.warn`/`tool.redact` entries that name a policy, and is subject to the rotation caveat below. |
 | `docket_approvals_total{channel,outcome}` | counter | Resolved approvals from the audit log's `approval.grant`/`approval.deny` entries, by channel (`cli`\|`http`\|`mcp`\|`telegram`\|`timeout`\|`tack`, or `unknown` for an entry that names none) and outcome (`granted`\|`denied`). `channel="timeout"` is the fail-closed expiry path, never a human channel, and only ever pairs with `outcome="denied"`. `channel="tack"` stays in the closed set, but no route sets it: the HTTP route tags every resolution `http`. Subject to the rotation caveat below. |
 | `docket_turn_duration_seconds` | summary (`_sum`/`_count`, no quantiles) | Session wall-clock (`session_start` → `session_end`), fleet-wide, one sample per trace file that has both. `_sum`/`_count` gives the mean; no percentiles are invented. |

@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from docket.agent import loop_steps as _steps
+from docket.agent.loop_budget import TurnBudget
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_steps import ToolStep, _ProgressDetector
 from docket.agent.loop_types import LoopConfig
@@ -72,7 +73,9 @@ class TestDispatchToolBatch:
             LoopConfig(max_tool_calls=2), registry=_echo_registry(), tool_calls_executed=1
         )
         calls = [ToolCall(id=f"c{i}", name="echo", arguments="{}") for i in range(2)]
-        stop = ToolStep(state).dispatch_tool_batch([], assistant("", calls), TokenUsage())
+        stop = ToolStep(state, TurnBudget(state)).dispatch_tool_batch(
+            [], assistant("", calls), TokenUsage()
+        )
         assert stop is None
         assert state.landing == "max_tool_calls"
         assert "none of this batch was executed" in state.landing_error
@@ -89,7 +92,9 @@ class TestDispatchToolBatch:
         state = make_turn_state(registry=_echo_registry())
         message = assistant("plan", [ToolCall(id="c1", name="echo", arguments='{"text": "hi"}')])
         messages: list[ChatMessage] = []
-        stop = ToolStep(state).dispatch_tool_batch(messages, message, TokenUsage())
+        stop = ToolStep(state, TurnBudget(state)).dispatch_tool_batch(
+            messages, message, TokenUsage()
+        )
         assert stop is None
         assert state.tool_calls_executed == 1
         assert len(appended) == 1
@@ -110,7 +115,10 @@ class TestDispatchToolBatch:
         )
         message = assistant("", [ToolCall(id="c1", name="echo", arguments='{"text": "hi"}')])
         messages: list[ChatMessage] = []
-        assert ToolStep(state).dispatch_tool_batch(messages, message, TokenUsage()) is None
+        assert (
+            ToolStep(state, TurnBudget(state)).dispatch_tool_batch(messages, message, TokenUsage())
+            is None
+        )
         assert [m.content for m in appended[0] if m.role == "tool"] == ["hi"]
         assert messages[-1].content == "hi"
         assert not state.notice_sent
@@ -121,7 +129,7 @@ class TestDispatchToolBatch:
         monkeypatch.setattr(_steps, "append_messages", lambda *a, **k: None)
         state = make_turn_state(LoopConfig(max_consecutive_tool_denials=1), registry=ToolRegistry())
         message = assistant("", [ToolCall(id="c1", name="missing", arguments="{}")])
-        stop = ToolStep(state).dispatch_tool_batch([], message, TokenUsage())
+        stop = ToolStep(state, TurnBudget(state)).dispatch_tool_batch([], message, TokenUsage())
         assert stop is not None
         assert stop.stop_reason == "tool_denials"
         assert "count=1" in stop.error
@@ -153,7 +161,9 @@ class TestCapabilityMissingStop:
             ToolCall(id="c2", name="write", arguments="{}"),
             ToolCall(id="c3", name="echo", arguments='{"text": "again"}'),
         ]
-        stop = ToolStep(state).dispatch_tool_batch([], assistant("", calls), TokenUsage())
+        stop = ToolStep(state, TurnBudget(state)).dispatch_tool_batch(
+            [], assistant("", calls), TokenUsage()
+        )
 
         assert stop is not None
         assert stop.ok is False
@@ -171,7 +181,10 @@ class TestCapabilityMissingStop:
         state = self._state(make_turn_state)
         message = assistant("", [ToolCall(id="c1", name="teleport", arguments="{}")])
 
-        assert ToolStep(state).dispatch_tool_batch([], message, TokenUsage()) is None
+        assert (
+            ToolStep(state, TurnBudget(state)).dispatch_tool_batch([], message, TokenUsage())
+            is None
+        )
 
 
 class TestStopIfNoProgress:
@@ -180,7 +193,8 @@ class TestStopIfNoProgress:
     def test_repeated_rounds_end_the_turn_with_no_progress(
         self, make_turn_state: MakeState
     ) -> None:
-        step = ToolStep(make_turn_state(LoopConfig(no_progress_rounds=1)))
+        state = make_turn_state(LoopConfig(no_progress_rounds=1))
+        step = ToolStep(state, TurnBudget(state))
         entries = [_ProgressDetector.entry(ToolCall(id="c", name="echo"), True, "x")]
         assert step.stop_if_no_progress(entries) is None
         stop = step.stop_if_no_progress(entries)
