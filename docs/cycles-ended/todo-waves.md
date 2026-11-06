@@ -23111,3 +23111,627 @@ Two cards: P62-1 (the PDF reader runs docket's own interpreter and `pypdf` in th
 - **Gate:** the phase-close list; the full suite once at the last merge.
 
 
+## ☑ PHASE 68 COMPLETE 2026-11-06 — what the first real research run broke: compaction, a payment false positive, a writer that researches (D-89, accepted 2026-11-04/05)
+
+> **Closed 2026-11-06.** Fifteen cards, all on `develop`, not pushed; D-89's four choices accepted or decided by the
+> maintainer. The real run (P68-6, `internal-docs/baselines/phase-68/p68-6-real-run.md`, live `web-research`,
+> Haiku 5.5) went through seven hops with no compaction failure, no payment park on a report about finance apps and
+> no `fetch` by the writer, 24 hosts read, 828k input tokens; the task ended `failed` on the Reviewer's veto after its
+> one rework (the card's "fabualda" typo sent the team to a reference set; the gate worked). What is left open is
+> under "Phases 67-68" in the follow-ups.
+
+> **Trigger: the P67-5 real run** (Tack task `4C9BAB`, docket task `task-52c89dbb-2eb6`, pod `web-research`, Haiku
+> 5.5, 2026-11-04): the web worked (no `fetch` refused), and the task ended `failed` with no report, after 445,209
+> input and 29,432 output tokens. Three independent defects, each reproduced; the investigation, the
+> reproductions and the options are in `internal-docs/audits/corrida-real-investigacion-2026-11-04.es.md`.
+>
+> 1. **A compaction that gains nothing kills the hop.** The writer's pre-turn compaction (history budget 6,000,
+>    its `token_budget`) ran five summary calls and failed `compaction summary did not reduce estimated history size
+>    (45271 -> 45272)`. Replayed offline on the session's copy: four of its 13 units (an `assistant` with 3-4
+>    parallel `fetch` results) weigh 7,003-8,371 estimated tokens, more than the 6,000-token summary prompt; once a
+>    summary sits in front, the batch is that summary alone, which cannot shrink. A `fetch` result alone reaches
+>    `DOCKET_TOOL_MAX_OUTPUT_CHARS` (30,000 chars, about 7,500 tokens). The request fitted the window (`request_fit
+>    fits`, 28,041 measured tokens of 200k). Conforms to `session-history` requirements 24 and 26, so the spec moves.
+> 2. **`high-risk-payment` parks a report that mentions payments.** `render_tool_call` JSON-encodes the file into one
+>    line, so `payment.*charge` and `refund.*amount` span the whole file, and the free-text clause reads `write`
+>    content, which moves no money. Measured with the real engine: six ordinary report sentences park, a bare price
+>    passes. `block-destructive`'s `drop table` clause has the same shape.
+> 3. **The writer researches again.** 23 `fetch` calls (the researcher 13) and 246,954 of the 445,209 input tokens:
+>    `fetch` is offered to every member that does not deny it, and the writer denies only `bash`.
+>
+> **Decisions the plan takes (D-89, `Proposed` until accepted):**
+> 1. **Accepted 2026-11-04 by the maintainer.** A unit too large for a summary prompt is summarized from a projection of its tool results (cut, with a visible
+>    marker, in the summarizer's prompt only); a batch always holds one raw unit; a pre-turn compaction that the
+>    guard refuses (no progress, round cap, irreducible unit) leaves the history unchanged and the turn runs. A
+>    summarizer that fails still aborts the turn (agent-loop 36), and request-fit stays the one stop for a request
+>    over the window.
+> 2. **Accepted 2026-11-04 by the maintainer; shipped as P68-2.** The free-text clause of the `ask` templates is not evaluated on the built-in file tools (`write`, `edit`):
+>    a new `when` key `notTool`; and `payment.*charge`-style spans are bounded to one phrase. Relaxing a gate is the
+>    maintainer's call; no corpus row is weakened (the payment rows are all commands).
+> 3. **Accepted 2026-11-04 by the maintainer.** The `writer` archetype denies `fetch`: it drafts from the analyst's handoff and cites the researcher's URLs,
+>    and asks with `consult` when a citation is missing.
+> 4. **Decided 2026-11-05 by the maintainer.** Search ships as a declared service in `web-research` (ADR 0036 decision 13):
+>    a local SearXNG is the default (P68-4), Brave Search API the option (P68-8), and the plan of record sees and sets the
+>    provider. P67-3 measured that no search site answers `fetch`; P68-4 measured SearXNG at 20 of 20.
+>
+> **Not doing:** a summarizer output cap (follow-up with its measurement), the `hosted` history share (Phase 66
+> keeps it deferred), per-host approval, re-running the researcher when a question is answered in a later hop (the
+> hop that asks is the hop that resumes, by design).
+>
+> **Waves (by file; Sonnet workers, one integrator):**
+>
+> | Wave | Cards | File contention resolved |
+> | --- | --- | --- |
+> | 1 | P68-1 ∥ P68-2 ∥ P68-3 | P68-1 owns `agent/session_compaction.py`, `agent/loop_compaction.py`, `session-history.spec.md`, `agent-loop.spec.md` 37; P68-2 owns `governance/policy.py`, the policy templates, the corpus, `security-gates.spec.md`; P68-3 owns `teams/builtin_roles.py`, `role-archetypes.spec.md` |
+> | 2 | P68-4 (done) ∥ P68-5 | P68-4 owns the `web-research` recipe, `services/`, the `setup search` command and `teams/apply/needs.py`; P68-5 owns `agent/tools/capability_gap.py`, `hops/application/driver_support.py` `pod_offer`, `serve-read-api.spec.md` |
+> | 2b | P68-7 (done) | `agent/session.py`, `session-history.spec.md` requirement 30; before P68-6 |
+> | 2c | P68-9, P68-10, P68-8 (done) | P68-9 owns `agent/context.py`, `hops/application/compose.py`, `pod-dispatch.spec.md`; P68-10 owns `agent/session.py` `_result_notice`, `session-history.spec.md`; P68-8, after P68-4: `needs.py`, the recipe, the pod report, `operator-api.spec.md`; Brave and the Tack surface |
+> | 3a | P68-11 ∥ P68-12 ∥ P68-13 ∥ P68-14 ∥ P68-15 | P68-11 owns `loop_compaction.py`, `session.py` `history_results_budget`, `catalog.py` `BudgetShares`, `driver_support.py` `history_budget_tokens`, `session-history` 30, `model-profiles`; P68-12 owns `kernel/service.py`, `platform/service_http.py`, `service-client.spec.md`, the two search documents; P68-13 owns `platform/fetch.py`, `security-gates` fetch bullet; P68-14 owns `loop_budget.py`, `agent-loop` 51 and 108; P68-15 owns `kernel/handoff.py`, `record.py`, the analyst and researcher prompts, `pod-dispatch` handoff section. The integrator measures run 2's task after P68-11 + P68-14 land, and again after all five |
+> | 3 | P68-6 | the integrator's real run, which also closes P67-5 |
+>
+> **Against Phase 66:** P68-1 edits `session_compaction.py`, `loop_compaction.py` and `session-history.spec.md`, which
+> P66-2, P66-3 and P66-4 also edit. Phase 68 wave 1 goes first (a live defect that fails every long research hop);
+> Phase 66 re-checks its locators when it starts.
+
+### P68-1 — A compaction converges on a unit larger than its prompt, and never kills a turn that fits
+
+**Status:** DONE 2026-11-04 (`262f0cc8`; D-89 choice 1; gate green: `test_session_compaction.py`, `test_loop_compaction.py`, tests/integration/agent -k compact, architecture, validate-specs; the real writer session replayed offline converges in 10 rounds, every prompt under 6,000 estimated tokens; session-history 1.13.0, agent-loop 4.6.0) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** decision 1's reproduction (`scratchpad` replay of the writer session: rounds 1-3 reduce, round 4
+  summarizes a lone summary, `45650 -> 45650`, `ok=False`).
+- **Goal:**
+  - `_bounded_summary_batch` (`agent/session_compaction.py` ~68) and `_summarization_message` (~38): a unit whose
+    prompt does not fit is rendered with each tool result cut to its share of the input budget and the marker
+    `[... <n> characters of this tool result not shown to the summarizer ...]`; the batch never consists of
+    compaction summaries only (a summary rides with the next raw unit, projected when needed).
+  - `_run_compaction_rounds` (~162) keeps failing closed (no write) when even the projection cannot fit or a round
+    still gains nothing; the `CompactionResult` names that case (a typed field, not a string match).
+  - `apply_initial_history_compaction` (`agent/loop_compaction.py` ~245): a result refused by that guard does not
+    end the turn; the turn runs on the stored history and the `session_compaction` event says `failed` with the
+    reason. Requirement 36's summarizer failures, cancellation and `token_budget` stop the turn as today.
+- **Non-goals:** a cap on the summary's length; the `hosted` share; request-fit (`reduce_for_fit`, P66-2).
+- **Change:** the two modules; `session-history.spec.md` requirements 24 and 26 (version bump); `agent-loop.spec.md`
+  requirement 37; tests `tests/unit/agent/test_session_compaction.py`, `tests/unit/agent/test_loop_compaction.py`,
+  and a synthetic fixture under `tests/fixtures/` with the measured shape (13 units, four of 7,000-8,400 estimated
+  tokens made of 3-4 tool results, filler text only, never the live session's content).
+- **Acceptance (RED first):**
+  - Unit: the fixture through `compact_session` with budget and input budget 6,000 and a fake summarizer returning
+    1,000 tokens: `ok`, `compacted`, every raw unit folded, `after_estimated_tokens < before_estimated_tokens`, and
+    no summarizer prompt made of compaction summaries alone. Oracle: today `ok=False`, "did not reduce".
+  - Unit: a single `user` message larger than the input budget still fails closed and the stored record is
+    byte-identical.
+  - Unit (loop): a pre-turn compaction refused by the guard leaves `session.json` unchanged, the turn reaches the
+    model, and the trace carries `session_compaction status=failed`; a summarizer timeout still ends the turn
+    `compaction_failed`.
+- **Gate:** the two unit files (seconds); `tests/architecture`; `validate-specs.sh`; `comment_lint.py --check`.
+
+### P68-2 — A file that mentions payments is not a payment
+
+**Status:** DONE 2026-11-04 (D-89 choice 2 accepted by the maintainer the same day; gate green: `test_policy.py` (`TestAFileIsNotAnAction`, `TestNotToolValidation`), `test_policy__corpus.py`, the governance unit and integration files, `tests/architecture`, goldens, `validate-specs.sh`; security-gates 3.16.0. The write/edit cases are unit tests, not corpus rows: the corpus is a measured table of `bash` calls) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** —
+
+- **Trigger:** decision 2's probe: with the shipped template, `write` of "La app cobra con Stripe.", of
+  "Payment …(400 words)… No extra charge", of "Refund policy … The amount of stories", of "pays a payout", of
+  "Payment is optional; … free of charge" and of "Payment model … recharge" all `require_approval`; "Calm cuesta
+  69.99 USD al año" passes. Live: the P67-5 writer's report parked.
+- **Goal:**
+  - `when` gains `notTool` (a list of tool names; the predicate is false when the call's tool is one of them),
+    validated with the other keys (`governance/policy.py` `_WHEN_PREDICATE_KEYS` ~51, `validate` ~82,
+    `_predicate_matches` ~466).
+  - `templates/policies/high-risk-payment.yaml` and `block-destructive.yaml`: the `matches` item carries
+    `notTool: [write, edit]`; the payment spans become one-phrase proximity (`payment\W+(?:\w+\W+){0,4}charge` and
+    the same for `refund…amount`, `crypto…send`, `btc/eth…send`).
+- **Non-goals:** the `when.command` rules and `HIGH_RISK_PATTERNS` (unchanged); MCP and `svc__` tools keep the
+  free-text clause.
+- **Change:** `governance/policy.py`, the two templates, `tests/fixtures/policy-corpus/corpus.yaml`,
+  `tests/unit/governance/test_policy.py`, `tests/unit/governance/test_policy__corpus.py`; `security-gates.spec.md`
+  (the `when` grammar, requirement 8, its known limits).
+- **Acceptance (RED first):** corpus rows: the six sentences above as `write` → `allowed`; `curl
+  https://api.stripe.com/v1/charges …` → still `ask`; a `mcp__pay__charge` call whose arguments say "charge
+  customer" → still `ask`; `edit` of a migration containing `DROP TABLE` → `allowed`; `bash -c "psql -c 'drop
+  table x'"` → still `ask`. Unit: `notTool` with a non-list value is refused by validation naming `notTool`.
+- **Gate:** the corpus test and `test_policy.py`; `tests/architecture`; `validate-specs.sh`; `comment_lint.py
+  --check`.
+
+### P68-3 — The writer drafts from the handoff; it does not research again
+
+**Status:** DONE 2026-11-04 (`b4d62ffb`; D-89 choice 3; role-archetypes 5.10.0; `pod-reach.json` and `pod-fetch.json` re-recorded from a real server; an existing pod keeps its stored role copy, so `web-research` takes the denial only when reapplied) · **Size:** S · **Model:** Sonnet · **Kind:** data + spec · **After:** —
+
+- **Trigger:** decision 3's measurement (writer 23 `fetch`, 246,954 input tokens of 445,209).
+- **Goal:** the `writer` archetype's `denied_tools` becomes `("bash", "fetch")` (`teams/builtin_roles.py` ~180);
+  its `SOUL.md` sentence about its tools follows.
+- **Non-goals:** the researcher, analyst, lead and reviewer keep `fetch`; the `respond` pipeline is unchanged.
+- **Change:** `teams/builtin_roles.py`; `role-archetypes.spec.md` requirement 8 (the writer's tool list);
+  `tests/unit/teams/test_builtin_roles.py`; the operator-v2 fixtures whose writer capabilities list `fetch`
+  (`pod-reach.json`, `pod-fetch.json`; `pod-web-read.json` shows only the researcher), re-recorded with
+  `OPERATOR_RECORD_DIR` from a real server.
+- **Acceptance (RED first):** `member_capabilities(<respond pod under the jail>, "writer")["tools"]` lacks `fetch`
+  while `"researcher"` keeps it; `capability_missing` for a writer's `fetch` names the role's denial, not a host.
+- **Gate:** `test_builtin_roles.py`, `tests/integration/teams/test_fetch_reach.py`, the fixture tests;
+  `validate-specs.sh`; the e2e lane (42 s: a tool set changes).
+
+### P68-4 — A research team searches through a declared service; SearXNG by default
+
+**Status:** DONE 2026-11-05 (`31f52991`; pod-blueprints 4.10.0, cli-interface 5.15.0; D-89 choice 4 decided 2026-11-05: SearXNG is the default, Brave Search API the option, P68-8; measured through the service, `internal-docs/baselines/phase-68/search.md`: 20 of 20, 29-35 results each) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + data + docs + measurement · **After:** —
+
+- **Trigger:** P67-3 (`internal-docs/baselines/phase-67/search.md`): DuckDuckGo html and lite answer a challenge to
+  20 of 20 queries, Bing returns links unrelated to the query; the P67-5 run's two Bing searches returned
+  WhatsApp and Ualá for a question on bedtime-story apps.
+- **Measured (the same 20 queries, 5 s apart, no tokens):** a local SearXNG (Docker, `127.0.0.1:8888`, JSON on):
+  20 of 20 with 38-55 results, 0 errors, and a competitor, comparison or pricing page among the first three results
+  of every query, English and Spanish (engines: `google cse`, `duckduckgo`, `brave`). Marginalia's public API: 1 of 20
+  (17 timeouts). Not measured: a burst or a week of use (upstream engines throttle heavy use). SearXNG's own limiter
+  allows 4 JSON calls per hour per IP and treats a client without `Accept-Language` as a bot, so the shipped
+  `settings.yml` turns the limiter off (the instance listens on loopback only).
+- **Provider constraint (service-client requirements 10-11):** an operation's access is `read` for `GET` and
+  `send` for every other method, and a role that names a `send` tool cannot hold `fetch` (ADR 0036 decision 2).
+  SearXNG's and Brave's search are a `GET`, so the operation is `read` and the researcher keeps `fetch`; Tavily's
+  and Exa's are a `POST`, so they would be `send`.
+- **Goal (easy to set up, and the choice is in front of the operator):**
+  1. The `web-research` recipe ships `services/search.yaml` (`kind: service`, ADR 0036 decision 13): `baseUrl`
+     `http://127.0.0.1:8888`, `hosts: [127.0.0.1]` (a loopback host must be listed, service-client requirement 29;
+     the call is docket's own, so a jail with network `none` reaches it), one `GET /search` operation with `q` and
+     `format=json`, access `read`, and a description that tells the model to read the pages it picks with `fetch`.
+  2. The recipe ships `searxng/settings.yml` (JSON on, limiter off, the three measured engines), so nothing is edited
+     by hand. `docket setup search searxng [--pod P]` writes that file under the home, writes the pod's
+     `services/search.yaml`, and prints the one `docker run` line with the real path. docket does not start or
+     supervise the container.
+  3. `search-host` is satisfied only by a declared search service whose endpoint answers (a `GET` of the base URL
+     with a 2 s timeout; informational, never blocks an apply). Unmet, its line names both options and one command
+     each: `needs search-host: no search service -> docket setup search searxng (free, runs in Docker) | docket setup
+     search brave (API key)`. `SEARCH_HOSTS` stops promising a search site.
+  4. The recipe README leads with the search section: the two options side by side, then the three commands.
+  5. The 20 queries again through the declared service (not urllib), spaced 5 s, judged by reading.
+- **Non-goals:** docket starting or supervising the container; a native search tool (ADR 0034, ADR 0036 decision 17);
+  Brave (P68-8).
+- **Change:** the recipe directory, `interfaces/cli/commands/` (a `setup search` command), `teams/apply/needs.py`
+  (`SEARCH_HOSTS`, `_search_line`), `pod-blueprints.spec.md` requirement 16, `cli-interface.spec.md`,
+  `tests/integration/teams/test_recipe_needs.py`, `docs/recipes.md` (generated), generated CLI docs.
+- **Acceptance:** with a stub service, `init --recipe web-research` reports `search-host` ready only once the service
+  answers; under open read without the service, `search-host` is not satisfied (today it is, by the `*` reach); the
+  unmet line names both commands; `setup search searxng` is idempotent. The measurement: at least 18 of 20 queries
+  with five relevant links through the service, judged by reading.
+- **Gate:** the recipe and command tests; `validate-specs.sh`; `gen_recipe_docs.py --check`; `gen_cli_docs.py
+  --check`; the measurement spends no model tokens.
+
+### P68-7 — A tool result the model has not answered is never condensed
+
+**Status:** DONE 2026-11-05 (`53f5c26a` cherry-picked; session-history 1.14.0, requirement 30) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** the P67-5 run: a round of parallel fetches returned more whole results than `HISTORY_KEEP_FULL_RESULTS`
+  and the budget allow, so the request projection replaced the oldest results of the current round with "already
+  seen and omitted; call fetch again" before the model read them; it fetched again until the turn budget ended.
+- **Done:** a `tool` message is answered once an assistant message follows it; `condense_history` clamps its cut to
+  the answered results (`_unanswered_count`), and an unanswered result still counts as whole in the keep/budget
+  arithmetic, so older answered results make room for it. Tests in `test_session__condense.py`
+  (`TestCondenseHistoryUnansweredRound`); the unanswered `write` case passes before the change and guards it.
+- **Open, measured by P68-6:** a turn whose round is larger than its request window is still bounded by request-fit,
+  not by this projection.
+
+### P68-9 — A handoff to a hosted model is not cut to a local model's window
+
+**Status:** DONE 2026-11-05 (cherry-picked as the "handoff is fit to the receiving model's window" commit; pod-dispatch 12.8.0, role-archetypes 5.11.0; a shipped `tokenBudget` is a floor, an operator's or a pod role file's value is exact; found by the 2026-11-05 research run, `internal-docs/baselines/phase-68/real-run-searxng.md`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** the analyst's context carried 11,688 bytes for three researchers and the lead; researcher A was cut
+  from 4,960 to 3,940 bytes and the source URLs at its tail were lost, so Nitelit, Hey Lulla and Storytime came out
+  of the report. The model's window was far larger.
+- **Cause:** `agent/context.py` `budget_for_role` returns the archetype's declared `token_budget` or
+  `DEFAULT_TOKEN_BUDGET` (6,000); `resolve_window_share_tokens` exists but "every existing caller omits both
+  keyword-only window arguments" (its own comment), so the window of the model that receives the handoff never
+  counts. `hop_share` then halves the budget per hop back. The cap was sized for a 16k local endpoint.
+- **Goal:** the budget the composer fits a handoff to is the receiving member's model window (the catalog knows it:
+  `models/catalog.py`) through `resolve_window_share_tokens`, with the archetype's declared value still winning when
+  it is set on purpose; a local 16k-32k endpoint resolves to today's 6,000. No new constant: measure the bytes the
+  analyst gets before and after on the same recorded handoffs.
+- **Non-goals:** a new truncation rule; keeping the tail first (the cap stops cutting a research handoff, so the
+  order of what is cut is not the question).
+- **Change:** `hops/application/compose.py` (the call site that omits the window), `agent/context.py`, the owning
+  spec's handoff requirement (`pod-dispatch.spec.md`, "Structured handoff artifacts"), tests beside them.
+- **Acceptance:** a hosted member with a 200k window gets a handoff whose researchers are not truncated (a test with
+  three 5,000-byte replies); a 16k local member keeps the 6,000-token behaviour byte for byte; `context_composed`
+  reports it.
+- **Gate:** the focused files; `validate-specs.sh`; `comment_lint.py --check` on the touched files.
+
+### P68-10 — The notice for a condensed result cannot be read as the tool's answer
+
+**Status:** DONE 2026-11-05 (`14ad8b1e`; session-history 1.15.0; found by the same run) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P68-7
+
+- **Trigger:** once answered, a `fetch` result becomes `[fetch <url>: N lines, M characters, already seen and
+  omitted; call fetch again only for exact text you still need]`. Haiku 5.5 read it as the tool refusing a repeat:
+  the analyst rewrote its report to say none of its five pages had been re-read (false, it had drafted from them)
+  and stored "fetch returns 'already seen and omitted' on a repeat" in the pod's memory; the writer copied both.
+- **Goal:** the notice says whose view it is and that the reading happened: for example `[fetch <url>: N lines, M
+  characters. You read this earlier in this session; its text is no longer in this view. Call fetch again only
+  for text you still need.]`. The wording is the whole change; the batch cut and the arguments of `write`/`edit`
+  stay as they are. The memory-update prompt is not changed here.
+- **Change:** `agent/session.py` `_result_notice`, `session-history.spec.md` requirement 30 and the sentence that
+  quotes the notice (spec line ~191), `test_session__condense.py`.
+- **Acceptance:** the notice names that the model read the result and that its text is not in this view; a test
+  pins both clauses; no notice contains "omitted" without saying where the text is.
+- **Check by the next real run:** a task that reads pages in one round and drafts from them, then reviews its own
+  draft, reports what it read as read.
+- **Gate:** the focused files; `validate-specs.sh`; `comment_lint.py --check`.
+
+### P68-11 — A turn condenses to fit the window, never to save tokens
+
+**Status:** DONE 2026-11-05 except the real run (`5789aebf`; session-history 1.16.0, model-profiles 7.2.0, agent-loop 4.9.0; the request projection condenses only when the request would not fit the window, synthetic fixture `tests/fixtures/research-turn/v1/shape.json`. Left: the `history` share stays because turn-start compaction reads it (decide whether `hosted` `BudgetShares(history=0.025)` goes, `catalog.py` `BudgetShares`, `driver_support.py:412`); the researcher's cache-read growth on a real run) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** researcher `web-a`, 10 iterations on Haiku 5.5 (1M window): the cache read was 4,876 tokens on every
+  iteration (the system prompt and tools, nothing else) and the history was rewritten each time (28k, 46k, 17k...
+  cache writes, `cacheMiss: messages_changed` from iteration 3). The writer of the same run, whose results were never
+  condensed, read 8.8k -> 10.8k -> 13.7k -> 15.7k from cache with 200-600 written per iteration. The cause is the
+  request projection: `condense_history` turns answered results into notices once the whole ones pass
+  `history_results_budget(history_budget_tokens)`, and `hosted` gives the history 2.5% of the window
+  (`BudgetShares(history=0.025)`, model-profiles "Model profiles" 2): 25,000 tokens on 1M, which is **18,750
+  characters** of whole results, less than one page. Each cut moves the prefix; the cache dies; and since the turn
+  counts `input - cached`, every rewrite counts in full: `web-a` counted 191k for work it read once.
+- **Goal:** the projection keeps answered results whole while the request fits, and condenses only when it would not:
+  the trigger is the receiving model's window (what request-fit already measures: estimated input against the window
+  minus the output reserve), not a share of it. When it fires, one cut down to the low-water mark, as `_batch_cut`
+  does today, so the prefix changes once per cut and not per iteration. A local 32k endpoint hits the trigger after a
+  few results and behaves as today; a 1M window does not condense a research turn at all. `HISTORY_FULL_RESULTS_CHARS`
+  (6,000) stays as the floor for an unknown window. The `history` share stops driving the projection; delete it if
+  `rg` finds no other reader. P68-7's rule (an unanswered round is never condensed) is unchanged.
+- **Non-goals:** turn-start compaction (summaries, agent-loop 36-37); the condensed notice (P68-10); any new constant.
+- **Change:** `agent/loop_compaction.py` `messages_for_durable` (the budget it passes), `agent/session.py`
+  `history_results_budget` or its caller, `models/catalog.py` `BudgetShares`/`_budgets_of`, `hops/application/driver_support.py`
+  (`history_budget_tokens`), specs `session-history.spec.md` requirement 30 (the budget clause), `model-profiles.spec.md`
+  "Model profiles" 2, `agent-loop.spec.md` where it names the history budget; tests beside each.
+- **Acceptance:** a replay of run 3's `web-a` session (the integrator provides the saved `session.json`) through the
+  projection on a 1,000,000-token window yields the same bytes for the history prefix on every iteration (no
+  `messages_changed` cause); the same replay on a 32,768-token window condenses as today's test expects; a unit test
+  pins both. Then the integrator's real run: the researcher's cache reads grow with the history.
+- **Gate:** the focused files (`test_session__condense.py`, `test_loop_compaction.py`, `test_catalog__profile.py`),
+  `validate-specs.sh`, `tests/architecture`, `comment_lint.py --check`.
+
+### P68-12 — A service operation returns the fields the model needs, not the whole document
+
+**Status:** DONE 2026-11-05 except the live queries (`66b16f90`; service-client 1.5.0, requirement 24a; `response: {items, fields}`. The card's 4,000-character figure does not hold with `content` in `fields` (about 9,300 of 25,000, 37%); the 20 live queries decide whether `content` stays) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** —
+
+- **Trigger:** one SearXNG answer is 23,000-30,000 characters (about 8k tokens) for 30 results, each with `engine`,
+  `engines`, `score`, `positions`, `category`, `parsed_url`...; the model used five URLs and their titles. Two searches
+  put 16.6k tokens into the researcher's request and stayed there for every later iteration. `service-client.spec.md`
+  requirement 24 re-serialises the whole 2xx JSON.
+- **Goal:** an operation may declare `response: {items: <dotted path to a list>, fields: [<name>, ...]}`. When the 2xx
+  body is JSON and the path resolves to a list, the result is that list reduced to those fields, compact JSON; when
+  the path is absent from the body, the whole body as today (never an error: the model still gets an answer). The
+  recipe's `services/search.yaml` declares `items: results`, `fields: [title, url, content]`; the Brave document
+  (`brave/services/search.yaml`) declares `items: web.results`, `fields: [title, url, description]`.
+- **Non-goals:** a query language; projections on non-list bodies; changing `fetch`.
+- **Change:** `kernel/service.py` (`Operation.response`, validated: `items` a dotted path, `fields` a non-empty list of
+  names), `platform/service_http.py` (apply after requirement 24's parse), `service-client.spec.md` (new requirement
+  after 24, version bump), the two shipped search documents, `docs/CONFIGURATION.md` if it documents operations;
+  tests with a recorded SearXNG JSON answer (take one from `internal-docs/baselines/phase-68/search-service-rows.json`
+  or a 30-result synthetic one of the same shape).
+- **Acceptance:** a 30,000-character SearXNG answer projects to under 4,000 characters with every `url` intact and in
+  order; a body without the path returns whole; a document with `fields: []` or `items` not a string is refused at load
+  with a message naming the key. The integrator reruns the 20 queries through the service to confirm the URLs.
+- **Gate:** `test_service_http*`, `test_service*` under `tests/unit/kernel` and `tests/integration/teams`,
+  `validate-specs.sh`, `gen_recipe_docs.py --check`, `tests/architecture`.
+
+### P68-13 — `fetch` returns a page's main content, not its chrome
+
+**Status:** DONE 2026-11-05 except the measurement on three run-3 pages (`8639e75a`; security-gates 3.17.0; `main`, else one `article`, else body. Known gap: an unclosed `nav`/`aside`/`form` outside any `main` drops the rest of the page) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** a fetched store or vendor page is 25,000-30,000 characters of readable text (`web-a` held eight of them,
+  about 33k tokens, resent on every later iteration); the text includes navigation, cookie banners, footers and
+  related-content blocks. The main content of such pages is commonly 20-40% of the text. Default cap 30,000 cuts the
+  tail mid-sentence.
+- **Goal:** `platform/fetch.py`'s readable-text collector drops the elements that are never content (`nav`, `header`,
+  `footer`, `aside`, `script`, `style`, `noscript`, `template`, `svg`, `form`, and elements whose `role` is
+  `navigation`, `banner`, `contentinfo`, `complementary`) and, when the page has one `main` or `article`, keeps that
+  subtree only; otherwise the body minus the dropped elements. The `title` is kept as the first line, as today if
+  that is the case. No readability scoring, no heuristics by class name.
+- **Non-goals:** PDF (read by the jail's interpreter); JavaScript rendering; changing the size cap.
+- **Change:** `platform/fetch.py` (the collector), `security-gates.spec.md`'s `fetch` bullet (what the text contains;
+  version bump), `tests/unit/platform/test_fetch*.py` with synthetic pages: one with `main`, one with `article`, one
+  with neither, one whose only `main` is empty (then the body rule applies).
+- **Acceptance:** the synthetic page with a 2,000-character `nav`, a 1,000-character `footer` and a 3,000-character
+  `main` returns the `main` text and the title only; links inside `main` keep their text; a page with no landmarks
+  returns the body minus `nav`/`footer`/scripts. The integrator measures on three pages from run 3 (store, vendor,
+  Wikipedia) and records the ratio.
+- **Gate:** the fetch tests, `validate-specs.sh`, `tests/architecture`, `comment_lint.py --check`.
+
+### P68-14 — The budget stops new work, never the report: the landing is always made
+
+**Status:** DONE 2026-11-05 except run 2 on the default budget (`7338c61b`; agent-loop 4.9.0, requirements 51, 52, 108; a tool-calling reply that crosses the budget (requirement 55) still stops without a landing, `loop.py` ~524, pinned by a test) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** run 2, hops `web-b` and `repo`: `token budget: cannot start terminal finalization completion within
+  token_budget=100000 (used 95251, estimated input 19229 + output reserve 8192, remaining 4749); no backend call
+  made`. One round of eight `fetch` took the turn from more than a quarter free to 4,749 left, so the landing
+  (agent-loop 51) did not fit and the hop ended with nothing; the requirement 108 notice had been appended to that
+  round's last result, too late to act on. Everything the round read was paid for and lost.
+- **Goal:** the landing request is exempt from the counted-token bound: the bound decides when no *more* work starts,
+  and the one finalization request is then made whatever the count, bounded by being one request with no tools
+  (request-fit against the window still applies). `select_landing`'s hard stop for spent tokens becomes a landing
+  like the other three bounds, and `prospective_budget_error` is not applied to `purpose="terminal finalization"`.
+  The requirement 108 notice says what to do: `... do not start new reads or searches; finish from what you have ...`.
+- **Non-goals:** changing `AGENT_LOOP_TOKEN_BUDGET`; a per-step budget; the model-visible countdown of Anthropic's
+  task budgets.
+- **Change:** `agent/loop_budget.py` (`select_landing`, `prospective_budget_error`, `_NOTICE`), `agent-loop.spec.md`
+  requirements 51 and 108 (version bump), `tests/unit/agent/test_loop_budget*.py` and the loop test that pins "spent
+  tokens leave no room".
+- **Acceptance:** a stub model whose second round returns results larger than the remaining budget ends the turn with
+  `stop_reason="token_budget"`, a landing report as the hop's summary and exactly one request past the bound; the
+  string `cannot start terminal finalization` is no longer produced for the landing; the notice carries the new clause.
+  Then run 2's task on the default budget ends every hop with a report (partial is acceptable here; P68-11 makes it
+  whole).
+- **Gate:** the loop budget tests, `tests/integration/agent/loop/`, `validate-specs.sh`, `comment_lint.py --check`.
+
+### P68-15 — A handoff names the sources it read, so the next hop reads the copy instead of fetching again
+
+**Status:** DONE 2026-11-05 except the analyst's fetch count against run 3's five (`ac7134a0`; pod-dispatch 12.9.0, role-archetypes 5.12.0; `sources` read from the task trace by hop role, so it is `[]` under DOCKET_NO_TRACE) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + prompt · **After:** —
+
+- **Trigger:** the analyst spent 172,942 input tokens, most of it re-fetching the five pages the researchers had read;
+  those pages were already in the pod's `cache/artifacts/` (every over-cap `fetch` result is stored whole there).
+  The handoff carries the researcher's summary and no pointer to what it read, and the analyst's role says
+  "verify", so it fetched everything again.
+- **Goal:** `HandoffArtifact` gains `sources: [{url, artifact}]`, filled by `build_hop_result` from the hop's `fetch`
+  results (the URL from the call's arguments; the artifact path from `artifact_path_in(result)` when the result was
+  stored, else empty). `render()` lists them after the summary as `Sources read: <url> (read: <artifact path>)`, one
+  per line, last in the drop order so a tight budget sheds them before the summary. The analyst's identity prompt
+  says to check a sample of the sources from their stored copies with `read` and not to fetch a page a researcher
+  already read; the researcher's says to keep each claim next to its URL.
+- **Non-goals:** copying page text into the handoff; changing the artifact store; a new tool.
+- **Change:** `kernel/handoff.py` (field, render, drop order), `tasks/application/record.py` `build_hop_result`,
+  `hops/application/compose.py` only if the render site needs it, `templates/prompts/identity/analyst.md` and
+  `researcher.md` (their version lines), `pod-dispatch.spec.md` "Structured handoff artifacts", the prompt spec that
+  owns the identity files; fixture handoffs under `tests/fixtures/` re-recorded if they pin the render.
+- **Acceptance:** a hop with two `fetch` results, one stored as an artifact, yields a handoff with both URLs and one
+  path; the next hop's composed message contains the `Sources read` lines; under a budget that fits the summary but
+  not the sources, the sources are shed first; the analyst prompt names `read` and the stored copies. The integrator's
+  run: the analyst's `fetch` count against run 3's five.
+- **Gate:** `tests/unit/kernel/test_handoff*.py`, `tests/integration/hops/test_hop_carryover.py`, the prompt tests,
+  `validate-specs.sh`, `tests/architecture`.
+
+### P68-8 — Brave Search API as the option, and Tack sees and sets the provider
+
+**Status:** DONE 2026-11-05 except goal 4, the 20 live Brave queries, which wait for a key (`c7749066` cherry-picked; operator-api, pod-blueprints, cli-json-shapes, cli-interface bumped; `search` object and feature; fixture `pod-search.json`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data · **After:** P68-4
+
+- **Trigger:** the maintainer's choice 4: Brave is the optional provider, and the plan of record (Tack) must see
+  which provider a pod searches through and be able to change it.
+- **Constraint to read first:** Brave's terms (updated 2026-09-01, third-party reading, unverified against brave.com)
+  bar storing or caching results beyond transient use; docket keeps tool results in the session and the trace. Read
+  the terms before shipping, and say in the README what docket keeps. Brave's free plan appears to have become a
+  monthly credit of about 1,000 searches; give no number in the docs without reading the pricing page.
+- **Goal:**
+  1. `docket setup search brave [--pod P]` reads the key from stdin (never an argument; same rule as `setup secret
+     set`), stores it as the secret `brave-search`, and writes the pod's `services/search.yaml` for Brave (`baseUrl`
+     `https://api.search.brave.com/res/v1/web`, `hosts: [api.search.brave.com]`, `auth {header:
+     X-Subscription-Token, value: ${secret:brave-search}}`, one `GET /search`, access `read`). Switching provider is
+     the same file replaced, so one service named `search` exists at a time.
+  2. `search-host` is satisfied by Brave only when the secret resolves (`resolve_auth` is the check), and its line
+     names the provider: `needs search-host: ready (brave)` or `ready (searxng at 127.0.0.1:8888)`.
+  3. The pod report (`GET /pods/<pod>` and `pod show --json`) carries `search {provider, ready, reason, fix, options}`
+     (`provider`: `searxng`, `brave`, `custom` for any other declared search service, or `none`; `options` lists each
+     provider with its one command), and `/health` lists the feature `search`. Additive on API 6, same shape as
+     `webRead`. Tack renders the options; it sets the provider by applying a directory whose `services/search.yaml`
+     is the chosen one (`POST /pods/<pod>/apply` already replaces a pod service by bytes). The key is never sent over
+     HTTP: for Brave the `fix` names the one command to run on the machine (`docket setup secret set brave-search
+     --stdin`), and the report says so.
+  4. One real call through the Brave service with a throwaway key from the maintainer, 20 queries, to compare with
+     SearXNG's 20 of 20 (spends the maintainer's quota, no model tokens).
+- **Non-goals:** a key over HTTP; Exa or Tavily (a `POST`); two search services at once.
+- **Change:** `interfaces/cli/commands/` (`setup search`), `teams/apply/needs.py`, `hops/application/{report,capabilities}.py`,
+  `interfaces/http/routes/health.py` (FEATURES), `interfaces/cli/commands/pod_show.py`, the recipe README,
+  `operator-api.spec.md`, `pod-blueprints.spec.md`, `cli-json-shapes.spec.md`, `serve-read-api.spec.md`, the
+  `operator-v2` fixtures (re-recorded with `OPERATOR_RECORD_DIR`), CHANGELOG.
+- **Acceptance:** with a stub, a pod on SearXNG reports `search.provider: searxng`; after `setup search brave` and
+  a stored key it reports `brave` and ready; with the secret missing it reports not ready and the command; applying
+  a directory with the other `services/search.yaml` switches the provider with no other change; no response or trace
+  contains the key.
+- **Gate:** the focused files; the operator-v2 fixtures re-recorded and committed with the spec bump;
+  `validate-specs.sh`; `gen_cli_docs.py --check`; `comment_lint.py --check` on the touched files.
+
+### P68-5 — The fix docket names for a missing `fetch` is the one that opens it
+
+**Status:** DONE 2026-11-04 (`1617bd38`; agent-loop 4.7.0, serve-read-api 6.5.0; the `features` list in serve-read-api now points at `FEATURES` and its exact-list test) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P68-1
+
+- **Trigger:** `agent/tools/capability_gap.py` ~56 always says `docket pod set fetchDomains <host>`; for a folder pod
+  whose jail is off the fix is `docket setup sandbox on` (`network_posture.fetch_reach`'s `fix`). Found in P67-2.
+- **Goal:** `PodOffer` gains `fetch_fix` (`hops/application/driver_support.py` `pod_offer` ~170 fills it from
+  `fetch_reach(project).fix`); `gap_for` uses it. `serve-read-api.spec.md`'s `features` list (stale since
+  `consultParts`) is replaced by a pointer to `FEATURES` and its exact-list test.
+- **Change:** `capability_gap.py`, `driver_support.py`, `serve-read-api.spec.md`, `agent-loop.spec.md` requirement
+  113; `tests/unit/agent/tools/test_registry__dispatch.py`.
+- **Acceptance (RED first):** a folder pod without the jail: the gap's fix is `run \`docket setup sandbox on\``; a
+  repository pod: unchanged. Oracle: today both name `pod set fetchDomains`.
+- **Gate:** the unit file; `tests/architecture`; `validate-specs.sh`.
+
+### P68-6 — The research task again, through to a report with sources
+
+**Status:** RAN 2026-11-06 (`internal-docs/baselines/phase-68/p68-6-real-run.md`): every acceptance item met but the last: a report citing 24 hosts, no failed compaction, no payment park, the writer made no `fetch`, 828,490 input tokens against 445,209; the task ended `failed` on the Reviewer's veto after one rework, not `done`. Sent to docket directly with Tack's `maxTokens` (2,000,000): Tack's runner refused its attempt because the app project path sat in a wiped `/tmp` · **Size:** M · **Model:** Opus (integrator) · **Kind:** real run
+
+- **Goal:** P67-5's acceptance, on the installed build (`./install.sh`, service restarted), the user's go given in
+  Tack's session: Tack task `4C9BAB` from **Run again**, nobody writing `fetchDomains`.
+- **Acceptance:** the task ends `done` with a report in the workdir citing at least three distinct public hosts;
+  no `session_compaction status=failed` ends a hop; no `write` of the report parks on a payment policy; the writer
+  makes no `fetch`; input tokens reported against this run's 445,209 (never dollars). Evidence to
+  `internal-docs/baselines/phase-68/`. Closes P67-5.
+- **Gate:** the phase-close list; the full suite once at the last merge.
+
+## ☑ PHASE 67 COMPLETE 2026-11-06 — a research team reads the web without anyone writing it a host list (D-88, accepted 2026-11-04)
+
+> **Closed 2026-11-06.** P67-1..P67-4 done (`2ce62d69`, `3b32a2b4`); Tack adopted `webRead` and `blocking`. Its real
+> run P67-5 read the web and failed on a compaction defect; Phase 68 fixed it and P68-6 re-ran the task through
+> every hop (see Phase 68's close). Not pushed.
+
+> **Trigger (the maintainer's request, with a reproduction).** Tack task `4C9BAB` ("Anliza app similares",
+> team `web-research`) has ended **Not started** eight times: Tack's `NoWeb` gate reads `network: none` and no
+> member holding `fetch` (`GET /pods/web-research`: `fetchDomains: []`, `network.enforced: true`,
+> `workspaceKind: workdir`, `needs: []`). The 2026-11-03 answer (per-pod `fetchDomains`, ADR 0036 decision 17)
+> asks someone to know in advance which hosts a research task will read: dozens per task, different each
+> time; the onboarding skill cannot write `*` and never wrote a list, so every research team is born unable
+> to research. Design and reasoning: `internal-docs/design/research-web-access-2026-11-04.es.md`.
+>
+> **Decisions (D-88; ADR 0036 decision 17 amended, no new ADR):**
+> 1. **Open read by shape, not by list.** A member's `fetch` reaches any public host, with no grant, when
+>    its pod works in a folder (`workspaceKind: workdir`), the jail is enforced (`jail_enforces()`), and
+>    the pod declares no `fetchDomains`. The reason is the rule of two (Willison's lethal trifecta, Meta's
+>    Agents Rule of Two): web content is untrusted and a GET can leak in its URL, so the safe posture removes
+>    private data from reach. A folder pod has no repository, and the jail keeps `bash` off the rest of the
+>    host. A role that holds a `send` tool already cannot hold `fetch` (`check.send_conflicts` at apply,
+>    `registry_for_role`'s allow-list at run time); open read changes neither.
+> 2. **Every other pod keeps today's rules.** A repository pod, a pod without an enforced jail, or a pod
+>    that declares `fetchDomains` reads only its list; `*` stays `--widen` only. A declared list narrows a
+>    folder pod (the operator's choice wins); `deniedTools: fetch` turns the web off.
+> 3. **One precondition for the web and for PDFs.** P61-8/P62-1 read a PDF only inside the jail; open read
+>    needs the same jail. On a folder pod, `docket setup sandbox on` is the single command that gives a
+>    research team both, and the `fetch-hosts` need says so instead of asking for hosts.
+> 4. **docket owns the sentence Tack shows.** The pod report says how the pod reads the web (`webRead`:
+>    mode, reason, fix) and whether each unmet need blocks the work or only degrades it (`blocking`).
+>    Tack quotes docket's fix instead of spelling docket commands in Rust, and refuses a run only on a
+>    blocking need. Additive on API 6, announced as the feature `webRead`.
+> 5. **Search is measured before anything ships.** Open read reaches `html.duckduckgo.com`, but search
+>    sites block bots; a search API as a declared service (ADR 0036 decision 13) ships only if the
+>    measurement says the HTML site fails.
+>
+> **Residual risk, said in the specs:** an injected page can make the agent put the task text, the pod's
+> memory or its folder's files into a GET URL. For a folder pod that is the research itself, not code or
+> secrets; it is the risk every deep-research tool accepts. Not tamper-proof wording; "enforcement covers the
+> tool calls docket dispatches".
+>
+> **Not doing:** per-host approval during a task (a human bottleneck that does not lower the risk); opening the
+> jail's network to research (it also opens `bash`, `run:` and MCP); open read without an enforced jail
+> (`bash` would read the whole host); a browser, POST or headers on `fetch` (ADR 0036 "Not doing").
+>
+> **Waves (by file; Sonnet workers, one integrator):**
+>
+> | Wave | Cards | File contention resolved |
+> | --- | --- | --- |
+> | 1 | P67-1 ∥ P67-3 | P67-1 owns `network_posture.py`, `builtin_tools.py`, `capabilities.py`, `security-gates.spec.md`, `agent-loop.spec.md` requirement 83 and ADR 0036; P67-3 edits no `src/` and no spec |
+> | 2 | P67-2 | `needs.py`, `report.py`, `pod_provisioning.py`, `health.py`, `operator-api.spec.md`, `pod-blueprints.spec.md`, the operator-v2 fixtures; needs P67-1's reader |
+> | 3 | P67-4, then P67-5 | P67-4 is prose only; P67-5 is the integrator's real run with Tack |
+>
+> **Against Phase 66:** P67-1 amends `agent-loop.spec.md` (requirement 83), which P66-1, P66-2 and P66-6 also
+> amend; if both phases run at once the integrator applies the spec hunks at merge. No `src/` file is shared.
+> **Tack's side** (another repository, its own session): the prompt in
+> `internal-docs/plans/tack-research-web-2026-11-04.md`; it waits for P67-2's fixtures.
+
+### P67-1 — A folder pod under an enforced jail reads any public host
+
+**Status:** DONE 2026-11-04 (uncommitted; gate green: `test_fetch_reach.py` 6 tests, `test_network_posture.py`, architecture, e2e lane, `validate-specs.sh`, `comment_lint.py`; security-gates 3.15.0, agent-loop 4.5.0, ADR 0036 decision 17 amended; the machine's own list counts as declared, so open read needs both empty) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+
+- **Trigger:** the reproduction above: `web-research` meets every condition of decision 1 and its members
+  hold no `fetch`, because `_offered_fetch` (`hops/application/builtin_tools.py` ~550) offers `fetch` only when
+  `effective_fetch_domains` (`teams/pod_settings.py` ~735) is non-empty, and that list is the machine's plus
+  the pod's declared hosts.
+- **Goal (decisions 1-2):**
+  - `teams/network_posture.py` (58 lines; already imports `pod_settings` and has `jail_enforces`) gains
+    `fetch_reach(project) -> FetchReach(hosts, mode, reason, fix)`. `mode` is `open` (decision 1's three
+    conditions; `hosts == ("*",)`), `listed` (declared or machine hosts; `any` when the `--widen` grant is
+    recorded) or `none`. `reason` is one sentence ("a folder team under the jail reads any public host");
+    `fix` is the one command that opens it when `mode` is `none`: `docket setup sandbox on` (or the backend
+    choice, as `needs._isolation_line` words it) on a folder pod, `docket pod set fetchDomains <host> --pod
+    <pod>` on a repository pod.
+  - The three readers switch to it: `_offered_fetch`, `member_capabilities` (`hops/application/capabilities.py`
+    ~33, `fetchDomains` stays the served key and serves `["*"]` under open read) and the fetch handler's
+    allowed set (the same `_offered_fetch` call). `effective_fetch_domains` stays as the declared part that
+    `fetch_reach` reads; `needs.readiness` keeps calling it until P67-2.
+  - `fetch`'s perimeter is unchanged: `*` is not an exact host, so private addresses stay refused
+    (`platform/fetch.py` `_exact_hosts` ~216, `platform/perimeter.py` ~69), and credentials in a URL too.
+- **Non-goals:** the pod report's `webRead`, the needs, `blocking` (P67-2); search (P67-3); the hop message's
+  `Web:` line, which already words `*` as any public host (`hops/application/compose.py` ~175).
+- **Change:** `teams/network_posture.py`, `hops/application/builtin_tools.py`, `hops/application/capabilities.py`;
+  tests `tests/integration/teams/test_fetch_reach.py` (new), `tests/unit/teams/test_network_posture.py`.
+  Spec: `security-gates.spec.md` "Network egress and the fetch allowlist" (~1125-1150) and the default-install
+  requirement (~1905: "a default install MUST leave `fetch`..." gains the open-read case); `agent-loop.spec.md`
+  requirement 83 (~771); ADR 0036 decision 17 amended in place (its "`*` alone ... only through `--widen`"
+  becomes "only through `--widen`, or open read on a folder pod under the jail").
+- **Acceptance (RED first):** each with the jail bound the way `00825233` binds it (record isolation on and stub
+  the backend probe), never the host's real backend.
+  - Integration: a `respond` folder pod, jail enforced, no `fetchDomains`: `member_capabilities(pod,
+    "researcher")["tools"]` contains `fetch` and `fetchDomains == ["*"]`; the fetch tool built for that
+    member accepts `https://example.org/` at the host check and still refuses `http://127.0.0.1/`. Oracle:
+    today `tools` lacks `fetch`.
+  - Integration: the same pod's `actor` (the `send` role of `respond`) has no `fetch`.
+  - Integration: the same pod with isolation recorded off, a `codebase` pod with the jail on, and a folder pod
+    declaring `fetchDomains: docs.python.org` give, in order, no `fetch`, no `fetch`, and `["docs.python.org"]`.
+  - Unit: `fetch_reach` returns each `mode` with the `fix` named above; `deniedTools: fetch` leaves `mode`
+    computed but `tools` without `fetch`.
+- **Gate:** the two test files (under 10 s); `tests/architecture` (3 s); the e2e lane (42 s: the tool set
+  changes); `bash scripts/validate-specs.sh`; `scripts/maint/comment_lint.py --check` on touched files.
+
+### P67-2 — The pod says how it reads the web, and which unmet need blocks the work
+
+**Status:** DONE 2026-11-04 (uncommitted; gate green: test_researcher_needs_web, test_recipe_needs, test_report, test_health, serve_pods_config/endpoint with fixtures re-recorded from a real server (pod-fetch, pod-reach, pod-contract) and pod-web-read added, architecture, e2e lane, goldens, `validate-specs.sh`, `gen_cli_docs --check`, comment_lint; operator-api 7.29.0, pod-blueprints 4.9.0, cli-json-shapes 5.7.0; `webRead.mode` is `open|listed|none`, a `--widen` grant is `listed`; `search-host` reads satisfied under open read although P67-3 measured search as unusable) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + wire · **After:** P67-1 (`fetch_reach`)
+
+- **Trigger:** Tack's `team_misfits` (Tack's repository, `crates/tack-protocol/src/execution/capabilities.rs`
+  ~490-535) refuses a run on **every** unsatisfied need but `model`, and spells docket's fix itself for
+  `NoWeb` (`crates/tack-runner/src/harness/docket.rs` ~214). A pod that records `isolation` or `search-host`
+  would then be refused for something that only degrades it, and Tack's sentence names `fetchDomains` where
+  the fix for a folder pod is the jail.
+- **Goal (decisions 3-4):**
+  - `GET /pods/<p>` and `docket pod show --json` carry `webRead: {mode, reason, fix}` from `fetch_reach`
+    (`hops/application/report.py`, beside `network` ~613/653); `pod show` prints `Web: <reason>` and, when
+    `mode` is `none`, `-> <fix>`.
+  - `NeedLine` (`teams/apply/needs.py` ~26) gains `blocking: bool` on the wire: `fetch-hosts` blocks;
+    `search-host` and `isolation` degrade (the agent can still read pages it knows, and every format but
+    PDF). `_fetch_line` reads `fetch_reach`: satisfied under `open` or `listed`, and its `fix` is
+    `fetch_reach`'s. `_isolation_line`'s text says what it opens: "PDFs, and the web on a folder team".
+  - `record_reading_needs` (`teams/pod_provisioning.py` ~391) records `fetch-hosts`, `search-host` and
+    `isolation` for a pod with a `researcher`, the same three `web-research` declares.
+  - `FEATURES` (`interfaces/http/routes/health.py` ~21) gains `webRead`; the operator-v2 fixtures
+    `pod-fetch.json` and `pod-reach.json` are re-recorded and `pod-web-read.json` added (a folder pod under
+    the jail, open read, three satisfied needs), captured from a real throwaway docket as P61 did.
+- **Non-goals:** Tack's code (its prompt is the plan file above); search (P67-3); a `blocking` per pod.
+- **Change:** `hops/application/report.py`, `teams/apply/needs.py`, `teams/pod_provisioning.py`,
+  `interfaces/http/routes/health.py`, `interfaces/cli/render/apply.py` (the `pod show` line); fixtures under
+  `tests/fixtures/operator-v2/`; tests `tests/integration/teams/test_researcher_needs_web.py` (extend),
+  `tests/unit/hops/application/test_report.py`. Spec: `operator-api.spec.md` "Pod answers" (~434-502) and the
+  features list; `pod-blueprints.spec.md` requirement 16 (~512-550); `cli-json-shapes` for `needs`.
+- **Acceptance (RED first):**
+  - Integration: the P67-1 folder pod reports `webRead.mode == "open"` and `needs` with three entries, all
+    `satisfied`, `fetch-hosts` `blocking: true`. Oracle: today `needs` holds one unsatisfied `fetch-hosts`.
+  - Integration: the same pod with isolation off reports `webRead.mode == "none"`, `fix == "docket setup
+    sandbox on"`, `fetch-hosts` unsatisfied and blocking with that fix, `isolation` unsatisfied and not blocking.
+  - Integration: a repository pod with a researcher and no list: `fetch-hosts` fix names `pod set fetchDomains`.
+  - The exact-list `FEATURES` test lists `webRead`; the three fixtures parse with the operator-v2 schema test.
+- **Gate:** the two test files; `tests/architecture`; the e2e lane (42 s: the HTTP API changes);
+  `validate-specs.sh`; `comment_lint.py --check`.
+
+### P67-3 — Measure whether a research team can search, before anything ships for it
+
+**Status:** DONE 2026-11-04, `internal-docs/baselines/phase-67/search.md`. DuckDuckGo html and lite: 20/20 challenge pages (HTTP 202); Bing: 10 links for 20/20 queries but unrelated to the query (mattress shops, Epic Games, "File Explorer" for "Speakaboos pricing"), one URL-parameter fix tried and failed. The 18-of-20 rule counts links, not relevance, so it is not read as a pass: the second branch applies, a follow-up card for `services/search.yaml`, **provider chosen by the maintainer** · **Size:** S · **Model:** Sonnet · **Kind:** measurement, then a decision · **After:** —
+
+- **Trigger:** `needs.SEARCH_HOSTS` (`teams/apply/needs.py` ~23) assumes `html.duckduckgo.com` answers a
+  GET from docket's `fetch`; nobody has measured it. Search sites rate-limit and challenge bots.
+- **Goal:** a throwaway script (not kept in `scripts/maint/`; one fix at most) sends 20 fixed research queries
+  (Spanish and English, from the real task: apps similar to the product, bedtime-story apps, pricing pages) through
+  `platform.fetch.fetch_url` with `*` to `html.duckduckgo.com`, `lite.duckduckgo.com` and `www.bing.com`, one
+  run, spaced 5 s. Per host: answers with at least five result links, challenge or captcha pages, errors.
+  Results to `internal-docs/baselines/phase-67/search.md`.
+- **Decision it fires:** if a host returns results for at least 18 of 20, that host is the documented search
+  and nothing ships. If none does, a follow-up card ships `services/search.yaml` in the `web-research` recipe
+  (declared service, ADR 0036 decision 13; Brave Search API or Tavily, the key in the home's secret store,
+  set once per machine), and the measurement is repeated through it. Choosing the provider is the maintainer's.
+- **Non-goals:** a native search tool (refused by ADR 0034 and ADR 0036 decision 17); any `src/` change.
+- **Gate:** none beyond the script running; no tokens are spent (no model call).
+
+### P67-4 — The prose says what a research team can read
+
+**Status:** DONE 2026-11-04 (uncommitted; README names the changed sentence per D-37) · **Size:** S · **Model:** Haiku · **Kind:** docs · **After:** P67-1, P67-2
+
+- **Goal:** every user-facing sentence about `fetch` being off by default gains the open-read case, quoting
+  the spec, not paraphrasing it: `README.md` (rg `deny-by-default`), `docs/CONFIGURATION.md`,
+  `src/docket/templates/recipes/web-research/README.md` (a folder team needs only isolation, a repository team
+  needs hosts), the `fetch-hosts` follow-up in this board's "Phases 63-64" list (rewritten: it was the
+  decision of 2026-11-04 morning and D-88 replaced it), `CHANGELOG.md`. The README sentence is named in the
+  commit body (D-37).
+- **Gate:** `uv run python scripts/gen_cli_docs.py --check`; `comment_lint.py --check`; the README prose tests
+  (`tests/agent/`, the false-claim checks only).
+
+### P67-5 — The real run: Tack's research task reaches docket and comes back with sources
+
+**Status:** CLOSED by P68-6 2026-11-06. RAN 2026-11-04: the web worked (no `fetch` refused, `webRead` open in Tack) and the task ended `failed` in the writer hop on a compaction defect, with no report; evidence `internal-docs/baselines/phase-67/real-run.md` · **Size:** M · **Model:** Opus (integrator) · **Kind:** real run
+
+- **Goal:** with the build installed (`./install.sh`, then `~/.local/bin/docket start ...` restarted), the
+  live `web-research` pod reapplied from the app's repository, branch `onboard/tack` (its `configSource` today is
+  a scratchpad copy under `/tmp`), isolation on, **no `fetchDomains` set by anyone**, Tack task `4C9BAB` runs
+  from **Run again**.
+- **Acceptance:** the task is sent (no "Not sent to docket"); the trace shows `fetch` calls to at least three
+  distinct public hosts and none refused for its host; a PDF among them, if the research reaches one, is read
+  as text; the Reviewer's gate passes on cited sources; Tack's Teams screen shows docket's `webRead.reason`.
+  Tokens spent are reported, never dollars. Evidence to `internal-docs/baselines/phase-67/`.
+- **Gate:** the phase-close list; the full suite once at the last merge.
+
+

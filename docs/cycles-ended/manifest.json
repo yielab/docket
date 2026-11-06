@@ -966,5 +966,21 @@
     "heading": "☑ PHASE 66 COMPLETE 2026-11-05 — the context a turn sends is protected, reduced by what it carries, explained and recoverable (D-87, accepted 2026-11-05)",
     "bytes": 31123,
     "sha256": "5d76f29fe46d9838976cfd09db962f2f55be8eb329558c07fe72d87daf0b24d2"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ PHASE 68 COMPLETE 2026-11-06 — what the first real research run broke: compaction, a payment false positive, a writer that researches (D-89, accepted 2026-11-04/05)",
+    "bytes": 43274,
+    "sha256": "8bf3aba4d5ff85d75416793f57b2fba48c4dac484c5e4de142070faeac087a6a"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ PHASE 67 COMPLETE 2026-11-06 — a research team reads the web without anyone writing it a host list (D-88, accepted 2026-11-04)",
+    "bytes": 17078,
+    "sha256": "5a6429b68fe5935174841eec4280e7251ccf99be80fe2ca3fe823556306be06b"
   }
 ]
