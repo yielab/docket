@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.19.0
+**Version**: 4.20.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 reduces a request that does not fit, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -488,7 +488,10 @@ This specification does NOT cover:
     prompt's size teaches the same scale (the summary request's own raw estimate being the one
     scaled), and the compaction of that range **MUST** then run once more, its batches bounded
     by the learned scale, so each summary prompt is smaller. The refused call's usage is
-    counted. A second refusal for size of the summary request ends the compaction as
+    counted. A truncated summary whose measured input exceeded the request room (the provider
+    took the prompt and cut the reply's room instead of refusing) is the same signal: its measured
+    input is the count it teaches, and the compaction runs once more the same way. A second refusal
+    or such truncation of the summary request ends the compaction as
     `compaction_failed`, with an error saying the provider refused the summary request for its
     size twice; any other summary failure stays `compaction_failed` without the repeat.
 49. Every prospective completion **MUST** emit a privacy-safe `request_fit` trace event containing

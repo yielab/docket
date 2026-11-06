@@ -547,7 +547,8 @@ class TestLiveSessionCompaction:
     ) -> None:
         session_key = f"agent:summary-precedence-{case}:demo"
         original_messages = _append_history_that_does_not_fit(session_key)
-        usage = TokenUsage(input_tokens=2_500, output_tokens=500)
+        # Over the budget by its output: an input over the request room is a size lesson (48a).
+        usage = TokenUsage(input_tokens=1_000, output_tokens=1_100)
         if case == "backend_timeout":
             response = ChatResponse(
                 ok=False,
@@ -583,8 +584,8 @@ class TestLiveSessionCompaction:
         assert len(backend.calls) == 1
         _assert_history_untouched(session_key, original_messages, "task request")
         stored = load_session(session_key)
-        assert stored.usage.input_tokens == 2_500
-        assert stored.usage.output_tokens == 500
+        assert stored.usage.input_tokens == 1_000
+        assert stored.usage.output_tokens == 1_100
         assert stored.usage.turns == 1
 
 

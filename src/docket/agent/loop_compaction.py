@@ -234,6 +234,10 @@ class TurnCompaction:
                 response.failure_kind or "daemon_error",
             )
         if response.truncated:
+            measured = response.usage.input_tokens
+            if self.state.context_window is not None and measured > self.budget.request_room():
+                # The prompt ate the reply's room: the same lesson as a refusal for size (48a).
+                self.summary_refused_for_size = self.budget.learn_from_overflow(measured)
             self.compaction_failure_stop_reason = "compaction_failed"
             return TurnResult(
                 False,

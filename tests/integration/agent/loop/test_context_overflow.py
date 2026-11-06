@@ -13,7 +13,7 @@ import pytest
 from tests.support.loop_harness import ScriptedBackend, _final, _tool_call_response
 
 from docket.agent import loop as _loop
-from docket.agent.ports import ChatMessage, ChatResponse, ToolSpec
+from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolSpec
 from docket.agent.session import append_messages as append_session_messages
 from docket.agent.tools.registry import ToolContext, ToolRegistry
 from docket.kernel.home import current_home
@@ -330,3 +330,25 @@ class TestSummaryRequestOverflow:
         assert result.stop_reason == "compaction_failed"
         assert "refused the summary request for its size twice" in result.error
         assert len(backend.calls) == 3
+
+    def test_a_summary_cut_short_because_its_prompt_ate_the_reply_room_runs_again_smaller(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        # The provider took a prompt larger than the room and cut the reply instead of refusing.
+        session_key = "agent:overflow-summary-cut:demo"
+        append_session_messages(session_key, _history())
+        cut = ChatResponse(
+            ok=True,
+            message=ChatMessage(role="assistant", content="partial"),
+            finish_reason="length",
+            usage=TokenUsage(input_tokens=_ROOM + 3_000, output_tokens=40),
+        )
+        backend = SummaryRoutedBackend([_overflow(8_000), _final("done")], [cut, _final("S" * 80)])
+
+        result = _loop.run_agent_turn(
+            backend, registry, ctx, session_key, "carry on", config=_config()
+        )
+
+        assert result.ok, result.error
+        prompts = _summary_prompts(backend)
+        assert len(prompts[1]) < len(prompts[0])
