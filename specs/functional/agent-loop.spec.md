@@ -96,12 +96,14 @@ This specification does NOT cover:
 116a. A compaction summary cut at the output cap whose measured input did not exceed the request
      room (a larger one is requirement 48a's lesson) **MUST NOT** fail the compaction the first
      time: the compaction is attempted once more, and each summary prompt of that attempt ends
-     with the same ask, its advice `keep every value the task needs and drop the narration`
+     with the same ask, its advice `skip the sections and the narration; write only the exact values the task needs, one per line, then the next step in one line`
      instead of the tool-call advice. A cut in the second attempt is requirement 36's
      `compaction_failed`. A repeat (this one or requirement 48a's) that the cumulative turn budget
      refuses before it is sent leaves the first failure as the compaction's outcome, so
-     requirement 36's precedence holds. Measured: Haiku 5.5 at `--max-tokens 1024` cut an
-     11,343-token summary request at 1,024 and the task failed.
+     requirement 36's precedence holds. Measured (Haiku 5.5, 32k window, 44 reads): the shipped
+     summary prompt was cut even at 4,096 output tokens; the same prompt with this ask finished in
+     2,399 (thinking included) and kept all 44 values. A model that thinks spends the cap on its
+     thinking too: at `--max-tokens 1024` both attempts were cut and the task failed.
 
 ### Stop conditions
 

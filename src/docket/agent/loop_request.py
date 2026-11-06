@@ -247,7 +247,10 @@ def _notice_messages(current: list[ChatMessage], notice: str) -> list[ChatMessag
 
 
 CUT_TASK_ADVICE = "fewer tool calls in one reply, and long content split across several calls"
-CUT_SUMMARY_ADVICE = "keep every value the task needs and drop the narration"
+CUT_SUMMARY_ADVICE = (
+    "skip the sections and the narration; write only the exact values the task needs, one per "
+    "line, then the next step in one line"
+)
 
 
 def _cut_reply_ask(cap: int, advice: str = CUT_TASK_ADVICE) -> str:
