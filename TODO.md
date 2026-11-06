@@ -741,19 +741,20 @@ counts units as the preflight does, and a range of earlier summaries alone is no
 takes in at most half the request room, later calls answered "not run" (115; `3a317465`, `ef34c834`). Decided, not
 defects: the replay bench sends more where P68-7 keeps an unanswered result whole; the summary prompt is estimated twice
 (a local byte count, the bound and the request's own preflight); a record written before `session.json` can be left
-orphaned, which is the order that never loses the replaced messages. Still open:
-- *The half-room intake is not measured on the local model.* The local run that motivated it (80 dense files, 30+ reads
-  per response, 32/80 values right after a compaction summarized results the model never saw) was cut: a 30k-token
-  request on the local endpoint takes over 120 s. Trigger: the next real run on the local endpoint.
-- *A slow endpoint retries a timed-out summary request whole.* A ~30k-token summary request took more than the 120 s
-  request timeout (`AGENT_LOOP_REQUEST_TIMEOUT_S`) and was sent again. Trigger: a second such retry in a live trace;
-  then size the request timeout by the model's observed time per input token.
-- *A reply cut at the output cap ends the turn.* The last two Haiku 5.5 runs (32k, `--max-tokens 4096`, 80 reads) ended
-  on a reply cut at 4,096 output tokens after replies of 3,103 and 3,511 (earlier runs stayed under 2,300); the first
-  of them deferred no call, so the intake rule did not shape it. The cost had returned to the unbounded level (265k
-  input, 11 task calls, 3 compactions, against 1.27M under the first intake rule). The loop refuses a truncated
-  tool-call reply, as before. Trigger: a hop on the live home (`--max-tokens 8192`) ending this way; then ask again for
-  a shorter reply instead of ending.
+orphaned, which is the order that never loses the replaced messages. Closed 2026-11-06 with real runs (same record,
+"The three open follow-ups, closed"):
+- *A reply cut at the output cap* is answered by one request carrying an ask for a shorter reply (agent-loop 116,
+  `70f9c63f`); seen live twice on Haiku 5.5 at `--max-tokens 1024` (replies of 710 and 868 tokens after the ask). A
+  summary cut at the cap is repeated once with the same ask (116a, `1880448e`, `c9636960`); probed, it takes the
+  shipped prompt from over 4,096 output tokens to 2,399. Haiku 5.5's thinking counts against the cap, so at 1,024 the
+  summary still cannot finish: a configuration limit (the live home is at 8,192).
+- *A slow endpoint* no longer gets the same timeout again: a retried transport timeout doubles the turn's request
+  limit (110, `70f9c63f`); live on the local endpoint at 30 s: 30 s, 60 s, then answered under 120 s.
+- *The half-room intake on the local model* held (the unseen batch was never summarized, every fit fits); the dense
+  80-file task still fails there because Qwen's summaries keep no values and it then writes values it never read
+  (3/80 and 0/80, against 32/80 in one run before the rule). A model limit, not a mechanism defect.
+Also closed as stale: the two window-less `budget_for_role` callers and the pre-turn compaction test went with the
+pre-turn pass (`32856e57`); the `_trace_compaction` locator note ended with Phase 66.
 
 **Phase 68 (2026-11-04).** Left out of the cards on purpose, or found while merging:
 - *The pod report probes SearXNG on every `GET /pods/<p>` and plain `pod show` probes it twice.* Each probe is one
@@ -764,9 +765,6 @@ orphaned, which is the order that never loses the replaced messages. Still open:
   storage rights, which the pricing page did not list. docket keeps tool results in the session and the trace.
   Decision for the maintainer before Brave is recommended anywhere: whether that is transient; the README says it is
   undecided.
-- *Two callers still fit a budget without the window.* P68-9 passes the receiving model's window to
-  `budget_for_role` in `compose.py`; `hops/application/driver_support.py` and `agent/session_compaction.py` still call
-  it without one. Trigger: a hosted turn whose compaction or summary budget is the 6,000-token floor in a trace.
 - *A role file that sets `tokenBudget: 6000` exactly reads as unpinned.* P68-9 tells a pinned value from the schema
   default by value. Trigger: an operator who pins 6000 on purpose; then the schema carries an explicit marker.
 - *One search answer is 23,000-30,000 characters.* Measured twice: 20 queries through the service, and a real research
@@ -778,14 +776,8 @@ orphaned, which is the order that never loses the replaced messages. Still open:
 - *`setup search searxng` settings mount.* The command makes the settings directory 0755 and the file 0644 so the
   container user can read them; the key in the file is random per machine. Trigger: an image change that stops
   reading the mount.
-- *A turn that continues after a refused pre-turn compaction is tested at the unit, not through the model.*
-  `test_loop_compaction.py` asserts `apply_initial_history_compaction() is None` and the `failed` event; an
-  integration test that runs `run_agent_turn` to the model after a refusal is cheap. Trigger: any later
-  edit of `loop_compaction.py` (Phase 66).
 - *Converging on the real writer session takes 10 summarizer rounds* (4 more than the run that failed). A cap on
   the summary's length would cut it; measure it with the next real run (P68-6) before adding one.
-- *`loop_trace.py` `_trace_compaction` gained a `reason` key* (guard refusals only); Phase 66 cards P66-3 and P66-4
-  that touch that file re-check their locators.
 - *`comment_lint` flags `_resolve_roots` and `_loop_config`* (`hops/application/driver_support.py`) as
   `long-def-doc`, and six docstrings in `governance/policy.py`; none new.
 
