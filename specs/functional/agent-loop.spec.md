@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.21.0
+**Version**: 4.22.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 reduces a request that does not fit, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -644,9 +644,12 @@ This specification does NOT cover:
 ### A round takes in what the window holds
 
 115. On a turn whose context window is registered, a response's tool-call batch **MUST** be
-    dispatched in order only while the next request can carry its results: the batch's **intake
-    room** is the request room (the registered window less the output reserve) less the estimate
-    of the task request the batch answers. The assistant message and each answer count at what the
+    dispatched in order only while its results take at most half the request room: the batch's
+    **intake room** is half the request room (the registered window less the output reserve),
+    whatever the history holds. Older history the model has answered can be compacted
+    (requirement 47); a batch it has not seen cannot without loss, and a bound on what the history
+    leaves would admit almost nothing once the window is full and multiply the rounds (measured:
+    5x the input of an unbounded turn on Haiku 5.5, 32k). The assistant message and each answer count at what the
     preflight counts for them (requirement 47: the fallback message estimate scaled by the turn's
     calibration). The first call of a batch **MUST** always run. A later call **MUST NOT** be
     dispatched once the answers taken so far, the largest of them (the proxy for the next

@@ -16,6 +16,8 @@ from docket.agent.loop_types import AgentLoopResult, StopReason, limit_origin
 from docket.agent.ports import ChatBackend, ChatMessage, ChatResponse, ToolSpec, user
 
 _TOKEN_BUDGET_ERROR_PREFIX = "token budget:"
+# One round's results take at most this fraction of the request room (requirement 115).
+_INTAKE_SHARE = 2
 # The fewest output tokens a budget-clamped request may keep (agent-loop requirement 46).
 MIN_OUTPUT_TOKENS = 256
 # The request timeout of a landing past the rounds or wall-clock limit (requirement 51).
@@ -134,12 +136,12 @@ class TurnBudget:
         return self.state.context_window - self.state.output_reserve
 
     def intake_room(self) -> int | None:
-        """What one round's reply and tool results may add to the next request: the request room
-        less the estimate of the task request just sent (the raw estimate its preflight made, scaled
-        by the calibration the call has since measured). ``None`` when the window is unknown."""
+        """What one round's reply and tool results may add to the next request: half the request
+        room, whatever the history holds (older history can be compacted, an unseen batch cannot).
+        ``None`` when the window is unknown."""
         if self.state.context_window is None:
             return None
-        return self.request_room() - math.ceil(self.pending_raw_estimate * self.calibration)
+        return self.request_room() // _INTAKE_SHARE
 
     def message_cost(self, message: ChatMessage) -> int:
         """What the fit preflight counts for *message* in a request, calibration included."""

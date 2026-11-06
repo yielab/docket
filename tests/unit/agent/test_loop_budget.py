@@ -486,3 +486,19 @@ class TestARequestThatTimedOutOnTheClock:
         budget = TurnBudget(state)
         timeout, _stop = budget.check_iteration_bounds()
         assert state.landing == "timeout" and not budget.clock_cut(timeout)
+
+
+class TestIntakeRoom:
+    """A round's results take at most half the request room, whatever the history holds."""
+
+    def test_a_full_history_does_not_shrink_what_a_round_may_take_in(
+        self, make_turn_state: MakeState
+    ) -> None:
+        budget = TurnBudget(make_turn_state(context_window=32_768, output_reserve=4_096))
+        budget.pending_raw_estimate = 1_000
+        empty = budget.intake_room()
+        budget.pending_raw_estimate = 27_000
+        assert budget.intake_room() == empty == (32_768 - 4_096) // 2
+
+    def test_an_unknown_window_bounds_nothing(self, make_turn_state: MakeState) -> None:
+        assert TurnBudget(make_turn_state()).intake_room() is None
