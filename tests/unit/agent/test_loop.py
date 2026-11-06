@@ -425,13 +425,28 @@ class TestTransportRetries:
             }
         ]
 
+    def test_a_timeout_doubles_the_request_limit_for_the_retry_and_the_rest_of_the_turn(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        """Requirement 110: the endpoint needed longer than 30 s, so the retry and the next round get 60 s."""
+        backend = _TimedBackend([_failed("timeout"), *_echo_rounds(1), _final()], [0.0], 0.0)
+        result = _loop.run_agent_turn(
+            backend, registry, ctx, "agent:retry-limit:default", "go",
+            config=_loop.LoopConfig(request_timeout_s=30, request_retries=1),
+            clock=lambda: backend.clock[0], sleep=lambda _s: None,
+        )  # fmt: skip
+        assert result.ok and backend.timeouts == [30, 60, 60]
+
     def test_retries_that_run_out_end_the_turn_with_the_failure_after_a_linear_backoff(
         self, registry: ToolRegistry, ctx: ToolContext
     ) -> None:
-        """Three requests, two waits of 2 s and 4 s, then the backend_error stop keeps the kind."""
+        """Three requests, two waits of 2 s and 4 s, then the backend_error stop keeps the kind.
+        The limits 30, 60 and 120 s stay under the 300 s clock, so none is cut to it."""
         backend = ScriptedBackend([_failed("timeout")] * 3)
         sleeps: list[float] = []
-        result = self._turn(backend, registry, ctx, "retry-out", sleeps, request_retries=2)
+        result = self._turn(
+            backend, registry, ctx, "retry-out", sleeps, request_retries=2, request_timeout_s=30
+        )
         assert len(backend.calls) == 3 and sleeps == [2.0, 4.0]
         assert (result.ok, result.failure_kind, result.stop_reason) == (
             False,

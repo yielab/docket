@@ -180,8 +180,9 @@ class TurnCompaction:
         state = self.state
 
         def clock_left_timeout() -> int:
+            # A retry after a timeout gets the request limit that timeout widened (requirement 110).
             left = int(state.cfg.wall_clock_timeout_s - (state.clock() - state.started))
-            return min(timeout, max(1, left))
+            return min(max(timeout, state.request_limit_s), max(1, left))
 
         response, sent_timeout = send_request(
             state,
@@ -307,7 +308,7 @@ class TurnCompaction:
                 summary_estimate=self.budget.prompt_cost,
                 compact_range=compact_range,
                 keep_latest_unit=False,
-                timeout=min(self.state.cfg.request_timeout_s, remaining_now),
+                timeout=min(self.state.request_limit_s, remaining_now),
                 label=f"{self.state.ctx.role} session",
             )
 

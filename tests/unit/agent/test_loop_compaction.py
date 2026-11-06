@@ -215,6 +215,7 @@ class TestASummaryRequestIsRetried:
         assert result.ok and result.output == "the summary"
         assert len(backend.calls) == 2 and sleeps == [2.0]
         assert state.request_retries == 1
+        assert [call["timeout"] for call in backend.calls] == [30, 60]
 
     def test_a_summary_cut_to_the_clock_left_that_times_out_ends_the_turn_on_time(
         self, make_turn_state: MakeState

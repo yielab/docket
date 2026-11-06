@@ -64,6 +64,8 @@ def send_request(
             return response, timeout
         retries += 1
         state.request_retries += 1
+        if kind == "timeout":  # the endpoint needs longer than the limit that just ran out
+            state.timeouts_widened += 1
         _trace_request_retry(
             state.project,
             state.trace_key,
@@ -242,6 +244,15 @@ def _notice_messages(current: list[ChatMessage], notice: str) -> list[ChatMessag
     # Request-only, like the landing's ask: the budget notice trails the persisted history and
     # is never stored, so the history a later turn loads does not carry it (requirement 108).
     return [*current, user(notice)]
+
+
+def _cut_reply_ask(cap: int) -> str:
+    """The ask after a reply cut at *cap* output tokens (agent-loop.spec.md requirement 116)."""
+    return (
+        f"[docket] Your last reply was cut at the output limit of {cap} tokens before it ended, "
+        "so nothing in it was kept or run. Reply again, shorter: fewer tool calls in one reply, "
+        "and long content split across several calls."
+    )
 
 
 def _closing_messages(current: list[ChatMessage], reply: str, tool: str) -> list[ChatMessage]:

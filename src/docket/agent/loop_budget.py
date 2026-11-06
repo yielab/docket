@@ -273,19 +273,19 @@ class TurnBudget:
         return None
 
     def request_timeout(self) -> int:
-        """This request's timeout: the smaller of ``request_timeout_s`` and the wall clock left, or
-        the grace of a landing past it. ``clock_cut`` says which of the two set it."""
-        cfg = self.state.cfg
+        """This request's timeout: the smaller of the turn's request limit and the wall clock left,
+        or the grace of a landing past it. ``clock_cut`` says which of the two set it."""
+        cfg, limit = self.state.cfg, self.state.request_limit_s
         remaining = int(cfg.wall_clock_timeout_s - (self.state.clock() - self.state.started))
         past: tuple[StopReason | None, ...] = ("max_iterations", "timeout")
         if self.state.landing in past or (self.state.landing and remaining < 1):
-            return min(cfg.request_timeout_s, LANDING_TIMEOUT_S)
-        return min(cfg.request_timeout_s, max(1, remaining))
+            return min(limit, LANDING_TIMEOUT_S)
+        return min(limit, max(1, remaining))
 
     def clock_cut(self, timeout: int) -> bool:
-        """Whether *timeout* is the wall clock left rather than ``request_timeout_s``: it is the
+        """Whether *timeout* is the wall clock left rather than the request limit: it is the
         smaller of the two and no landing is under way (requirement 109). A tie is the request's."""
-        return self.state.landing is None and timeout < self.state.cfg.request_timeout_s
+        return self.state.landing is None and timeout < self.state.request_limit_s
 
     def timed_out_on_clock(self, response: ChatResponse, timeout: int) -> bool:
         """Whether *response* is the timeout of a request that was cut to the clock left."""

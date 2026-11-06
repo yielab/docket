@@ -76,11 +76,13 @@ reported as ``AgentLoopResult.stop_reason``:
   endpoint registers none) before transport. If an ordinary tool-enabled round
   no longer fits, it offers at most one explicit tool-free terminal response
   that itself must fit.
-- ``truncated`` — the endpoint stopped for length, not because it was done
-  (``ChatResponse.truncated``). A length-truncated reply can carry a
-  *partial* tool call, and partial arguments are exactly what a gate cannot
-  evaluate, so this response's tool calls (if any) are never dispatched and
-  the response is never persisted to the session — see below.
+- ``truncated`` — the endpoint stopped for length twice in a row, not because
+  it was done (``ChatResponse.truncated``); the first cut is answered by one
+  request asking for a shorter reply (requirement 116). A length-truncated
+  reply can carry a *partial* tool call, and partial arguments are exactly
+  what a gate cannot evaluate, so this response's tool calls (if any) are
+  never dispatched and the response is never persisted to the session — see
+  below.
 - ``backend_error`` — not one of the four stop conditions the card's design
   is built around, but a real-world failure path that cannot be dropped: the
   backend itself returned ``ChatResponse(ok=False, ...)`` (a transport,
@@ -96,8 +98,9 @@ A truncated response's assistant message is **never appended to session
 history and its tool calls, if any, are never dispatched.** Persisting a
 truncated assistant message that requested tool calls would create an
 orphaned-tool-call state in the very history ``agent/session.py``'s
-compaction post-conditions exist to forbid; discarding it instead means the
-turn simply reports ``truncated`` and the caller decides whether to retry —
+compaction post-conditions exist to forbid; discarding it instead leaves
+nothing to undo, so the loop asks once for a shorter reply and otherwise
+reports ``truncated`` —
 the same fail-closed posture ``agent/session.py``'s compaction and
 ``teams/agent_memory.py``'s distillation already take on their own failure paths.
 
@@ -155,6 +158,7 @@ from docket.agent.loop_compaction import TurnCompaction
 from docket.agent.loop_request import (
     _accumulate,
     _closing_messages,
+    _cut_reply_ask,
     _finalization_messages,
     _notice_messages,
     send_request,
@@ -368,17 +372,19 @@ class _TurnState(TurnState):
                 normal_estimated_input, purpose="tool-enabled task"
             )
             if not normal_budget_error:
-                return self.with_budget_notice(messages), self.tool_specs, False, None
+                return self.with_request_notes(messages), self.tool_specs, False, None
             self.land("token_budget", normal_budget_error)
         return self.enter_landing(messages, normal_estimated_input)
 
-    def with_budget_notice(self, messages: list[ChatMessage]) -> list[ChatMessage]:
-        """The tool-enabled request, plus the budget notice (requirement 108) when it is due.
-        The closing call and the landing carry none, and a notice not sent stays due."""
+    def with_request_notes(self, messages: list[ChatMessage]) -> list[ChatMessage]:
+        """The tool-enabled request, plus the budget notice (requirement 108) when it is due and
+        the ask for a shorter reply after a cut one (requirement 116). The closing call and the
+        landing carry neither, and a notice not sent stays due."""
         if self.close_forced:
             return messages
         notice = budget_notice(self)
-        return _notice_messages(messages, notice) if notice else messages
+        messages = _notice_messages(messages, notice) if notice else messages
+        return _notice_messages(messages, _cut_reply_ask(self.cut_at)) if self.cut_at else messages
 
     def enter_landing(
         self, messages: list[ChatMessage], normal_estimated_input: int
@@ -520,6 +526,10 @@ class _TurnState(TurnState):
             # durable even though the response itself is rejected.
             if response.usage.total_tokens or response.usage.cached_tokens:
                 append_messages(self.session_key, [], usage=response.usage)
+            if not (finalizing or was_forced or self.cut_at):
+                # Requirement 116: the cut reply left nothing to undo, so ask once for a shorter one.
+                self.cut_at = self.call_max_tokens or response.usage.output_tokens or 1
+                return None, response.usage, None
             return (
                 None,
                 response.usage,
@@ -535,6 +545,7 @@ class _TurnState(TurnState):
                 ),
             )
 
+        self.cut_at = 0
         assistant_msg = response.message
         if assistant_msg.tool_calls and self.total_usage.counted_tokens > self.cfg.token_budget:
             if response.usage.total_tokens or response.usage.cached_tokens:
@@ -635,7 +646,7 @@ class _TurnState(TurnState):
                 break
             self.refit_requested = False
             self.notice_sent = notice_sent  # the refused request's notice never reached the model
-        if assistant_msg is None:  # a reply that asked for no tool: the closing call follows
+        if assistant_msg is None:  # the closing call or the ask for a shorter reply follows
             return None
         return self.steps.dispatch_tool_batch(messages, assistant_msg, response_usage)
 

@@ -51,7 +51,6 @@ def failure_reason(world: World, task_id: str) -> str:
             fail(400, "bad request body"), "nonzero_exit", "bad request body", id="http-400"
         ),
         pytest.param(not_json(), "invalid_output", "non-JSON", id="not-json"),
-        pytest.param(truncated("cut off"), None, "truncated", id="truncated"),
     ],
 )
 def test_a_provider_failure_that_retrying_cannot_fix_fails_the_task_at_once(
@@ -110,6 +109,38 @@ def test_a_transient_provider_failure_is_retried_and_the_task_finishes(
         ("verification", "implementer", "skipped"),
         ("session_end", "lead", "done"),
     ]
+    oracles.assert_log_verifies(w)
+
+
+@pytest.mark.parametrize(
+    ("second", "code", "status"),
+    [
+        pytest.param(DONE, 0, "done", id="shorter-reply-finishes"),
+        pytest.param(truncated("cut again"), 1, "failed", id="cut-twice-fails"),
+    ],
+)
+def test_a_reply_cut_at_the_output_cap_is_asked_again_shorter(
+    world: Callable[..., World],
+    fake_model: Callable[..., FakeModel],
+    second: Reply,
+    code: int,
+    status: str,
+) -> None:
+    """Agent-loop requirement 116 across the real wire: ``finish_reason: length`` is answered by
+    one request carrying the ask; a second cut in a row fails the task as truncated."""
+    model = fake_model(script={"implementer": [truncated("cut off"), second]})
+    w = world(model, env=FAST_RETRIES)
+
+    task_id, exit_code = run_one(w)
+
+    assert exit_code == code
+    assert w.task(task_id)["task"]["status"] == status
+    requests = model.by_role("implementer")
+    assert len(requests) == 2
+    assert "Your last reply was cut at the output limit" in str(requests[1].messages[-1])
+    assert "Your last reply was cut" not in str(requests[0].messages)
+    if status == "failed":
+        assert "truncated" in failure_reason(w, task_id)
     oracles.assert_log_verifies(w)
 
 

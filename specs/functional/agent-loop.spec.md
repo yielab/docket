@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.22.0
+**Version**: 4.23.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 reduces a request that does not fit, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -81,6 +81,18 @@ This specification does NOT cover:
    persisting it would risk storing an assistant `tool_calls` entry with no answering `tool`
    message, which session history's atomic-unit contract forbids.
 5. A turn that stops due to truncation **MUST** report `stop_reason="truncated"` and `ok=False`.
+116. A truncated reply to a tool-enabled task request (not the landing, not the forced closing
+     call) **MUST NOT** end the turn when the reply before it was complete: requirements 3 and 4
+     still hold and its endpoint-reported usage is persisted as metadata, and the next request
+     of the turn carries one trailing, request-only user message, never persisted:
+     `[docket] Your last reply was cut at the output limit of <n> tokens before it ended, so
+     nothing in it was kept or run. Reply again, shorter: fewer tool calls in one reply, and long
+     content split across several calls.`, where `<n>` is the request's `max_tokens`, else the
+     reply's output tokens. That request is a round like any other (requirement 7). A truncated
+     reply to it ends the turn (requirement 5); a complete reply clears the ask, so a later cut is
+     asked about again. The reason: a model that packs one reply past the output cap (measured:
+     Haiku 5.5 at `--max-tokens 4096` after 80 reads) can split the same work when told, and the
+     cut reply left nothing to undo.
 
 ### Stop conditions
 
@@ -98,8 +110,9 @@ This specification does NOT cover:
    `failure_kind="budget_exhausted"` (requirement 107).
 9. The loop **MUST** stop with `stop_reason="timeout"` once the configured wall-clock budget for
    the whole turn has elapsed, checked between iterations. Each request's own timeout is the
-   smaller of `request_timeout_s` and the wall-clock budget left, and a request that times out
-   on the second of the two ends the turn (requirement 109). The tool clamp of requirement
+   smaller of the turn's request limit (`request_timeout_s`, doubled by each transport timeout,
+   requirement 110) and the wall-clock budget left, and a request that times out on the second
+   of the two ends the turn (requirement 109). The tool clamp of requirement
    98 keeps a tool from running past that budget. The request made once it has elapsed is the
    landing of requirements 51-54. The result carries `failure_kind="budget_exhausted"`, never
    `timeout`, which now names only a request or transport timeout (requirement 107).
@@ -501,11 +514,11 @@ This specification does NOT cover:
 
 ### Transport retries
 
-109. A request whose timeout was the wall-clock budget left, not `request_timeout_s`, and that
+109. A request whose timeout was the wall-clock budget left, not the turn's request limit, and that
      timed out **MUST** end the turn with `stop_reason="timeout"`, `failure_kind="budget_exhausted"`
      and `budget_stop.bound="time"` (requirement 107), never `failure_kind="timeout"`, and is never
      retried: the clock it was cut to is spent. No landing request follows it, because the request
-     that would carry the landing is the one that just stalled. When `request_timeout_s` is the
+     that would carry the landing is the one that just stalled. When the request limit is the
      smaller limit (or the two are equal) the same timeout is a transport timeout and requirement
      110 applies. The clock-cut rule covers the task request and the compaction summary request
      alike; a compaction summary so cut ends the turn with the same `stop_reason`. A landing
@@ -523,7 +536,12 @@ This specification does NOT cover:
      `retryAfter` is the failed response's `retry_after_s` or `0`. A retry is not made when its
      sleep is not less than the wall-clock budget left; the failed response then ends the request
      as it stands. A response that arrived (`invalid_output`, a truncated reply, a refusal) and a
-     cancelled run are never retried. Each retry's timeout is recomputed from the clock left.
+     cancelled run are never retried (a truncated reply is answered by requirement 116 instead).
+     The turn's **request limit** starts at `request_timeout_s`; a retry after a `timeout` first
+     doubles it, and every later request of the turn keeps the doubled limit: the endpoint has
+     shown it needs longer than the limit (measured: a 30k-token summary request on a local
+     llama.cpp took over 120 s), so the same request is never sent again with the time that just
+     ran out. Each retry's timeout is the request limit capped by the clock left.
 111. Each retry **MUST** emit one `request_retry` trace event on the resolved trace coordinate,
      before its sleep, with `attempt` (the retry's number within the request, from 1), `retries`
      (`LoopConfig.request_retries`), `failureKind`, `error` and `retryAfterS` (`null` when the

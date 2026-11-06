@@ -543,7 +543,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("AGENT_LOOP_REQUEST_TIMEOUT_S",),
-        "Per-HTTP-call timeout passed to the chat backend",
+        "Per-HTTP-call timeout passed to the chat backend; a timed-out request retried doubles it for the rest of the turn",
         "`120`",
     ),
     (

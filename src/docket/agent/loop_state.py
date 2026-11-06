@@ -67,6 +67,15 @@ class TurnState:
     # Transport retries made so far over the turn, and the wait before one (requirement 110).
     request_retries: int = 0
     sleep: Callable[[float], None] = time.sleep
+    #: Transport timeouts that widened the request limit (requirement 110).
+    timeouts_widened: int = 0
+    #: The output cap the last task reply was cut at, ``0`` once a reply is complete (requirement 116).
+    cut_at: int = 0
+
+    @property
+    def request_limit_s(self) -> int:
+        """The turn's request limit: ``request_timeout_s``, doubled by each transport timeout."""
+        return self.cfg.request_timeout_s << self.timeouts_widened
 
     def land(self, stop_reason: StopReason, error: str) -> None:
         """Select *stop_reason* as the bound the turn lands on; the first bound reached wins."""

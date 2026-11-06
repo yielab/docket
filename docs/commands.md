@@ -1096,7 +1096,7 @@ No command emits any other exit code today.
 | `DOCKET_CLOCK_OFFSET_S` | Shifts the wall clock by this many seconds so a test can expire a deadline without waiting; unset or invalid is `0` | `0` |
 | `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S` | Machine default wall-clock budget for one hop, used when neither the step's `timeout` nor the pod's `turnTimeoutS` is set | `300` |
 | `AGENT_LOOP_TOKEN_BUDGET` | Hard cap on one turn's cumulative measured token usage | `100000` |
-| `AGENT_LOOP_REQUEST_TIMEOUT_S` | Per-HTTP-call timeout passed to the chat backend | `120` |
+| `AGENT_LOOP_REQUEST_TIMEOUT_S` | Per-HTTP-call timeout passed to the chat backend; a timed-out request retried doubles it for the rest of the turn | `120` |
 | `MCP_CLIENT_TIMEOUT_S` | Default per-call bound for an MCP server with no timeout of its own | `10` |
 | `MCP_CLIENT_MAX_TIMEOUT_S` | Hard ceiling every server-specified MCP timeout is clamped to | `60` |
 | `FETCH_ALLOWED_DOMAINS` | Comma-separated hostnames (or `*.domain` for its subdomains) every pod's `fetch` tool may reach, beside a pod's own `fetchDomains` | empty (nothing allowed until opted in) |

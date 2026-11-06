@@ -147,13 +147,14 @@ class TestSingleExecutionPath:
 class TestTruncatedResponses:
     """A truncated response must never have its tool calls executed -- the most dangerous
     failure mode this loop guards against, since partial arguments are exactly what a gate
-    cannot evaluate."""
+    cannot evaluate. The first cut is answered by an ask for a shorter reply (requirement 116,
+    `test_cut_reply.py`), so each case here is cut twice in a row."""
 
     def test_truncated_with_tool_calls_never_dispatches_them(
         self, ctx: ToolContext, registry: ToolRegistry
     ) -> None:
         poison_call = ToolCall(id="c1", name="echo", arguments='{"text": "should not run"}')
-        backend = ScriptedBackend([_truncated(tool_calls=[poison_call])])
+        backend = ScriptedBackend([_truncated(tool_calls=[poison_call])] * 2)
 
         result = _loop.run_agent_turn(backend, registry, ctx, "agent:demo:default", "go")
 
@@ -167,7 +168,9 @@ class TestTruncatedResponses:
     ) -> None:
         session_key = "agent:demo:default"
         poison_call = ToolCall(id="c1", name="echo", arguments='{"text": "nope"}')
-        backend = ScriptedBackend([_truncated(content="cut off mid-sen", tool_calls=[poison_call])])
+        backend = ScriptedBackend(
+            [_truncated(content="cut off mid-sen", tool_calls=[poison_call])] * 2
+        )
 
         _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
 
@@ -176,9 +179,9 @@ class TestTruncatedResponses:
         # assistant reply (and its unexecuted tool call) must never land here.
         assert len(record.messages) == 1
         assert record.messages[0].role == "user"
-        assert record.usage.input_tokens == 10
-        assert record.usage.output_tokens == 5
-        assert record.usage.turns == 1
+        assert record.usage.input_tokens == 20
+        assert record.usage.output_tokens == 10
+        assert record.usage.turns == 2
 
     def test_truncated_with_no_tool_calls_is_still_reported_as_truncated(
         self, ctx: ToolContext, registry: ToolRegistry
@@ -186,7 +189,7 @@ class TestTruncatedResponses:
         """Truncation is checked uniformly, before ever looking at tool_calls
         -- a plain truncated reply is just as much "not a real answer" as one
         carrying a partial tool call."""
-        backend = ScriptedBackend([_truncated(content="ran out of ro")])
+        backend = ScriptedBackend([_truncated(content="ran out of ro")] * 2)
         result = _loop.run_agent_turn(backend, registry, ctx, "agent:demo:default", "go")
         assert result.stop_reason == "truncated"
         assert result.ok is False
