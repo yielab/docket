@@ -496,15 +496,12 @@ class TestLiveSessionCompaction:
     ) -> None:
         session_key = "agent:summary-truncated:demo"
         original_messages = _append_history_that_does_not_fit(session_key)
-        backend = ScriptedBackend(
-            [
-                _truncated(
-                    "partial summary must never become durable",
-                    usage=TokenUsage(input_tokens=4, output_tokens=1),
-                ),
-                _final("task completion must not be called"),
-            ]
+        cut = _truncated(
+            "partial summary must never become durable",
+            usage=TokenUsage(input_tokens=4, output_tokens=1),
         )
+        # Cut twice: the first cut is asked again shorter (agent-loop requirement 116a).
+        backend = ScriptedBackend([cut, cut, _final("task completion must not be called")])
 
         result = _loop.run_agent_turn(
             backend,
@@ -522,12 +519,12 @@ class TestLiveSessionCompaction:
         assert not result.ok
         assert result.stop_reason == "compaction_failed"
         assert result.failure_kind == "invalid_output"
-        assert result.usage == TokenUsage(input_tokens=4, output_tokens=1)
-        assert len(backend.calls) == 1
+        assert result.usage == TokenUsage(input_tokens=8, output_tokens=2)
+        assert len(backend.calls) == 2
         _assert_history_untouched(session_key, original_messages, "task request")
         stored = load_session(session_key)
-        assert stored.usage.input_tokens == 4
-        assert stored.usage.output_tokens == 1
+        assert stored.usage.input_tokens == 8
+        assert stored.usage.output_tokens == 2
 
     @pytest.mark.parametrize(
         ("case", "expected_failure_kind"),

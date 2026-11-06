@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.23.0
+**Version**: 4.24.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 reduces a request that does not fit, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -93,6 +93,15 @@ This specification does NOT cover:
      asked about again. The reason: a model that packs one reply past the output cap (measured:
      Haiku 5.5 at `--max-tokens 4096` after 80 reads) can split the same work when told, and the
      cut reply left nothing to undo.
+116a. A compaction summary cut at the output cap whose measured input did not exceed the request
+     room (a larger one is requirement 48a's lesson) **MUST NOT** fail the compaction the first
+     time: the compaction is attempted once more, and each summary prompt of that attempt ends
+     with the same ask, its advice `keep every value the task needs and drop the narration`
+     instead of the tool-call advice. A cut in the second attempt is requirement 36's
+     `compaction_failed`. A repeat (this one or requirement 48a's) that the cumulative turn budget
+     refuses before it is sent leaves the first failure as the compaction's outcome, so
+     requirement 36's precedence holds. Measured: Haiku 5.5 at `--max-tokens 1024` cut an
+     11,343-token summary request at 1,024 and the task failed.
 
 ### Stop conditions
 
@@ -361,8 +370,8 @@ This specification does NOT cover:
 35. The summarizer response's endpoint-reported `TokenUsage` **MUST** be added to both the returned
     turn usage and the target session's measured usage. These measured values **MUST NOT** drive
     compaction; before/after window sizes remain named estimates from `estimate_tokens`.
-36. A not-ok/timeout, truncated, empty, or tool-requesting summarizer response **MUST** abort the
-    turn with `stop_reason="compaction_failed"`, preserve the prior message history byte-for-byte,
+36. A not-ok/timeout, truncated (after requirement 116a's one repeat), empty, or tool-requesting
+    summarizer response **MUST** abort the turn with `stop_reason="compaction_failed"`, preserve the prior message history byte-for-byte,
     and make no task-completion backend call. This invalid-summary classification **MUST** take
     precedence when that same response's measured usage also crosses the cumulative turn budget;
     endpoint-reported usage, when non-zero, is still recorded as usage metadata and does not alter

@@ -13,8 +13,10 @@ from dataclasses import dataclass, field, replace
 
 from docket.agent.loop_budget import _TOKEN_BUDGET_ERROR_PREFIX, TurnBudget
 from docket.agent.loop_request import (
+    CUT_SUMMARY_ADVICE,
     _accumulate,
     _build_reduction_candidates,
+    _cut_reply_ask,
     _fallback_input_estimate,
     _message_tokens,
     _segment_revision,
@@ -26,6 +28,7 @@ from docket.agent.loop_trace import _trace_compaction, _trace_llm_call
 from docket.agent.loop_types import StopReason
 from docket.agent.ports import (
     ChatMessage,
+    ChatResponse,
     FailureKind,
     TurnResult,
     role_composer,
@@ -129,6 +132,8 @@ class TurnCompaction:
         self.task_message_index = -1
         #: The latest summary request was refused for its size and the estimate learned from it.
         self.summary_refused_for_size = False
+        #: The output cap a summary of this compaction was cut at; its repeat asks for less (116a).
+        self.summary_cut_at = 0
         #: The projection of the request most recently built; the next task call carries its figures.
         self.projection: RequestProjection | None = None
 
@@ -161,6 +166,8 @@ class TurnCompaction:
                 "compaction exhausted the turn wall-clock budget",
                 "timeout",
             )
+        if self.summary_cut_at:
+            prompt = f"{prompt}\n\n{_cut_reply_ask(self.summary_cut_at, CUT_SUMMARY_ADVICE)}"
         summary_messages = [user(prompt)]
         estimated_input, fit_error = self.budget.preflight_request(
             summary_messages,
@@ -235,18 +242,7 @@ class TurnCompaction:
                 response.failure_kind or "daemon_error",
             )
         if response.truncated:
-            measured = response.usage.input_tokens
-            if self.state.context_window is not None and measured > self.budget.request_room():
-                # The prompt ate the reply's room: the same lesson as a refusal for size (48a).
-                self.summary_refused_for_size = self.budget.learn_from_overflow(measured)
-            self.compaction_failure_stop_reason = "compaction_failed"
-            return TurnResult(
-                False,
-                "",
-                response.raw,
-                "compaction summarizer response was truncated; partial summary was not accepted",
-                "invalid_output",
-            )
+            return self.cut_summary(response)
         if response.tool_calls:
             self.compaction_failure_stop_reason = "compaction_failed"
             return TurnResult(
@@ -281,6 +277,24 @@ class TurnCompaction:
             )
         return TurnResult(True, response.message.content, response.raw)
 
+    def cut_summary(self, response: ChatResponse) -> TurnResult:
+        """A summary cut for length is never accepted (requirement 36). Cut because its prompt ate
+        the reply room, it teaches the estimate (48a); cut at the cap, the repeat asks for less
+        (116a). Either way the attempt fails, and ``run_compaction`` decides on the repeat."""
+        measured = response.usage.input_tokens
+        if self.state.context_window is not None and measured > self.budget.request_room():
+            self.summary_refused_for_size = self.budget.learn_from_overflow(measured)
+        elif not self.summary_cut_at:
+            self.summary_cut_at = self.state.call_max_tokens or response.usage.output_tokens or 1
+        self.compaction_failure_stop_reason = "compaction_failed"
+        return TurnResult(
+            False,
+            "",
+            response.raw,
+            "compaction summarizer response was truncated; partial summary was not accepted",
+            "invalid_output",
+        )
+
     def run_compaction(
         self, compact_range: tuple[int, int]
     ) -> tuple[CompactionResult, StopReason | None]:
@@ -313,10 +327,15 @@ class TurnCompaction:
             )
 
         result = attempt()
-        if not result.ok and self.summary_refused_for_size:
-            # Requirement 48a: the refusal taught the scale, so the batches are smaller this time.
+        if not result.ok and (self.summary_refused_for_size or self.summary_cut_at):
+            # 48a: the refusal taught the scale, so the batches are smaller this time; 116a: the
+            # prompt asks for a shorter summary.
+            first, first_stop = result, self.compaction_failure_stop_reason
             result = attempt()
-            if not result.ok and self.summary_refused_for_size:
+            if self.compaction_failure_stop_reason == "token_budget":
+                # The repeat was refused before it was sent: the first failure stays (36).
+                result, self.compaction_failure_stop_reason = first, first_stop
+            elif not result.ok and self.summary_refused_for_size:
                 result = replace(
                     result,
                     error=(
@@ -324,6 +343,7 @@ class TurnCompaction:
                         f"the second time after the estimate was recalibrated: {result.error}"
                     ),
                 )
+        self.summary_cut_at = 0  # the next compaction starts without the ask
         usage_delta = _usage_delta(self.state.summary_usage, self.state.accounted_summary_usage)
         self.state.total_usage = _accumulate(self.state.total_usage, usage_delta)
         self.state.accounted_summary_usage = self.state.summary_usage

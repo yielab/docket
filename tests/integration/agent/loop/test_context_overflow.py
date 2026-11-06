@@ -352,3 +352,49 @@ class TestSummaryRequestOverflow:
         assert result.ok, result.error
         prompts = _summary_prompts(backend)
         assert len(prompts[1]) < len(prompts[0])
+
+
+class TestASummaryCutAtTheOutputCap:
+    """Agent-loop requirement 116a: a summary cut at the cap, its prompt inside the room, is asked
+    for once more, shorter; a second cut fails the compaction (requirement 36)."""
+
+    _ASK = f"[docket] Your last reply was cut at the output limit of {_RESERVE} tokens"
+
+    def _cut(self) -> ChatResponse:
+        return ChatResponse(
+            ok=True,
+            message=ChatMessage(role="assistant", content="partial"),
+            finish_reason="length",
+            usage=TokenUsage(input_tokens=1_000, output_tokens=_RESERVE),
+        )
+
+    def test_the_compaction_runs_again_with_the_ask_and_the_turn_goes_on(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        session_key = "agent:summary-cap-cut:demo"
+        append_session_messages(session_key, _history())
+        backend = SummaryRoutedBackend(
+            [_overflow(8_000), _final("done")], [self._cut(), _final("S" * 80)]
+        )
+
+        result = _loop.run_agent_turn(
+            backend, registry, ctx, session_key, "carry on", config=_config()
+        )
+
+        assert result.ok, result.error
+        prompts = _summary_prompts(backend)
+        assert self._ASK not in prompts[0] and self._ASK in prompts[1]
+
+    def test_a_second_cut_fails_the_compaction(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        session_key = "agent:summary-cap-cut-twice:demo"
+        append_session_messages(session_key, _history())
+        backend = SummaryRoutedBackend([_overflow(8_000)], [self._cut()])
+
+        result = _loop.run_agent_turn(
+            backend, registry, ctx, session_key, "carry on", config=_config()
+        )
+
+        assert (result.ok, result.stop_reason) == (False, "compaction_failed")
+        assert len(_summary_prompts(backend)) == 2

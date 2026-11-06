@@ -520,30 +520,7 @@ class _TurnState(TurnState):
             )
 
         if response.truncated:
-            # A length-truncated reply can carry a partial tool call — never
-            # dispatched, and neither it nor the partial assistant content is
-            # persisted (see module docstring). Endpoint-reported usage remains
-            # durable even though the response itself is rejected.
-            if response.usage.total_tokens or response.usage.cached_tokens:
-                append_messages(self.session_key, [], usage=response.usage)
-            if not (finalizing or was_forced or self.cut_at):
-                # Requirement 116: the cut reply left nothing to undo, so ask once for a shorter one.
-                self.cut_at = self.call_max_tokens or response.usage.output_tokens or 1
-                return None, response.usage, None
-            return (
-                None,
-                response.usage,
-                self.done(
-                    ok=False,
-                    stop_reason="truncated",
-                    output=response.message.content,
-                    error=(
-                        "model response was truncated (finish_reason=length); no tool calls "
-                        "were executed"
-                    ),
-                    failure_kind="invalid_output",
-                ),
-            )
+            return None, response.usage, self.cut_reply(response, asked=finalizing or was_forced)
 
         self.cut_at = 0
         assistant_msg = response.message
@@ -613,6 +590,23 @@ class _TurnState(TurnState):
         if self.budget.learn_from_overflow(response.overflow_input_tokens):
             self.overflow_refused = self.refit_requested = True
         return None
+
+    def cut_reply(self, response: ChatResponse, *, asked: bool) -> AgentLoopResult | None:
+        """A reply cut at the output cap: never run or kept, only its usage is (requirements 3-4).
+        The first cut after a complete reply is answered by the ask for a shorter one (requirement
+        116, ``None``); a second, or a cut landing or closing call (*asked*), ends the turn."""
+        if response.usage.total_tokens or response.usage.cached_tokens:
+            append_messages(self.session_key, [], usage=response.usage)
+        if not (asked or self.cut_at):
+            self.cut_at = self.call_max_tokens or response.usage.output_tokens or 1
+            return None
+        return self.done(
+            ok=False,
+            stop_reason="truncated",
+            output=response.message.content,
+            error="model response was truncated (finish_reason=length); no tool calls were executed",
+            failure_kind="invalid_output",
+        )
 
     def closing_call_due(self, finalizing: bool) -> bool:
         """Whether a reply with no tool call is to be followed by the forced closing call: the

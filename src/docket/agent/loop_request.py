@@ -246,12 +246,15 @@ def _notice_messages(current: list[ChatMessage], notice: str) -> list[ChatMessag
     return [*current, user(notice)]
 
 
-def _cut_reply_ask(cap: int) -> str:
-    """The ask after a reply cut at *cap* output tokens (agent-loop.spec.md requirement 116)."""
+CUT_TASK_ADVICE = "fewer tool calls in one reply, and long content split across several calls"
+CUT_SUMMARY_ADVICE = "keep every value the task needs and drop the narration"
+
+
+def _cut_reply_ask(cap: int, advice: str = CUT_TASK_ADVICE) -> str:
+    """The ask after a reply cut at *cap* output tokens (agent-loop.spec.md 116 and 116a)."""
     return (
         f"[docket] Your last reply was cut at the output limit of {cap} tokens before it ended, "
-        "so nothing in it was kept or run. Reply again, shorter: fewer tool calls in one reply, "
-        "and long content split across several calls."
+        f"so nothing in it was kept or run. Reply again, shorter: {advice}."
     )
 
 
