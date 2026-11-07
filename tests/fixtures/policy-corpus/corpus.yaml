@@ -1,6 +1,6 @@
 # Policy corpus: how the baseline policies answer commands that differ in text but not in effect.
 #
-# Data read by tests/unit/governance/test_policy__corpus.py, which drives each row through the gate
+# Data read by tests/integration/governance/test_policy_corpus.py, which drives each row through the gate
 # and compares it with `expected`. `outcome`, `layer` and `policy_action` are what the baseline
 # policies did BEFORE the `command` predicate (the measurement below); `expected` is what they
 # must do now, and no `expected` is weaker than the measurement.

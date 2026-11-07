@@ -579,7 +579,7 @@ policy is refused. A policy can test structured facts of a tool call beside its 
    phrase (`payment\W+(?:\w+\W+){0,4}charge`, never `payment.*charge`). MCP and service tools keep
    the free-text clause. The corpus of commands that differ in text but not in effect
    (`tests/fixtures/policy-corpus/corpus.yaml`) is the table
-   `tests/unit/governance/test_policy__corpus.py` drives through `evaluate_tool_call` (tool rows)
+   `tests/integration/governance/test_policy_corpus.py` drives through `evaluate_tool_call` (tool rows)
    and `policy_eval_detail` (screen rows): each row's `expected` outcome **MUST** hold under both
    isolation settings, **MUST NOT** be weaker than the outcome measured before `when.command`
    existed, and a row left `allowed` **MUST** carry a `limit` named in "Known limits of the
