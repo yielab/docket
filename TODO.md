@@ -390,7 +390,7 @@ from `main`.
 
 ### P69-11 — The capability suite: tasks from real failures, one per team shape, and `tests/live` becomes one of them
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet (Opus names the origins in Status when claiming) · **Kind:** data · **After:** P69-9
+**Status:** DONE 2026-11-07, `b3ecade7`. Twelve tasks; origins named by the integrator: P68-6's acceptance (`research-three-hosts`, fetch to three allowed hosts, no SearXNG on this machine), the retired live Hacker News test (`hn-digest-records`, a `routine` pod's records exported to `EVAL_RECORDS`), D-72/ADR 0032 (`respond-consult-lead`), D-77 (`respond-triage-ticket`), Phase 56 decisions 15-16 (`operate-records-table`), the canary's app-dev invoice fixture (`invoice-rounding`, `invoice-tenant-metadata`, `invoice-missing-migration`), P68-3 (`handoff-lead-decision`), the P66 compaction defect (`repo-map-32k-config`, `repo-map-32k-api`) and Phase 37's `check_changed` (`verify-not-edited`, operator `park`). New optional task keys: `pod.apply`, `pod.fetch_domains`, `records`, `operator.approval: park`. Harness fixes found against `FakeModel`: a scripted consult answer picks the matching option; a trial whose required graders all pass has no failure class. Left in `rg`: this card's own text and D-90's history, both archived at the close · **Size:** L · **Model:** Sonnet (Opus names the origins in Status when claiming) · **Kind:** data · **After:** P69-9
 
 - **Goal:** `evals/tasks/capability/` with at least twelve tasks, each with `origin`, `hidden/` and `solution/`, over the
   four shapes: a research task that must end `done` with a report citing three distinct public hosts (P68-6's
@@ -1053,7 +1053,7 @@ that already own the files.
     bound), `test_record_store_conformance.py` (two sqlite tests: the row cut, the CSV header) and
     `test_bash_background.py::TestTheTurnLeavesNoOrphan`. A second failure of the same test is its trigger.
 - *Phase 56 close (the real run and the gates, 2026-10-30).*
-  - Real evidence: `tests/live/test_hacker_news_live.py` (`DOCKET_RUN_LIVE_HN=1`) ran the `hacker-news` recipe against
+  - Real evidence: the live Hacker News test (retired by P69-11; now the `hn-digest-records` capability task) ran the `hacker-news` recipe against
     `hn.algolia.com` and the local model; the fourth run passed (see P56-22 in the archive). The write path of a declared
     service (park, approve, one `POST`) against a real model was **not** repeated at this close; the deterministic e2e
     (`tests/e2e/test_declared_service.py`, a scripted model) covers it. A run with the real model is the trigger for
@@ -1077,8 +1077,8 @@ that already own the files.
     in ANSI double quotes (each backend would quote its own); `ReadLimits` serves `read` and `export` though
     `export` honours only `timeout_s` (a possible `ExportLimits`).
   - Live Hacker News on Anthropic: the recipe ran on `claude-haiku-5-5` with Langfuse export (digest 218.9k tokens,
-    weekly report 111.1k) and `tests/live` now takes `DOCKET_LIVE_HN_PROVIDER=anthropic`, but that lane was not run
-    with a real key (setup only checked with a fake one). A fake key makes the run wait out its timeout instead of
+    weekly report 111.1k); the lane is now the `hn-digest-records` task, which any provider runs through
+    `evals.evaluator.run run --provider` (P69-11). A fake key makes the run wait out its timeout instead of
     failing on the 401 at once.
   - Records and services: `pod update` does not check that a `rec__<set>` allow-list entry names a declared set;
     real PostgREST documents carry no `operationId`; `setup service list` shows secret names; the `ask-before-send` custom message is not shown
