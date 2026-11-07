@@ -1,0 +1,7 @@
+name: implementer-verifies
+steps:
+  - plan: lead
+  - implement: implementer
+    verify: "sh checks/verify.sh"
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]

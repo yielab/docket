@@ -1,0 +1,9 @@
+$ python3 -m unittest discover -s tests
+F
+======================================================================
+FAIL: test_spec (test_versions.VersionsTests)
+AssertionError: values differ
+
+Ran 1 test in 0.001s
+
+FAILED (failures=1)
