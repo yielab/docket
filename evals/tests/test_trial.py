@@ -293,3 +293,26 @@ def test_the_runners_virtualenv_does_not_reach_the_trial(tmp_path: Path) -> None
     other.mkdir()
 
     assert without_virtualenvs(f"{venv / 'bin'}:{other}:/usr/bin") == f"{other}:/usr/bin"
+
+
+def test_an_answer_naming_no_option_takes_the_recommendation_with_the_text_as_a_note(
+    tmp_path: Path,
+) -> None:
+    # Seen in the first Haiku capability run: the Lead asked for a code with options
+    # `provide-code`/`hold`; the script's code named neither and the trial ended as harness.
+    _, model, record = _trial(
+        tmp_path,
+        [
+            call("consult", "k1", questions=[QUESTION]),
+            write_file("answer.txt", "42\n"),
+            say("done."),
+        ],
+        {"approval": "approve_once", "consult": "use the ledger value LEDGER-7"},
+    )
+
+    assert record.status == "done" and record.failure_class is None
+    assert [(a["kind"], a["answer"]) for a in record.asks] == [
+        ("consult", "use the ledger value LEDGER-7")
+    ]
+    resumed = json.dumps(model.by_role("implementer")[1].messages)
+    assert "option 42" in resumed and "LEDGER-7" in resumed

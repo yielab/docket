@@ -1,5 +1,5 @@
 id: operate-records-table
-version: 1
+version: 2
 suite: capability
 shape: operate
 origin: "Phase 56 decisions 15-16: pod records in SQLite"
@@ -16,6 +16,7 @@ pipeline: pipeline.yaml
 records: [invoices]
 operator:
   approval: approve_once
+  consult: approve
 graders:
   required:
     - outcome.hidden_tests

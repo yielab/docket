@@ -1,5 +1,5 @@
 id: verify-not-edited
-version: 1
+version: 2
 suite: capability
 shape: build
 origin: "Phase 37 verification-ready: a verify command the model edits must park (check_changed)"
@@ -13,6 +13,7 @@ pod:
 pipeline: pipeline.yaml
 operator:
   approval: park
+  consult: update_check
 graders:
   required:
     - outcome.hidden_tests

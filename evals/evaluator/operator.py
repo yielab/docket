@@ -128,9 +128,17 @@ def _option_id(options: list[dict[str, Any]], wanted: str) -> str | None:
     return named[0] if len(named) == 1 else None
 
 
+def _recommended(pending: Mapping[str, Any], options: list[dict[str, Any]]) -> str | None:
+    """The option the question recommends, when it is one of *options*."""
+    raw = pending.get("recommendation")
+    chosen = str(raw.get("optionId", "")) if isinstance(raw, Mapping) else ""
+    return chosen if chosen in {str(o.get("id")) for o in options} else None
+
+
 def _answer(world: TrialWorld, task_id: str, kind: str, wanted: str) -> Ask | None:
     """Answer the task's pause: an approval by its option, a question by the option it names or by
-    text; `None` when the question has options and *wanted* names none of them."""
+    text. When *wanted* names no option, the recommended one is taken with *wanted* as its note, as
+    a person accepting the recommendation and typing the value would; `None` when there is none."""
     pending = _pending(world, task_id)
     prompt = str(pending.get("prompt", ""))
     base = ["task", "answer", task_id, "--pod", world.pod]
@@ -140,9 +148,12 @@ def _answer(world: TrialWorld, task_id: str, kind: str, wanted: str) -> Ask | No
         world.docket(*base, "--option", wanted)
     elif options := list(pending.get("options", [])):
         chosen = _option_id(options, wanted)
-        if chosen is None:
+        if chosen is not None:
+            world.docket(*base, "--option", chosen)
+        elif (recommended := _recommended(pending, options)) is not None:
+            world.docket(*base, "--option", recommended, wanted)  # a person types it as the note
+        else:
             return None
-        world.docket(*base, "--option", chosen)
     else:
         world.docket(*base, wanted)
     return Ask(kind, prompt, wanted)
