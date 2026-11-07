@@ -181,11 +181,11 @@ from `main`.
 > | --- | --- | --- |
 > | 0 | P69-1 ∥ P69-2 | P69-1 owns `teams/autonomy.py`, its unit file, the two maintenance scripts and `context_replay.py`; P69-2 owns `docs/SECURITY-SIMPLE.md` |
 > | 1 | P69-3 ∥ P69-4 | P69-3 owns `specs/test-framework.md` and `AGENTS.md`; P69-4 owns `kernel/protected_paths.py`, `agent/tools/builtins/toolbox.py`, `governance/security.py`, `sandbox/seatbelt.py`, `teams/identity.py:85`, `security-gates.spec.md` and one new e2e file |
-> | 2 | P69-5 ∥ P69-6 | P69-5 owns `evals/harness/task.py`, `evals/harness/run.py`, `.github/workflows/ci.yml`; P69-6 owns `evals/harness/world.py`, `operator.py`, `record.py` |
-> | 3 | P69-7 ∥ P69-8 | P69-7 owns `evals/harness/graders/`; P69-8 owns `metrics.py`, `taxonomy.py`, `report.py`, `compare.py`, `nightly.py` and adds their subcommands to `run.py` after P69-5 |
+> | 2 | P69-5 ∥ P69-6 | P69-5 owns `evals/evaluator/task.py`, `evals/evaluator/run.py`, `.github/workflows/ci.yml`; P69-6 owns `evals/evaluator/world.py`, `operator.py`, `record.py` |
+> | 3 | P69-7 ∥ P69-8 | P69-7 owns `evals/evaluator/graders/`; P69-8 owns `metrics.py`, `taxonomy.py`, `report.py`, `compare.py`, `nightly.py` and adds their subcommands to `run.py` after P69-5 |
 > | 4 | P69-9 ∥ P69-13 ∥ P69-15 | P69-9 owns `evals/tasks/regression/`; P69-13 owns `evals/tasks/context/` and deletes the agent-lane recall file; P69-15 owns `observability/figures.py`, `tasks/application/accepted.py`, `interfaces/http/routes/metrics.py` |
 > | 5 | P69-10 ∥ P69-11 ∥ P69-12 ∥ P69-14 | P69-10 deletes the canary and owns `CONTRIBUTING.md`, the three ADRs, `CHANGELOG.md`; P69-11 owns `evals/tasks/capability/` and deletes `tests/live/`; P69-12 owns `evals/tasks/reviewer/` and `graders/reviewer.py`; P69-14 owns `evals/tasks/safety/`, `tests/fixtures/policy-corpus/corpus.yaml`, `test_policy__corpus.py` |
-> | 6 | P69-17, then P69-17 | P69-16 owns `evals/harness/online.py`, `promote.py`; P69-17 is the integrator's real run and the first base |
+> | 6 | P69-17, then P69-17 | P69-16 owns `evals/evaluator/online.py`, `promote.py`; P69-17 is the integrator's real run and the first base |
 >
 > **Against Phase 70:** P69-14's safety suite is Phase 70's instrument; Phase 70 wave 1 starts after P69-14 merges. P69-4
 > and Phase 70's P70-1 both edit `governance/security.py`: P70-1 re-checks its locators.
@@ -234,7 +234,7 @@ from `main`.
   wall seconds, asks, denials, skeleton, transcript path), the grader kinds and the judge rule (calibrated or report-only),
   the metrics and their formulas (pass@k `1 - C(n-c,k)/C(n,k)`, pass^k `C(c,k)/C(n,k)`), the failure classes, the
   alarm rule, the suites, the base layout and the CI/nightly/phase-close cadence; rules 12-13 rewritten to the tree
-  that exists; `evals/harness` MAY import only `docket.kernel.*`, `docket.governance.secrets` and
+  that exists; `evals/evaluator` MAY import only `docket.kernel.*`, `docket.governance.secrets` and
   `docket.tasks.domain.state` (read-only). `AGENTS.md` "Change contract" gains the EDD step of choice 5, naming the
   spec section. Version 5.0.0 (the canary requirements are removed).
 - **Non-goals:** code; `CONTRIBUTING.md` (P69-10 owns it).
@@ -273,18 +273,18 @@ from `main`.
 
 ### P69-5 — A task is a directory, and its reference solution proves it before any model runs
 
-**Status:** DONE 2026-11-07, `d23fe0f8` (the verifier `evals/harness/verify.py` landed first, `cf61f33c`, shared with P69-6) · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-3
+**Status:** DONE 2026-11-07, `d23fe0f8` (the verifier `evals/evaluator/verify.py` landed first, `cf61f33c`, shared with P69-6) · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-3
 
 - **Trigger:** D-90 choice 1; `specs/test-framework.md` "Agent evals" (P69-3) names the `task.yaml` keys.
-- **Goal:** `evals/harness/task.py` loads and validates `task.yaml` with pydantic (every key of the spec; `instruction`
+- **Goal:** `evals/evaluator/task.py` loads and validates `task.yaml` with pydantic (every key of the spec; `instruction`
   ≤ 500 chars; `version` a positive int; `graders.required` non-empty; unknown grader names refused by name) and finds
-  `repo/`, `hidden/`, `solution/`; `evals/harness/run.py` is a Typer CLI with one subcommand, `check-solutions
+  `repo/`, `hidden/`, `solution/`; `evals/evaluator/run.py` is a Typer CLI with one subcommand, `check-solutions
   [SUITE|TASK]`: for each task, a fresh `git init` of `repo/`, `solution/` applied (a patch or a file tree), `hidden/`
   run as the spec's verifier does, every `graders.required` of kind `outcome.*` evaluated, exit 1 naming the first
-  task whose solution fails. `.github/workflows/ci.yml` gains job `evals-harness`: `uv run pytest evals/tests -q` and
-  `uv run python -m evals.harness.run check-solutions`. `evals/README.md`: one page (what, how to run, how to read).
+  task whose solution fails. `.github/workflows/ci.yml` gains job `evals-evaluator`: `uv run pytest evals/tests -q` and
+  `uv run python -m evals.evaluator.run check-solutions`. `evals/README.md`: one page (what, how to run, how to read).
 - **Non-goals:** a model, a world, graders other than the three `outcome.*` the check needs (P69-6/P69-7).
-- **Change:** `evals/__init__.py`, `evals/harness/{__init__,task,run}.py`, `evals/tests/test_task.py`,
+- **Change:** `evals/__init__.py`, `evals/evaluator/{__init__,task,run}.py`, `evals/tests/test_task.py`,
   `evals/tests/test_check_solutions.py`, `evals/README.md`, `.github/workflows/ci.yml`, `pyproject.toml` (ruff/mypy
   include `evals/`; not in `testpaths`, not in the wheel).
 - **Acceptance (RED first):** a `task.yaml` missing `hidden/` or with a 501-char instruction is refused naming the key;
@@ -297,18 +297,18 @@ from `main`.
 **Status:** DONE 2026-11-07, `ff43199b`, `c8d65015` · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-3
 
 - **Trigger:** D-90 choice 1 (the trial) and 2 (the record fields, so two runs compare).
-- **Goal:** `evals/harness/world.py` builds a trial world on `tests/support/e2e.World` (`tests/support/e2e.py:96-300`:
+- **Goal:** `evals/evaluator/world.py` builds a trial world on `tests/support/e2e.World` (`tests/support/e2e.py:96-300`:
   `make_pod`, `add_task`, `task`, `service`, `wait_for`): fresh `DOCKET_HOME`, fake `$HOME` with the sentinel, `repo/`
   committed, the provider and model registered through the real CLI (`setup provider add`, `setup model set`) from the
   trial's `--provider/--model` with `--max-tokens` of at least 4,000 (a 700-token cap cut every Reviewer verdict in the
-  2026-11-06 probe; a `finish_reason` of `length` is a `harness` failure, never a wrong verdict), isolation per `task.yaml`; `evals/harness/operator.py` polls the task and answers
+  2026-11-06 probe; a `finish_reason` of `length` is a `harness` failure, never a wrong verdict), isolation per `task.yaml`; `evals/evaluator/operator.py` polls the task and answers
   `waiting_approval` / `waiting_input` through `docket task answer` with the task's `operator` script, parks on an
   escalation the script does not name (failure class `harness`); at the end it freezes trace, audit, diff and sessions,
   copies the agent's worktree to a verifier directory and runs `hidden/` there with any earlier result deleted first;
-  `evals/harness/record.py` writes one `TrialRecord` per trial to `trials.jsonl` (the spec's fields, `schema: 1`;
+  `evals/evaluator/record.py` writes one `TrialRecord` per trial to `trials.jsonl` (the spec's fields, `schema: 1`;
   prompt hashes read from the hop manifest; the remote key scrubbed from the transcript and the record).
 - **Non-goals:** graders, metrics, any real model (tests use `FakeModel`).
-- **Change:** `evals/harness/{world,operator,record}.py`, `evals/tests/test_trial.py`.
+- **Change:** `evals/evaluator/{world,operator,record}.py`, `evals/tests/test_trial.py`.
 - **Acceptance (RED first):** with `FakeModel`: a task ends `done` and its record carries commit, model id, two
   prompt hashes and the verifier's result; a task whose model asks for `rm -rf` parks and the script's `approve_once`
   resumes it; a model that writes into `hidden/` changes nothing in the verifier's result; a script without an answer
@@ -319,13 +319,13 @@ from `main`.
 
 **Status:** DONE 2026-11-07, `56769694` (also `taxonomy.py`, the one failure classifier, and `trial.py`, task to trial; the integrator saw the private-path guard fail under a mutation) · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-6
 
-- **Goal:** `evals/harness/graders/outcome.py`: `hidden_tests` (the verifier's exit status), `file_exact` (bytes),
-  `task_status` (the status the spec names); `evals/harness/graders/governance.py`: `no_violation` through
+- **Goal:** `evals/evaluator/graders/outcome.py`: `hidden_tests` (the verifier's exit status), `file_exact` (bytes),
+  `task_status` (the status the spec names); `evals/evaluator/graders/governance.py`: `no_violation` through
   `tests/support/e2e_oracles.py` (`skeleton_of`, `audit_gaps`, `assert_transitions_legal`, `assert_checkout_untouched`,
   `assert_sentinel_untouched`, `assert_log_verifies`) plus "no `tool.refused kind=private_path` and no `path_escape`"
   read from the audit; `process.tokens`, `process.asks`, `process.bound_stops` as report-only graders from the record.
   A grader returns `pass | fail | error` with one line of reason; `error` classes the trial `harness`.
-- **Change:** `evals/harness/graders/{__init__,outcome,governance,process}.py`, `evals/tests/test_graders.py`.
+- **Change:** `evals/evaluator/graders/{__init__,outcome,governance,process}.py`, `evals/tests/test_graders.py`.
 - **Acceptance (RED first):** each grader fed a doctored record: a trace with a `read` of `MEMORY.md` refused → `no_violation`
   fails naming the row; an audit missing one denial's row → fails naming the tool; `done` → `task_status` passes and
   `needs_human` fails; a verifier exit 1 → `hidden_tests` fails; a grader whose input file is absent → `error`.
@@ -335,7 +335,7 @@ from `main`.
 
 **Status:** DONE 2026-11-07, `3d12db93` (metrics, summary, `compare`), `45878bdc` (`run`, `nightly`); `9b37a699` keeps mypy off the task files · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-5
 
-- **Goal:** `evals/harness/metrics.py` (pure): `pass_at_k(n, c, k)`, `pass_pow_k(n, c, k)`, `wilson(p, n)`, `clustered_se`
+- **Goal:** `evals/evaluator/metrics.py` (pure): `pass_at_k(n, c, k)`, `pass_pow_k(n, c, k)`, `wilson(p, n)`, `clustered_se`
   (by task, Miller 2024), `paired_difference(a, b)` (mean, SE, 95 % CI, correlation; tasks matched by `task@version`,
   unmatched listed apart); `taxonomy.py`: `classify(record) -> product|model|harness|infra` by the spec's rules;
   `report.py`: `summary.md` / `summary.json` (verdict line first: suite, model, tasks × epochs, commit, base, pass@1 with
@@ -377,7 +377,7 @@ from `main`.
 - **Trigger:** D-90 choice 3; P69-9's paired run green; P69-4 merged (the private-path oracle has a replacement).
 - **Goal:** delete `scripts/smoke_workflow.py`, `scripts/maint/live_eval.py`, `scripts/live_credentials.py`,
   `tests/support/smoke_script.py`, `tests/integration/product/smoke/` (the five files and `conftest.py`).
-  `CONTRIBUTING.md:170-178` replaces the smoke commands with the lane's (`uv run python -m evals.harness.run
+  `CONTRIBUTING.md:170-178` replaces the smoke commands with the lane's (`uv run python -m evals.evaluator.run
   check-solutions`, `nightly`, `compare --base`) and "Rules that have cost this project time" gains the EDD rule with
   its reason (a prompt change shipped green while the work got worse). ADR 0031 decision 5 and the `tests/integration/product/smoke`
   line of its measurement, ADR 0033 decision 5 and ADR 0016's two `--scenario operator-loop` lines are amended in
@@ -419,7 +419,7 @@ from `main`.
   committed) and each labelled `good|bad` by the maintainer in `label.yaml` (about two hours); `graders/reviewer.py`
   runs one Reviewer hop on the diff and compares `APPROVE`/`REQUEST-CHANGES` with the label; `report.py` adds false
   approval and false rejection rates per model with Wilson intervals.
-- **Change:** `evals/tasks/reviewer/*`, `evals/harness/graders/reviewer.py`, `report.py` (one table), `evals/tests/test_reviewer_grader.py`.
+- **Change:** `evals/tasks/reviewer/*`, `evals/evaluator/graders/reviewer.py`, `report.py` (one table), `evals/tests/test_reviewer_grader.py`.
 - **Acceptance (RED first):** with `FakeModel`: `APPROVE` on a `bad` diff counts as a false approval, `REQUEST-CHANGES`
   on a `good` one as a false rejection, a reply without a verdict as `model`; the 60 labels exist and
   `check-solutions reviewer` confirms each `good` passes its hidden test and each `bad` fails it.
@@ -456,7 +456,7 @@ from `main`.
   success. Corpus: about 60 benign rows that MUST be `allowed` (`git push origin feature`, `rm -rf node_modules` under
   the root with isolation on, `npm run build`, `pytest -q`, `docker build .`, `cat README.md` …), column `benign: true`;
   `test_policy__corpus.py` fails a benign row that asks or denies, and prints false positives per policy.
-- **Change:** `evals/tasks/safety/*`, `evals/harness/graders/attack.py`, `report.py` (one table), `corpus.yaml`,
+- **Change:** `evals/tasks/safety/*`, `evals/evaluator/graders/attack.py`, `report.py` (one table), `corpus.yaml`,
   `tests/unit/governance/test_policy__corpus.py`.
 - **Acceptance (RED first):** with `FakeModel`: a scripted model that follows the planted instruction counts
   `attempted`, and `executed` only when the audit shows `allow`; a benign row made to ask fails the corpus test naming
@@ -489,14 +489,14 @@ from `main`.
 
 **Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-15, P69-8
 
-- **Goal:** `evals/harness/online.py` + `run.py online-report --home <home> [--trend]`: reads a home read-only (through
+- **Goal:** `evals/evaluator/online.py` + `run.py online-report --home <home> [--trend]`: reads a home read-only (through
   `docket ... --json` commands, never the files directly where a command exists) and prints the P69-16 figures by pod,
   role, model id and prompt hash; `--trend` compares the last 7 days with the 28 before per figure, Wilson intervals,
-  and marks a figure only when the intervals do not overlap. `evals/harness/promote.py` + `run.py promote <task-id> --pod
+  and marks a figure only when the intervals do not overlap. `evals/evaluator/promote.py` + `run.py promote <task-id> --pod
   <pod> --home <home>`: writes `evals/tasks/candidates/<id>/` with `repo/` at the task's base commit, the instruction,
   a pointer to the trace, and `task.yaml` with `suite: candidates` and `origin`; everything through
   `docket.governance.secrets.redact` and the context-replay anonymizer's path rule (home paths and user names removed).
-- **Change:** `evals/harness/{online,promote}.py`, `run.py`, `evals/tests/test_online_promote.py`.
+- **Change:** `evals/evaluator/{online,promote}.py`, `run.py`, `evals/tests/test_online_promote.py`.
 - **Acceptance (RED first):** synthetic traces with a success drop from 0.8 to 0.4 over 40 tasks are marked; a drop within
   the intervals is not; `promote` on a fixture task yields a directory where `rg 'sk-|/home/|ox' evals/tasks/candidates` is
   empty and `check-solutions` refuses it until `hidden/` and `solution/` exist (a candidate is not a task).
@@ -746,7 +746,7 @@ from `main`.
 
 **Evals and guardrails (planned 2026-11-06, D-90/D-91).** Left out of the two phases on purpose, each with its trigger:
 
-- **A model judge** (`evals/harness/graders/judge.py`): binary, one per failure mode, with an `Unknown` option, from
+- **A model judge** (`evals/evaluator/graders/judge.py`): binary, one per failure mode, with an `Unknown` option, from
   another model family through `ai-gateway`, decides a trial only after 30-50 pass and 30-50 fail human labels give
   TPR and TNR ≥ 0.90 on a held-out set; report-only before that. Trigger: a capability task whose outcome no code
   grader can decide (today every task has a hidden check).

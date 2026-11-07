@@ -6,8 +6,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from evals.harness.record import TrialRecord, TrialSpec, run_trial
-from evals.harness.task import Task
+from evals.evaluator.record import TrialRecord, TrialSpec, run_trial
+from evals.evaluator.task import Task
 
 DEFAULT_TURN_S = 120
 DEFAULT_VERIFY_S = 300

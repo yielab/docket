@@ -1,4 +1,4 @@
-"""SUBJECT: evals/harness/{world,operator,record}.py -- a trial runs in a clean world, a scripted
+"""SUBJECT: evals/evaluator/{world,operator,record}.py -- a trial runs in a clean world, a scripted
 operator answers its pauses, and the run leaves one scrubbed record.
 
 The model is `FakeModel`; the world, the CLI, the audit log and the worktree are real.
@@ -14,11 +14,11 @@ from pathlib import Path
 
 import pytest
 
-from evals.harness.record import TrialRecord, TrialSpec, append_record, docket_commit, run_trial
-from evals.harness.world import build_world
+from evals.evaluator.record import TrialRecord, TrialSpec, append_record, docket_commit, run_trial
+from evals.evaluator.world import build_world
 
 # isort: split
-# evals.harness.world puts the repository root on sys.path, so `tests` imports after it.
+# evals.evaluator.world puts the repository root on sys.path, so `tests` imports after it.
 from tests.support.model_server import FakeModel, Step, call, say, truncated, write_file
 
 PIPELINE = "name: trial\nsteps:\n  - plan: lead\n  - implement: implementer\n"

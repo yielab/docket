@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from evals.harness.verify import HiddenResult
+from evals.evaluator.verify import HiddenResult
 
 Status = Literal["pass", "fail", "error"]
 TRACE_FILE = "trace.jsonl"

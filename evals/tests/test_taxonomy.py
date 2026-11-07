@@ -1,13 +1,13 @@
-"""SUBJECT: evals/harness/taxonomy.py -- one function names why a trial failed, from the operator's
+"""SUBJECT: evals/evaluator/taxonomy.py -- one function names why a trial failed, from the operator's
 outcome, the stored task, the trace, the verifier and the graders' results."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from evals.harness.operator import OperatorOutcome
-from evals.harness.taxonomy import classify
-from evals.harness.verify import HiddenResult
+from evals.evaluator.operator import OperatorOutcome
+from evals.evaluator.taxonomy import classify
+from evals.evaluator.verify import HiddenResult
 
 CLEAN = HiddenResult("pass", 0, "")
 CALL: dict[str, Any] = {"event_type": "llm_call", "payload": {"ok": True, "finishReason": "stop"}}

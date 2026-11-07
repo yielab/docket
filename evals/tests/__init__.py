@@ -1,1 +1,1 @@
-"""Tests of the eval harness, run against FakeModel; never a real model."""
+"""Tests of the evaluator, run against FakeModel; never a real model."""

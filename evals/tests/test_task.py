@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml  # type: ignore[import-untyped]
 
-from evals.harness.task import TaskError, discover, load_task
+from evals.evaluator.task import TaskError, discover, load_task
 from evals.tests.conftest import TaskBuilder, task_yaml
 
 

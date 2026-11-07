@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from evals.harness.graders.base import GradeContext, GraderInputError, GraderResult
+from evals.evaluator.graders.base import GradeContext, GraderInputError, GraderResult
 
 
 def hidden_tests(ctx: GradeContext, params: Mapping[str, str]) -> GraderResult:

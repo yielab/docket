@@ -13,10 +13,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from evals.harness.metrics import Record, counted
-from evals.harness.report import read_trials, write_report
-from evals.harness.task import Task
-from evals.harness.trial import run_task
+from evals.evaluator.metrics import Record, counted
+from evals.evaluator.report import read_trials, write_report
+from evals.evaluator.task import Task
+from evals.evaluator.trial import run_task
 
 LOCAL_PROVIDER = "local"
 LOCAL_MODEL = "qwen3.6-35b-a3b"

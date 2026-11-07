@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 5.1.0
+**Version**: 5.2.0
 **Status**: Active
 **Last Updated**: 2026-11-07
 
@@ -194,7 +194,7 @@ Requirements:
 12. **Lanes are directories, selected by path; no marker names a lane.** `tests/unit`,
     `tests/integration`, `tests/guards`, `tests/architecture` and `tests/contracts` are the default
     suite (rule 1); `tests/e2e` and `tests/agent` each run by path in their own CI job; `evals/`
-    sits outside `tests/` and outside `testpaths`, and its harness tests (`evals/tests`) run by path
+    sits outside `tests/` and outside `testpaths`, and its evaluator tests (`evals/tests`) run by path
     in their own job ("Agent evals"). The duration ceilings of rule 6 bind by lane directory.
 13. **Some directories exist for a reason other than mirroring a module, and one holds the shared
     fakes.** `tests/support/` is the one source of shared helpers, fixtures and fakes (`home.py`, `pods.py`,
@@ -258,23 +258,24 @@ with a real model and is statistical.
 ```text
 evals/
 ├── README.md             one page: what the lane is, how to run it, how to read a report
-├── harness/              task loading, the trial world, the scripted operator, the trial
+├── evaluator/            task loading, the trial world, the scripted operator, the trial
 │                         record, graders/, metrics, failure classes, reports; one Typer CLI
 ├── tasks/<suite>/<id>/   data only: one directory per task
-└── tests/                tests of the harness itself, against FakeModel; run in CI
+└── tests/                tests of the evaluator itself, against FakeModel; run in CI
 ```
 
-`evals/harness` drives docket the way an operator does, through `tests/support/e2e.World` (the CLI
-and `docket start`). It **MAY** import only `docket.kernel.*`, `docket.governance.secrets` and
-`docket.tasks.domain.state` (read-only tables), and **MUST NOT** monkeypatch docket or call it
-in-process. **Convention** until a guard names it.
+`evals/evaluator` drives docket the way an operator does, through `tests/support/e2e.World` (the CLI
+and `docket start`). It **MAY** import only `docket.kernel.*`, `docket.governance.secrets`,
+`docket.tasks.domain.state` (read-only tables) and `tests.support.*` (the e2e `World` and oracles,
+reused so the trial world is not a second copy of them), and **MUST NOT** monkeypatch docket or call
+it in-process. **Convention** until a guard names it.
 
 #### A task is a directory
 
 ```text
 evals/tasks/<suite>/<id>/
 ├── task.yaml
-├── repo/        the seed; the harness commits it before the pod exists
+├── repo/        the seed; the evaluator commits it before the pod exists
 ├── hidden/      checks the agent never sees
 └── solution/    a reference patch or file tree
 ```
@@ -313,7 +314,7 @@ A trial is one run of one task by one model; a task run `n` times has `n` epochs
 2. The instruction is delivered by `docket task add` (or `POST /tasks` for a service task).
 3. The scripted operator polls the task. On `waiting_approval` or `waiting_input` it answers from
    `operator`; an escalation the script does not name ends the trial as a `harness` failure.
-4. When the task ends or its time runs out, the harness freezes the trace, the audit log, the diff
+4. When the task ends or its time runs out, the evaluator freezes the trace, the audit log, the diff
    and the sessions.
 5. A verifier copies the agent's worktree to a separate directory, deletes any result file already
    there, and runs `hidden/` on the copy. The agent can reach neither the checks nor their result.
@@ -369,7 +370,7 @@ With 10-30 tasks a suite-level difference under 20 points is not detectable, and
 
 #### Failure classes
 
-The harness classes each failed trial mechanically. Only `model` and `product` count against the
+The evaluator classes each failed trial mechanically. Only `model` and `product` count against the
 agent and the product.
 
 | Class | Rule |

@@ -29,15 +29,15 @@ graders:
 ```
 
 Any change to a task's content raises `version`; results of different versions are never mixed.
-The loader (`evals/harness/task.py`) refuses a task that lacks a key, names an unknown grader or
+The loader (`evals/evaluator/task.py`) refuses a task that lacks a key, names an unknown grader or
 breaks a bound, and it names the key.
 
 ## Check the reference solutions
 
 ```bash
-uv run python -m evals.harness.run check-solutions            # every task
-uv run python -m evals.harness.run check-solutions regression # one suite
-uv run python -m evals.harness.run check-solutions fix-add    # one task
+uv run python -m evals.evaluator.run check-solutions            # every task
+uv run python -m evals.evaluator.run check-solutions regression # one suite
+uv run python -m evals.evaluator.run check-solutions fix-add    # one task
 ```
 
 For each task the command copies `repo/` into a fresh `git init`, applies `solution/` and grades
@@ -46,4 +46,4 @@ each required `outcome.*` grader with no model: `outcome.hidden_tests` runs `hid
 skipped; other grader kinds are not checked here. It exits 1 naming the first task and grader
 that fails, and 0 when there is nothing to check. CI runs it on every push.
 
-Tests of the harness itself are `evals/tests`: `uv run pytest evals/tests -q`.
+Tests of the evaluator itself are `evals/tests`: `uv run pytest evals/tests -q`.

@@ -10,9 +10,9 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from evals.harness.graders import governance, outcome, process
-from evals.harness.graders.base import GradeContext, GraderInputError, GraderResult
-from evals.harness.task import Grader, Graders
+from evals.evaluator.graders import governance, outcome, process
+from evals.evaluator.graders.base import GradeContext, GraderInputError, GraderResult
+from evals.evaluator.task import Grader, Graders
 
 __all__ = ["GradeContext", "GraderResult", "grade", "grade_one", "passed"]
 

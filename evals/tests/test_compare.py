@@ -9,9 +9,9 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from evals.harness.compare import ComparisonError, compare_runs, render, resolve_run
-from evals.harness.report import read_trials, summarize, write_report
-from evals.harness.run import app
+from evals.evaluator.compare import ComparisonError, compare_runs, render, resolve_run
+from evals.evaluator.report import read_trials, summarize, write_report
+from evals.evaluator.run import app
 from evals.tests.lines import trial
 
 

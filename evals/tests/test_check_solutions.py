@@ -6,7 +6,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from evals.harness.run import app
+from evals.evaluator.run import app
 from evals.tests.conftest import TaskBuilder
 
 runner = CliRunner()

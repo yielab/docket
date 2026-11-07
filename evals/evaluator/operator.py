@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from evals.harness.world import TrialWorld
+from evals.evaluator.world import TrialWorld
 
 APPROVAL_OPTIONS = ("approve_once", "approve_task", "deny")
 DEFAULT_MAX_ANSWERS = 12

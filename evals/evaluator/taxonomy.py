@@ -10,8 +10,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from evals.harness.operator import OperatorOutcome
-from evals.harness.verify import HiddenResult
+from evals.evaluator.operator import OperatorOutcome
+from evals.evaluator.verify import HiddenResult
 
 FAILURE_CLASSES = ("product", "model", "harness", "infra")
 PRODUCT_KINDS = frozenset(

@@ -1,4 +1,4 @@
-"""SUBJECT: evals/harness/graders -- each grader decides from doctored evidence, and one registry
+"""SUBJECT: evals/evaluator/graders -- each grader decides from doctored evidence, and one registry
 returns the record's `graders`.
 
 Nothing here runs docket: the frozen files, the verifier result and the repository are built by hand.
@@ -11,9 +11,9 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from evals.harness.graders import GradeContext, grade, grade_one, passed
-from evals.harness.task import Grader, Graders
-from evals.harness.verify import HiddenResult
+from evals.evaluator.graders import GradeContext, grade, grade_one, passed
+from evals.evaluator.task import Grader, Graders
+from evals.evaluator.verify import HiddenResult
 
 POD = "trial"
 DETAIL = "tool={tool} agent=a role=implementer project={pod} policy_id='' policy_action='': {rest}"

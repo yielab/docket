@@ -1,4 +1,4 @@
-"""SUBJECT: evals/harness/nightly.py -- the per-task alarm against a base, and the `run` and
+"""SUBJECT: evals/evaluator/nightly.py -- the per-task alarm against a base, and the `run` and
 `nightly` commands: synthetic `trials.jsonl` lines for the alarm, `FakeModel` for the commands."""
 
 from __future__ import annotations
@@ -10,13 +10,13 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from evals.harness.nightly import alarms, unpaired
-from evals.harness.run import app
+from evals.evaluator.nightly import alarms, unpaired
+from evals.evaluator.run import app
 from evals.tests.conftest import FIXED, TaskBuilder
 from evals.tests.lines import trial
 
 # isort: split
-# evals.harness.trial imports the world, which puts the repository root on sys.path.
+# evals.evaluator.trial imports the world, which puts the repository root on sys.path.
 from tests.support.model_server import FakeModel, Step, say, write_file
 
 runner = CliRunner()

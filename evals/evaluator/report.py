@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from evals.harness.metrics import (
+from evals.evaluator.metrics import (
     Record,
     clustered_se,
     pass_at_k,

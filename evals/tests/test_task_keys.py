@@ -1,4 +1,4 @@
-"""SUBJECT: evals/harness/task.py and trial.py -- `pipeline`, `pod.memory` and `limits.max_tokens`
+"""SUBJECT: evals/evaluator/task.py and trial.py -- `pipeline`, `pod.memory` and `limits.max_tokens`
 reach the trial: a refused file names its key, and `spec_for` fills the TrialSpec fields.
 
 Nothing here runs docket or a model; the task directories are built by `make_task`.
@@ -10,13 +10,13 @@ from pathlib import Path
 
 import pytest
 
-from evals.harness.record import TrialSpec, run_trial
-from evals.harness.task import TaskError, load_task
-from evals.harness.trial import spec_for
+from evals.evaluator.record import TrialSpec, run_trial
+from evals.evaluator.task import TaskError, load_task
+from evals.evaluator.trial import spec_for
 from evals.tests.conftest import TaskBuilder
 
 # isort: split
-# evals.harness.record imports the world, which puts the repository root on sys.path.
+# evals.evaluator.record imports the world, which puts the repository root on sys.path.
 from tests.support.model_server import FakeModel, say, write_file
 
 PIPELINE = "name: trial\nsteps:\n  - plan: lead\n  - implement: implementer\n"

@@ -14,7 +14,7 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from docket.tasks.domain.state import Status
 
@@ -26,7 +26,6 @@ if str(_ROOT) not in sys.path:
 
 from tests.support.e2e import World  # noqa: E402
 from tests.support.e2e_oracles import skeleton_of  # noqa: E402
-from tests.support.model_server import FakeModel  # noqa: E402
 
 MIN_MAX_TOKENS = 4000
 POD = "trial"
@@ -47,7 +46,7 @@ class TrialWorld(World):
         self, root: Path, seed: Path, *, base_url: str, env: Mapping[str, str] | None = None
     ) -> None:
         self.seed = seed
-        super().__init__(root, cast("FakeModel", _Endpoint(base_url)), env=env)
+        super().__init__(root, _Endpoint(base_url), env=env)
 
     def _make_repo(self) -> None:
         shutil.copytree(self.seed, self.repo, symlinks=True)

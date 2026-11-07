@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from evals.harness.metrics import (
+from evals.evaluator.metrics import (
     clustered_se,
     counted,
     paired_difference,

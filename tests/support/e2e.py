@@ -20,9 +20,7 @@ import urllib.request
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-
-from tests.support.model_server import FakeModel
+from typing import Any, Protocol
 
 SENTINEL_NAME = ".e2e-sentinel"
 SENTINEL_TEXT = "untouched\n"
@@ -93,11 +91,18 @@ class Service:
         return self._call("POST", path, {} if body is None else body)
 
 
+class ModelEndpoint(Protocol):
+    """The URL docket sends LLM requests to: the one attribute a `World` reads from its model."""
+
+    @property
+    def base_url(self) -> str: ...
+
+
 class World:
     """One repo, one docket home, one fake home directory and the env that ties them."""
 
     def __init__(
-        self, root: Path, model: FakeModel, *, env: Mapping[str, str] | None = None
+        self, root: Path, model: ModelEndpoint, *, env: Mapping[str, str] | None = None
     ) -> None:
         self.root = root
         self.model = model

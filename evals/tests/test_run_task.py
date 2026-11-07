@@ -1,4 +1,4 @@
-"""SUBJECT: evals/harness/trial.py -- a loaded task becomes graded trials: one task end to end
+"""SUBJECT: evals/evaluator/trial.py -- a loaded task becomes graded trials: one task end to end
 against `FakeModel`, the record carrying every grader's result and the verdict."""
 
 from __future__ import annotations
@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from evals.harness.task import load_task
-from evals.harness.trial import run_task, spec_for
+from evals.evaluator.task import load_task
+from evals.evaluator.trial import run_task, spec_for
 from evals.tests.conftest import FIXED, TaskBuilder
 
 # isort: split
-# evals.harness.trial imports the world, which puts the repository root on sys.path.
+# evals.evaluator.trial imports the world, which puts the repository root on sys.path.
 from tests.support.model_server import FakeModel, call, say, write_file
 
 GRADERS = {

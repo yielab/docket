@@ -1,10 +1,10 @@
-"""SUBJECT: evals/harness/verify.py -- the hidden checks run on a copy the agent cannot steer."""
+"""SUBJECT: evals/evaluator/verify.py -- the hidden checks run on a copy the agent cannot steer."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from evals.harness.verify import RESULT_NAME, run_hidden
+from evals.evaluator.verify import RESULT_NAME, run_hidden
 
 _CHECK = "from pathlib import Path\n\ndef test_answer():\n    assert Path('answer.txt').read_text() == '42\\n'\n"
 

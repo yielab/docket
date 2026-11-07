@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping
 
-import evals.harness.world  # noqa: F401  (puts the repository root on sys.path for `tests`)
-from evals.harness.graders.base import (
+import evals.evaluator.world  # noqa: F401  (puts the repository root on sys.path for `tests`)
+from evals.evaluator.graders.base import (
     AUDIT_FILE,
     TRACE_FILE,
     GradeContext,

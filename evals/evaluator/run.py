@@ -1,8 +1,8 @@
-"""The eval harness CLI. `check-solutions` proves every task's reference solution with no model.
+"""The evaluator CLI. `check-solutions` proves every task's reference solution with no model.
 
-uv run python -m evals.harness.run check-solutions [SUITE|TASK]
-uv run python -m evals.harness.run run SELECTOR --provider P --model M [--epochs N] [--out DIR]
-uv run python -m evals.harness.run nightly [--base DIR|SHA] [--out DIR]
+uv run python -m evals.evaluator.run check-solutions [SUITE|TASK]
+uv run python -m evals.evaluator.run run SELECTOR --provider P --model M [--epochs N] [--out DIR]
+uv run python -m evals.evaluator.run nightly [--base DIR|SHA] [--out DIR]
 """
 
 from __future__ import annotations
@@ -17,9 +17,9 @@ from typing import Annotated, Any, Literal
 
 import typer
 
-from evals.harness.compare import ComparisonError, compare_runs, render, resolve_run
-from evals.harness.graders import GradeContext, grade_one
-from evals.harness.nightly import (
+from evals.evaluator.compare import ComparisonError, compare_runs, render, resolve_run
+from evals.evaluator.graders import GradeContext, grade_one
+from evals.evaluator.nightly import (
     DEFAULT_MAX_TOKENS,
     LOCAL_BASE_URL,
     LOCAL_CREDENTIAL,
@@ -32,9 +32,9 @@ from evals.harness.nightly import (
     stamped_out,
     unpaired,
 )
-from evals.harness.report import read_trials
-from evals.harness.task import Grader, Task, TaskError, discover
-from evals.harness.verify import run_hidden
+from evals.evaluator.report import read_trials
+from evals.evaluator.task import Grader, Task, TaskError, discover
+from evals.evaluator.verify import run_hidden
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[1] / "tasks"
 DEFAULT_HEAD = Path("evals-out")

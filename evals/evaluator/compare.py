@@ -6,8 +6,8 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
-from evals.harness.metrics import Paired, paired_difference, scores_by_task
-from evals.harness.report import TRIALS_FILE, read_trials
+from evals.evaluator.metrics import Paired, paired_difference, scores_by_task
+from evals.evaluator.report import TRIALS_FILE, read_trials
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BASELINES = REPO_ROOT / "internal-docs" / "baselines" / "evals-v2"

@@ -23,12 +23,12 @@ from typing import Any, cast
 from docket.governance.secrets import redact
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.ports import process_port
-from evals.harness.graders import GradeContext, grade, passed
-from evals.harness.operator import run_operator
-from evals.harness.task import Graders
-from evals.harness.taxonomy import classify
-from evals.harness.verify import run_hidden
-from evals.harness.world import TrialWorld, build_world
+from evals.evaluator.graders import GradeContext, grade, passed
+from evals.evaluator.operator import run_operator
+from evals.evaluator.task import Graders
+from evals.evaluator.taxonomy import classify
+from evals.evaluator.verify import run_hidden
+from evals.evaluator.world import TrialWorld, build_world
 
 SCHEMA = 1
 TRIALS_FILE = "trials.jsonl"
@@ -92,7 +92,7 @@ class TrialRecord:
 
 class _EnvCredentials:
     """The one part of the process port `redact` reads: credential-shaped variables of this
-    process. The harness is an entry point that binds no docket adapter, so it supplies this."""
+    process. The evaluator is an entry point that binds no docket adapter, so it supplies this."""
 
     def credential_env_values(self, names: tuple[str, ...], suffixes: tuple[str, ...]) -> list[str]:
         found = (v.strip() for k, v in os.environ.items() if k in names or k.endswith(suffixes))
@@ -129,7 +129,7 @@ def append_record(path: Path, record: TrialRecord, secrets: tuple[str, ...] = ()
 
 
 def docket_commit() -> str:
-    """The commit of the docket checkout this harness runs from, or `unknown`."""
+    """The commit of the docket checkout this evaluator runs from, or `unknown`."""
     done = subprocess.run(
         ["git", "-C", str(_DOCKET_ROOT), "rev-parse", "HEAD"],
         capture_output=True,

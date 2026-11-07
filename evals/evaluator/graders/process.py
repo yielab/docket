@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping
 
-from evals.harness.graders.base import (
+from evals.evaluator.graders.base import (
     TRACE_FILE,
     GradeContext,
     GraderInputError,
