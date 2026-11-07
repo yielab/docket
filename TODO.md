@@ -16,9 +16,10 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> ## ▶ BOARD — no active phase; Phases 69 (D-90) and 70 (D-91) planned and accepted 2026-11-06, claimable; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
+> ## ▶ ACTIVE BOARD — WAVE 69 · Phase 69 (D-90, started 2026-11-07; waves 0-2 merged, wave 3 in progress); Phase 70 (D-91) planned, starts after P69-14; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
 >
-> **Phases 69 and 70 are planned** (D-90, D-91 proposed 2026-11-06; the two `○ PLANNED` sections below): an agent eval
+> **Phase 69 started 2026-11-07** on the maintainer's go, workers on Sonnet and Haiku only: P69-1 to P69-6 merged on
+> `develop` (not pushed), P69-7 and P69-8 in progress. **Phases 69 and 70** (D-90, D-91 proposed 2026-11-06): an agent eval
 > lane with hidden checks, pass@k and a base per commit that deletes the 4,200-line canary, then guardrails measured on its
 > safety suite and reduced to one source per check. The decisions were accepted the same day; the cards are claimable, Phase 69 waves 0 and 1 first.
 > **Phases 67 and 68 closed 2026-11-06** (D-88, D-89; not pushed): a folder pod under the jail reads any public host and
@@ -97,7 +98,7 @@ scope in one pass over the same files, parks at least once.
 by a fast-forward from `develop` when the maintainer cuts a release. Tags and release jobs originate
 from `main`.
 
-## ○ PHASE 69 PLANNED — an agent eval lane: tasks with hidden checks, pass@k and pass^k, a base per commit, and the canary deleted (D-90, accepted 2026-11-06)
+## ▶ PHASE 69 ACTIVE — WAVE 69 · an agent eval lane: tasks with hidden checks, pass@k and pass^k, a base per commit, and the canary deleted (D-90, accepted 2026-11-06)
 
 > **Trigger: the evals and guardrails audit of 2026-11-06** (`internal-docs/audits/evals-y-guardrails-2026-11-06.es.md`;
 > the plan is `internal-docs/plans/evals-y-guardrails-2026-11-06.es.md`; both gitignored, so every card below carries
@@ -191,7 +192,7 @@ from `main`.
 
 ### P69-1 — Dead and historical: a function nothing calls, two scripts that read an old home, a policy named after a phase
 
-**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** deletion · **After:** —
+**Status:** DONE 2026-11-07, `e677850a` · **Size:** S · **Model:** Haiku · **Kind:** deletion · **After:** —
 
 - **Trigger:** `rg approval_policy_for src tests` finds the definition (`teams/autonomy.py:31,187-193`) and one test
   (`tests/unit/teams/test_autonomy.py:165`); the live path uses `table_denies_approval`. `scripts/maint/live-dispatch-baseline.sh:25-28`
@@ -208,7 +209,7 @@ from `main`.
 
 ### P69-2 — The security guide stops promising what no code does
 
-**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** docs · **After:** —
+**Status:** DONE 2026-11-07, `e1d51baf` · **Size:** S · **Model:** Haiku · **Kind:** docs · **After:** —
 
 - **Trigger:** `docs/SECURITY-SIMPLE.md:520` and `:536` say "Reviewer will catch it and REJECT" for an injected phrase
   and a hardcoded secret. The Reviewer's verdict is model judgment with no measurement (no test, no figure); the
@@ -223,7 +224,7 @@ from `main`.
 
 ### P69-3 — The spec of the eval lane, and the change contract that names its eval first
 
-**Status:** TODO · **Size:** M · **Model:** Opus (integrator; it holds the gitignored plan) · **Kind:** spec + contract · **After:** —
+**Status:** DONE 2026-11-07, `af52aea4` (run by Sonnet, not Opus; the plan passed by locator) · **Size:** M · **Model:** Opus (integrator; it holds the gitignored plan) · **Kind:** spec + contract · **After:** —
 
 - **Trigger:** decision D-90 choices 1, 2 and 5; `specs/test-framework.md:240-391` describes the canary that choice 3
   deletes; rules 12-13 (`:194-228`) name markers, `tests/release/` and `tests/evals/` that do not exist.
@@ -245,7 +246,7 @@ from `main`.
 
 ### P69-4 — Private control files are refused by the tools and the jail, not by a sentence
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** DONE 2026-11-07, `8863723c` · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
 - **Trigger:** `teams/identity.py:85` lists `HEARTBEAT.md, AGENTS.md, TOOLS.md, MEMORY.md, and .docket` and `:168-178`
   asks the model not to read them; `agent/tools/builtins/toolbox.py:82-102` `resolve_within` checks roots only, so an
@@ -272,7 +273,7 @@ from `main`.
 
 ### P69-5 — A task is a directory, and its reference solution proves it before any model runs
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-3
+**Status:** DONE 2026-11-07, `d23fe0f8` (the verifier `evals/harness/verify.py` landed first, `cf61f33c`, shared with P69-6) · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-3
 
 - **Trigger:** D-90 choice 1; `specs/test-framework.md` "Agent evals" (P69-3) names the `task.yaml` keys.
 - **Goal:** `evals/harness/task.py` loads and validates `task.yaml` with pydantic (every key of the spec; `instruction`
@@ -293,7 +294,7 @@ from `main`.
 
 ### P69-6 — One clean world per trial, an operator that answers from the task's script, and a record that says what ran
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-3
+**Status:** DONE 2026-11-07, `ff43199b`, `c8d65015` · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-3
 
 - **Trigger:** D-90 choice 1 (the trial) and 2 (the record fields, so two runs compare).
 - **Goal:** `evals/harness/world.py` builds a trial world on `tests/support/e2e.World` (`tests/support/e2e.py:96-300`:
@@ -316,7 +317,7 @@ from `main`.
 
 ### P69-7 — The graders: did the work pass, and were the rules kept
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-6
+**Status:** IN-PROGRESS (@sonnet worker; also owns `taxonomy.py`, moved out of `record.py`, and `trial.py`, the task-to-trial wiring) · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-6
 
 - **Goal:** `evals/harness/graders/outcome.py`: `hidden_tests` (the verifier's exit status), `file_exact` (bytes),
   `task_status` (the status the spec names); `evals/harness/graders/governance.py`: `no_violation` through
@@ -332,7 +333,7 @@ from `main`.
 
 ### P69-8 — pass@k, pass^k, the interval, the paired difference, the failure class, and the two commands that use them
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-5
+**Status:** IN-PROGRESS (@sonnet worker; part A metrics/report/compare, then `nightly` after P69-7) · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-5
 
 - **Goal:** `evals/harness/metrics.py` (pure): `pass_at_k(n, c, k)`, `pass_pow_k(n, c, k)`, `wilson(p, n)`, `clustered_se`
   (by task, Miller 2024), `paired_difference(a, b)` (mean, SE, 95 % CI, correlation; tasks matched by `task@version`,
