@@ -168,7 +168,9 @@ def test_three_invalid_tool_calls_end_the_turn(
     ] * 3
     assert "unknown tool 'no_such_tool'" in results[0]["reason"]
     audited = [r for r in oracles.audit_rows(w) if r["action"].startswith("tool.")]
-    assert audited == [], "an invalid call never reaches the gate, so it leaves no gate decision"
+    # P70-4: a refusal before the gate is audited too, one `tool.deny` naming its kind.
+    assert [r["action"] for r in audited] == ["tool.deny"] * 3
+    assert all("denial_kind=invalid_call" in r["detail"] for r in audited)
     oracles.assert_log_verifies(w)
 
 
