@@ -64,6 +64,25 @@ class TestDescribe:
         granted = {cls for cls, is_granted, _attrs in rows if is_granted}
         assert granted == privacy.LEVELS["actions"]
 
+    def test_describe_pins_the_full_listing_and_its_order(self) -> None:
+        assert privacy.describe(frozenset(privacy.CONTENT_CLASSES)) == [
+            ("toolArguments", True, ("gen_ai.tool.call.arguments", "docket.approval.action")),
+            ("errors", True, ("docket.error.message",)),
+            ("toolResults", True, ("gen_ai.tool.call.result",)),
+            ("completions", True, ("gen_ai.output.messages", "docket.session.output")),
+            (
+                "prompts",
+                True,
+                (
+                    "gen_ai.input.messages",
+                    "docket.session.input",
+                    "docket.escalation.prompt",
+                    "docket.escalation.answer",
+                ),
+            ),
+            ("instructions", True, ("gen_ai.system_instructions",)),
+        ]
+
     def test_describe_names_at_least_one_attribute_per_class(self) -> None:
         rows = privacy.describe(frozenset(privacy.CONTENT_CLASSES))
         assert all(attrs for _cls, _granted, attrs in rows)

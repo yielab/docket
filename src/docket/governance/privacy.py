@@ -1,6 +1,6 @@
 """Named privacy classes and levels for what a trace export may share beyond bare
 structure (ADR 0015). Pure data plus two lookups -- imports only ``kernel``
-so both ``observability/telemetry.py`` and ``observability/exporter.py`` can depend on it without a cycle."""
+so both ``observability/spans.py`` and ``observability/exporter.py`` can depend on it without a cycle."""
 
 from __future__ import annotations
 
@@ -20,21 +20,28 @@ CONTENT_CLASSES: tuple[str, ...] = (
     "instructions",
 )
 
-# The illustrative attribute names ADR 0015 §1's table lists per class -- for CLI display
-# only (`describe`). `observability/telemetry.py::ATTRIBUTE_CLASSES` is the real enforcement table;
-# this module never imports it, so the two are kept in sync by hand against the same ADR.
-_CLASS_ATTRIBUTES: dict[str, tuple[str, ...]] = {
-    "toolArguments": ("gen_ai.tool.call.arguments", "docket.approval.action"),
-    "errors": ("docket.error.message",),
-    "toolResults": ("gen_ai.tool.call.result",),
-    "completions": ("gen_ai.output.messages", "docket.session.output"),
-    "prompts": (
-        "gen_ai.input.messages",
-        "docket.session.input",
-        "docket.escalation.prompt",
-        "docket.escalation.answer",
-    ),
-    "instructions": ("gen_ai.system_instructions",),
+# Every attribute a handler can emit that is NOT bare structure, mapped to its content class.
+# An attribute absent from this table is structure -- always sent, never gated. The export
+# allowlist (`observability/spans.py`) enforces it, and `describe` lists it, so this is the one
+# copy. Its order within a class is the order `describe` lists them in.
+ATTRIBUTE_CLASSES: dict[str, str] = {
+    "gen_ai.tool.call.arguments": "toolArguments",
+    "docket.approval.action": "toolArguments",
+    "docket.error.message": "errors",
+    "gen_ai.tool.call.result": "toolResults",
+    "gen_ai.output.messages": "completions",
+    "gen_ai.system_instructions": "instructions",
+    "docket.session.input": "prompts",
+    "docket.escalation.prompt": "prompts",
+    "docket.escalation.answer": "prompts",
+    "docket.session.output": "completions",
+}
+
+# An attribute whose content mixes classes per message part (ADR 0015 §2 rule 3): it is gated
+# part by part at projection, so it has no single class in `ATTRIBUTE_CLASSES`. `describe` still
+# lists it under the class its parts can carry.
+MIXED_ATTRIBUTES: dict[str, str] = {
+    "gen_ai.input.messages": "prompts",
 }
 
 _ACTIONS: frozenset[str] = frozenset({"toolArguments", "errors"})
@@ -77,4 +84,10 @@ def resolve(privacy: str | None, share: Sequence[str] | None) -> tuple[str, froz
 def describe(classes: frozenset[str]) -> list[tuple[str, bool, tuple[str, ...]]]:
     """One ``(class, granted, attribute_names)`` tuple per content class, in
     ``CONTENT_CLASSES`` order, for a CLI's "leaves this host" listing."""
-    return [(cls, cls in classes, _CLASS_ATTRIBUTES[cls]) for cls in CONTENT_CLASSES]
+    return [(cls, cls in classes, _attributes_of(cls)) for cls in CONTENT_CLASSES]
+
+
+def _attributes_of(cls: str) -> tuple[str, ...]:
+    """The mixed attributes first, then the gated ones, both in table order, for one class."""
+    mixed = tuple(attr for attr, owner in MIXED_ATTRIBUTES.items() if owner == cls)
+    return mixed + tuple(attr for attr, owner in ATTRIBUTE_CLASSES.items() if owner == cls)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from docket.governance.privacy import ATTRIBUTE_CLASSES as ATTRIBUTE_CLASSES
 from docket.kernel import text as _text
 
 AttrValue = str | int | bool
@@ -82,23 +83,10 @@ def _granted(policy: ExportPolicy, cls: str) -> bool:
     return cls in policy.classes
 
 
-# Every attribute a handler can emit that is NOT bare structure, mapped to its content
-# class. An attribute absent from this table is structure -- always sent, never gated by
-# `_granted`. `gen_ai.input.messages` is deliberately absent: it mixes classes per message
-# part (ADR 0015 §2 rule 3), enforced by `_input_part_class`/`_filter_part`, not by a single
-# whole-attribute class.
-ATTRIBUTE_CLASSES: dict[str, str] = {
-    "gen_ai.tool.call.arguments": "toolArguments",
-    "docket.approval.action": "toolArguments",
-    "docket.error.message": "errors",
-    "gen_ai.tool.call.result": "toolResults",
-    "gen_ai.output.messages": "completions",
-    "gen_ai.system_instructions": "instructions",
-    "docket.session.input": "prompts",
-    "docket.escalation.prompt": "prompts",
-    "docket.escalation.answer": "prompts",
-    "docket.session.output": "completions",
-}
+# `ATTRIBUTE_CLASSES` (imported above, re-exported for callers that read it from here) is the
+# one table of gated attributes, defined in `governance/privacy.py`. An attribute absent from it
+# is structure, never gated by `_granted`. `gen_ai.input.messages` is absent too: it mixes
+# classes per message part (ADR 0015 §2 rule 3), enforced by `_input_part_class`/`_filter_part`.
 
 # The `escalation_*` family shares one payload (kernel/escalation_events.py): each payload key
 # below becomes the `docket.escalation.<name>` attribute. The options and recommendation ids are
