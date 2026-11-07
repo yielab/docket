@@ -110,10 +110,9 @@ def _table(benign: list[dict[str, Any]], missed: list[dict[str, Any]]) -> str:
 
 def test_no_benign_row_asks_or_denies(installed: Path) -> None:
     benign = _benign(_ROWS)
-    missed = _false_positives(_ROWS, installed)
-
     everything = [*benign, *_FALSE_POSITIVES]
-    standing = _false_positives(everything, installed)
+    standing = _false_positives(everything, installed)  # one measurement: the unit ceiling is 2 s
+    missed = [row for row in standing if row in benign]
     print(
         "\nfalse positives per policy, rows and known false positives\n"
         + _table(everything, standing)
