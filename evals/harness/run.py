@@ -1,21 +1,38 @@
 """The eval harness CLI. `check-solutions` proves every task's reference solution with no model.
 
 uv run python -m evals.harness.run check-solutions [SUITE|TASK]
+uv run python -m evals.harness.run run SELECTOR --provider P --model M [--epochs N] [--out DIR]
+uv run python -m evals.harness.run nightly [--base DIR|SHA] [--out DIR]
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 import typer
 
 from evals.harness.compare import ComparisonError, compare_runs, render, resolve_run
 from evals.harness.graders import GradeContext, grade_one
+from evals.harness.nightly import (
+    DEFAULT_MAX_TOKENS,
+    LOCAL_BASE_URL,
+    LOCAL_CREDENTIAL,
+    LOCAL_MODEL,
+    LOCAL_PROVIDER,
+    NIGHTLY_EPOCHS,
+    NIGHTLY_SUITE,
+    alarms,
+    run_suite,
+    stamped_out,
+    unpaired,
+)
+from evals.harness.report import read_trials
 from evals.harness.task import Grader, Task, TaskError, discover
 from evals.harness.verify import run_hidden
 
@@ -135,6 +152,103 @@ def compare(
         typer.echo(f"FAIL {error}")
         raise typer.Exit(1) from error
     typer.echo(render(result), nl=False)
+
+
+def _discover(root: Path, selector: str | None) -> list[Task]:
+    try:
+        return discover(root, selector)
+    except TaskError as error:
+        typer.echo(f"FAIL {error}")
+        raise typer.Exit(1) from error
+
+
+@app.command("run")
+def run(
+    selector: Annotated[str, typer.Argument(help="a suite name or a task id")],
+    provider: Annotated[str, typer.Option(help="the provider name to register")],
+    model: Annotated[str, typer.Option(help="the model every role uses")],
+    epochs: Annotated[int, typer.Option(min=1, help="trials per task")] = 1,
+    out: Annotated[Path | None, typer.Option(help="default evals-out/<utc stamp>/")] = None,
+    base_url: Annotated[str, typer.Option(help="an OpenAI-compatible endpoint")] = "",
+    credential_env: Annotated[
+        str | None, typer.Option(help="the NAME of the variable that holds the key")
+    ] = None,
+    max_tokens: Annotated[int, typer.Option(min=4000, help="the reply bound")] = DEFAULT_MAX_TOKENS,
+    root: Annotated[Path, typer.Option(help="the tasks directory")] = DEFAULT_ROOT,
+) -> None:
+    """Run the selected tasks against a model, then write trials.jsonl, summary.md and summary.json."""
+    keys: dict[str, str] = {}
+    if credential_env is not None:
+        if not os.environ.get(credential_env):
+            typer.echo(f"FAIL {credential_env} is not set in the environment")
+            raise typer.Exit(1)
+        keys[credential_env] = os.environ[credential_env]
+    tasks = _discover(root, selector)
+    if not tasks:
+        typer.echo(f"no tasks under {root.name}/ for {selector!r}: nothing to run")
+        return
+    target = out or stamped_out()
+    run_suite(
+        tasks,
+        target,
+        epochs=epochs,
+        provider=provider,
+        model=model,
+        max_tokens=max_tokens,
+        base_url=base_url,
+        credential=LOCAL_CREDENTIAL if base_url and not keys else "",
+        credential_env=keys,
+    )
+    typer.echo((target / "summary.md").read_text(encoding="utf-8"), nl=False)
+
+
+@app.command("nightly")
+def nightly(
+    base: Annotated[str | None, typer.Option(help="a run directory or a base sha")] = None,
+    out: Annotated[Path | None, typer.Option(help="default evals-out/<utc stamp>/")] = None,
+    provider: Annotated[str, typer.Option(help="the provider name to register")] = LOCAL_PROVIDER,
+    model: Annotated[str, typer.Option(help="the model every role uses")] = LOCAL_MODEL,
+    base_url: Annotated[str, typer.Option(help="the local endpoint")] = LOCAL_BASE_URL,
+    epochs: Annotated[int, typer.Option(min=1, help="trials per task")] = NIGHTLY_EPOCHS,
+    max_tokens: Annotated[int, typer.Option(min=4000, help="the reply bound")] = DEFAULT_MAX_TOKENS,
+    root: Annotated[Path, typer.Option(help="the tasks directory")] = DEFAULT_ROOT,
+) -> None:
+    """Run `regression` on the local endpoint at this commit; exit 1 naming a task that regressed."""
+    base_records: list[dict[str, Any]] | None = None
+    if base is not None:
+        try:
+            base_records = read_trials(resolve_run(base))
+        except (ComparisonError, OSError) as error:
+            typer.echo(f"FAIL {error}")
+            raise typer.Exit(1) from error
+    tasks = _discover(root, NIGHTLY_SUITE)
+    if not tasks:
+        typer.echo(f"no tasks in suite {NIGHTLY_SUITE!r} under {root.name}/: nothing to run")
+        return
+    target = out or stamped_out()
+    head = run_suite(
+        tasks,
+        target,
+        epochs=epochs,
+        provider=provider,
+        model=model,
+        max_tokens=max_tokens,
+        base_url=base_url,
+        credential=LOCAL_CREDENTIAL,
+        base=base,
+    )
+    typer.echo((target / "summary.md").read_text(encoding="utf-8"), nl=False)
+    if base_records is None:
+        typer.echo("no base given: nothing to alarm against")
+        return
+    for note in unpaired(head, base_records):
+        typer.echo(note)
+    raised = alarms(head, base_records)
+    for alarm in raised:
+        typer.echo(str(alarm))
+    if raised:
+        raise typer.Exit(1)
+    typer.echo("no task regressed against the base")
 
 
 if __name__ == "__main__":
