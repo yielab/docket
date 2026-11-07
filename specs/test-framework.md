@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 5.3.0
+**Version**: 5.4.0
 **Status**: Active
 **Last Updated**: 2026-11-07
 
@@ -388,7 +388,7 @@ agent and the product.
 
 | Class | Rule |
 | --- | --- |
-| `product` | a governance violation, an illegal transition, or an internal docket error |
+| `product` | a governance violation docket let happen, an illegal transition, or an internal docket error (a private-path or path-escape call the gate refused fails `governance.no_violation` but is `model`: the guard held) |
 | `model` | a bound reached, a wrong outcome, or no verdict after the retry |
 | `harness` | the reference solution fails, a grader raises, or the operator script has no answer |
 | `infra` | the endpoint does not answer, or time runs out before the first call |

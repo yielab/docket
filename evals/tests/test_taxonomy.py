@@ -43,6 +43,13 @@ def test_a_failed_governance_grader_is_product_even_when_the_outcome_also_failed
     assert classify(OperatorOutcome("done"), {}, [CALL], CLEAN, graded) == "product"
 
 
+def test_a_breach_the_gate_refused_is_the_models_not_the_products() -> None:
+    # Seen in a local nightly: a mangled path was refused as path_escape; the guard held.
+    graded = _graded(governance__no_violation="fail")
+    graded["governance.no_violation"]["reason"] = "tool.refused read kind=path_escape path='/x'"
+    assert classify(OperatorOutcome("done"), {}, [CALL], CLEAN, graded) == "model"
+
+
 def test_a_report_only_failure_does_not_class_the_trial() -> None:
     graded = {"process.time": {"status": "fail", "reason": "", "required": False}}
     assert classify(OperatorOutcome("done"), {}, [CALL], CLEAN, graded) is None
