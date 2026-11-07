@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 
 from evals.evaluator.record import TrialRecord, TrialSpec, append_record, docket_commit, run_trial
-from evals.evaluator.world import TrialWorld, build_world
+from evals.evaluator.world import TrialWorld, build_world, provider_command
 
 # isort: split
 # evals.evaluator.world puts the repository root on sys.path, so `tests` imports after it.
@@ -268,3 +268,16 @@ def test_a_folder_pod_task_is_verified_in_the_seed_repository(tmp_path: Path) ->
 
     assert folder.worktree("t") == tmp_path / "a" / "repo"
     assert built.worktree("t") == Path("/w/t")
+
+
+def test_a_catalog_provider_is_registered_with_its_model() -> None:
+    # Seen in the first Haiku run: a catalog provider got no `--model` and `provider add` refused.
+    catalog = provider_command("anthropic", "claude-haiku-5-5", ("", ""), (8192, 32768))
+    custom = provider_command("lab", "m", ("http://h/v1", "k"), (4000, 32768))
+
+    assert catalog == [
+        "setup", "provider", "add", "anthropic", "--model", "claude-haiku-5-5",
+        "--max-tokens", "8192", "--no-preset",
+    ]  # fmt: skip
+    assert custom[:5] == ["setup", "provider", "add", "lab", "http://h/v1"]
+    assert custom[custom.index("--model") + 1] == "m" and "--ctx" in custom

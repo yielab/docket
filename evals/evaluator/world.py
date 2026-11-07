@@ -134,6 +134,23 @@ def _provision(world: World, blueprint: str, pipeline: str | None, isolation: bo
         raise RuntimeError(f"the task asks for isolation and this machine has none: {status}")
 
 
+def provider_command(
+    provider: str, model: str, endpoint: tuple[str, str], limits: tuple[int, int]
+) -> list[str]:
+    """The `provider add` call: a custom endpoint names its URL and window; a catalog provider
+    (no URL) names only its model, and the catalog knows the window."""
+    base_url, credential = endpoint
+    max_tokens, context_window = limits
+    command = ["setup", "provider", "add", provider]
+    if base_url:
+        command += [base_url, "--model", model, "--ctx", str(context_window)]
+    else:
+        command += ["--model", model]
+    if credential:
+        command += ["--credential", credential]
+    return [*command, "--max-tokens", str(max_tokens), "--no-preset"]
+
+
 def _register_model(
     world: World,
     provider: str,
@@ -142,14 +159,7 @@ def _register_model(
     limits: tuple[int, int],
     credential_env: Mapping[str, str] | None,
 ) -> None:
-    base_url, credential = endpoint
-    max_tokens, context_window = limits
-    command = ["setup", "provider", "add", provider]
-    if base_url:
-        command += [base_url, "--model", model, "--ctx", str(context_window)]
-    if credential:
-        command += ["--credential", credential]
-    command += ["--max-tokens", str(max_tokens), "--no-preset"]
+    command = provider_command(provider, model, endpoint, limits)
     saved = dict(world.env)
     world.env.update(credential_env or {})
     try:
