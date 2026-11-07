@@ -271,10 +271,10 @@ def test_a_scripted_answer_naming_an_options_label_picks_that_option(tmp_path: P
     assert leads == 2, "the Lead's hop ran again with the answer"
 
 
-def test_a_scripted_answer_that_matches_no_option_ends_the_trial_as_harness(
+def test_a_scripted_answer_that_matches_no_option_takes_the_recommendation(
     tmp_path: Path,
 ) -> None:
     _, failure, asks = _consult_trial(tmp_path, "Offer whatever you like.")
 
-    assert failure == "harness"
-    assert asks == []
+    assert failure == ""
+    assert [(a["kind"], a["answer"]) for a in asks] == [("consult", "Offer whatever you like.")]

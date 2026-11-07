@@ -96,7 +96,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Specification | Version | Status |
 | ------------- | ------- | ------ |
 | Agent Lifecycle | 4.1.0 | Complete |
-| Agent Loop | 4.24.0 | Implemented and live |
+| Agent Loop | 4.25.1 | Implemented and live |
 | API Keys | 2.3.0 | Complete |
 | Audit | 3.5.0 | Implemented |
 | Config Format | 2.12.0 | Implemented |
@@ -105,9 +105,9 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Observability Export | 3.3.0 | Implemented and live |
 | Pipeline Format | 4.8.0 | Implemented |
 | Pod Blueprints | 4.14.0 | Implemented |
-| Pod Dispatch | 12.11.0 | Implemented |
+| Pod Dispatch | 12.12.0 | Implemented |
 | Role Archetypes | 5.13.0 | Implemented |
-| Security Gates | 3.22.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
+| Security Gates | 3.24.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Service Client | 1.5.0 | Implemented in part (the document, the tools, the call, the writes handling and the OpenAPI 3 or 2 import; not proven against a real service) |
 | Pod Records | 1.9.0 | Implemented in part (the store, the document, the CLI, the agent tools and the two HTTP read routes; not proven against a live model) |
 | Session History | 1.23.0 | Implemented and live |
@@ -116,15 +116,15 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Trace Store | 6.1.0 | Implemented and live |
 | Workspace Structure | 4.3.0 | Complete |
 | CLI Interface | 5.17.0 | Complete |
-| MCP Client | 3.3.0 | Implemented and wired to the live turn path |
+| MCP Client | 3.3.1 | Implemented and wired to the live turn path |
 | Runtime Library | 3.0.0 | Implemented (artifact-tested; **not published to any index**) |
 | MCP Server | 3.0.0 | Implemented |
 | CLI JSON Shapes | 5.8.0 | Complete |
 | docket-meta schema | 5.10.0 | Complete |
 | Docket Store | 3.5.0 | Implemented |
-| Operator API | 7.30.0 | Implemented (Phase 43, ADR 0027) |
+| Operator API | 7.31.0 | Implemented (Phase 43, ADR 0027) |
 | A2a Binding | 1.3.1 | Implemented |
-| Serve Read API | 6.7.0 | Stable |
+| Serve Read API | 6.9.0 | Stable |
 | Adoption Benchmark | 2.3.1 | Implemented |
 | Input Validation | 2.2.0 | Implemented |
 | Test Framework | 5.3.0 | Active |
