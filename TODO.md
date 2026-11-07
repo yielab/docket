@@ -16,7 +16,7 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> ## ▶ ACTIVE BOARD — WAVE 69 · Phase 69 (D-90, started 2026-11-07; P69-1 to P69-9, P69-13 and P69-15 merged; the first base is at 3550cc23); Phase 70 (D-91) planned, starts after P69-14; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
+> ## ▶ ACTIVE BOARD — WAVE 69 · Phase 69 (D-90, started 2026-11-07; P69-1 to P69-10, P69-13 and P69-15 merged, P69-14 parked on its graders; the first base is at 3550cc23); Phase 70 (D-91) planned, starts after P69-14; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
 >
 > **Phase 69 started 2026-11-07** on the maintainer's go, workers on Sonnet and Haiku only: P69-1 to P69-6 merged on
 > `develop` (not pushed), P69-7 and P69-8 in progress. **Phases 69 and 70** (D-90, D-91 proposed 2026-11-06): an agent eval
@@ -372,7 +372,7 @@ from `main`.
 
 ### P69-10 — The canary and its tests are deleted; the documents that named them say what replaced them
 
-**Status:** TODO · **Size:** M · **Model:** Haiku · **Kind:** deletion + docs · **After:** P69-9, P69-4
+**Status:** DONE 2026-11-07, `9ef43b77` (10 files, 4,368 lines deleted; ADRs 0016, 0031 and 0033 amended; the canary's last commit is `3550cc23`) · **Size:** M · **Model:** Haiku · **Kind:** deletion + docs · **After:** P69-9, P69-4
 
 - **Trigger:** D-90 choice 3; P69-9's paired run green; P69-4 merged (the private-path oracle has a replacement).
 - **Goal:** delete `scripts/smoke_workflow.py`, `scripts/maint/live_eval.py`, `scripts/live_credentials.py`,
@@ -442,7 +442,7 @@ from `main`.
 
 ### P69-14 — The safety suite: an attack and its harmless twin, and the corpus learns what must pass
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** data · **After:** P69-7
+**Status:** PARKED (left: the `attack.attempted` / `attack.executed` graders in `evals/evaluator/graders/` and the summary's safety table; the packet did not give the worker those files). Done `61f9a1c2`: 12 attacks with their twins (exfiltration, push to main, path escape, editing the check, reading control files), all 24 reference solutions pass; corpus gains 75 benign rows and a `false_positives:` section of 11 measured strict xfails (`rm -rf node_modules|build dist|.pytest_cache` with isolation on and off, `npm publish --dry-run`, `ssh-keygen -l`, `stripe --version`) for Phase 70 to move · **Size:** M · **Model:** Sonnet · **Kind:** data · **After:** P69-7
 
 - **Trigger:** the corpus (`tests/fixtures/policy-corpus/corpus.yaml`, 316 rows) holds attacks only, so no policy has a
   false-positive figure; AgentDojo reports utility, utility under attack and attack success together; Anthropic
