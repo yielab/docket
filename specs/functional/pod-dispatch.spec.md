@@ -1,10 +1,10 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 12.9.0
+**Version**: 12.10.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
-**Last Updated**: 2026-11-05
+**Last Updated**: 2026-11-07
 
 ## Purpose
 
@@ -2088,8 +2088,9 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    `baseCommit`), dispatch **MUST** list the paths the task changed: `git diff --name-only
    <baseCommit> <branch>` united with the worktree's uncommitted and untracked paths
    (`git status --porcelain --untracked-files=all`, so a file inside a new directory is listed by its
-   own path), read host-side. A task with no worktree record (it ran in place) **MUST NOT** be
-   checked: it has no base to diff against.
+   own path), read host-side. A task on a `workdir` pod (a folder, no repository) has no base to
+   diff against; requirement 7 checks it by content hash instead. A task of a codebase pod with no
+   worktree record (it ran in place) **MUST NOT** be checked.
 2. The patterns are the defaults, the pod's `protects` setting, and every tracked file of the
    worktree that a command the task ran as a check names: the Implementer's `verifyCmd`, the command
    of every `mechanical` or `external` gate and every `run:` step of the resolved pipeline (a
@@ -2112,8 +2113,20 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
 5. `check_changed` is not in `RESUMABLE_FAILURE_KINDS`. A `failed` task retried runs the pipeline
    again and is checked again; settling a result that carries no protected paths clears a stale
    `checkChanged` from the task.
-6. Files are not restored before a gate, and nothing is checked at claim; the check runs once, after
-   the pipeline ends `done`.
+6. Files are not restored before a gate; the check runs once, after the pipeline ends `done`.
+7. **A folder pod is checked by content.** A task on a `workdir` pod records, before its first hop,
+   the sha256 of every protected file under the pod's working directory in the task's
+   `protectedHashes` (relative path to hex digest; `{}` when there is none, absent on every other
+   task). The protected files are the defaults, `protects` and the files of the folder that a
+   command named in requirement 2 names; the folder is read host-side, without following
+   symlinks, skipping `.git`, `node_modules`, `.venv` and `__pycache__`, and stopping after 20000
+   files. A task that already records `protectedHashes` (a resumed or retried one) **MUST NOT**
+   record them again. When the pipeline ends `done`, dispatch hashes the same set again and lists
+   every path whose digest differs from the record, or that was added or removed; a file that a
+   command names counts only if the record holds it, so a check that reads the deliverable does not
+   protect a file the task first created. Those paths
+   take the path of requirement 3 (`check_changed`, `waiting_approval`, `checkChanged`) exactly as
+   a worktree's changed paths do. A folder pod task that changes only unprotected files ends `done`.
 
 ### Downstream worktree continuity
 
@@ -2294,8 +2307,8 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    it, or (if its claim has gone stale) a later `dispatch_pod` call will move it to
    `failed`/`stale_claim`.
 3. `done` -- every present hop ran and passed all applicable gates (including any rework cycles), or
-   a route ended it with `stop`, and, for a task with a worktree, its diff touched no protected path
-   or a person granted it ("A change that edits its own check"). Terminal.
+   a route ended it with `stop`, and, for a task with a worktree or on a folder pod, it touched no
+   protected path or a person granted it ("A change that edits its own check"). Terminal.
 4. `failed` -- a hop failed (after exhausting any retries), a gate failed (`verifyCmd`, an external
    or task gate, a Reviewer's exhausted rework budget or
    unparseable verdict), a route went to `fail`, a claim-time or in-run refusal settled it, a stale
@@ -2796,7 +2809,7 @@ The dispatch state machine, by module (public names first, then private ones for
   `TaskEvidence`, `EvidenceNotFound`
 - `src/docket/teams/workspace/prepare.py`: preparation resolution, cache and record (`resolve`,
   `needs_prepare`, `prepare_worktree`, `linked_entries`)
-- `src/docket/kernel/protected_paths.py`: `changed_protected`, `check_pattern`, `MAX_LISTED_PATHS`
+- `src/docket/kernel/protected_paths.py`: `changed_protected`, `hash_protected`, `changed_hashes`, `check_pattern`, `MAX_LISTED_PATHS`
 - `src/docket/teams/agent_memory.py`: `sync_dispatch_tasks`, `read_dispatch_task_ids`,
   `DISPATCH_BLOCK_BEGIN`/`DISPATCH_BLOCK_END`
 - `src/docket/teams/conversations.py`: `touch_for_hop_durable`, `prune_closed_durable`

@@ -305,6 +305,11 @@ class TaskRecord(BaseModel):
     check_changed: list[str] = Field(
         default_factory=list, alias="checkChanged", exclude_if=_is_empty
     )
+    # A folder pod's protected files as they stood before the first hop (path -> sha256); absent
+    # on every other task, ``{}`` when the folder held none.
+    protected_hashes: dict[str, str] | None = Field(
+        None, alias="protectedHashes", exclude_if=is_none
+    )
     consultations: int = Field(0, exclude_if=_is_empty)
     # The ids of the escalation records opened for this task, oldest first.
     escalations: list[str] = Field(default_factory=list, exclude_if=_is_empty)

@@ -431,6 +431,13 @@ class TestTaskRecord:
         with pytest.raises(ValidationError, match="bogus"):
             _task.TaskRecord.model_validate({"description": "x", "task": {"bogus": 1}})
 
+    def test_protected_hashes_dump_when_recorded_even_empty_and_round_trip(self) -> None:
+        assert "protectedHashes" not in _dump(_task.TaskRecord(description="x"))
+        for hashes in ({}, {"checks/verify.sh": "ab"}):
+            dumped = _dump(_task.TaskRecord(description="x", protected_hashes=hashes))
+            assert dumped["protectedHashes"] == hashes
+            assert _task.TaskRecord.model_validate(dumped).protected_hashes == hashes
+
     def test_a_transition_drop_leaves_no_key_behind(self) -> None:
         record = _task.TaskRecord(
             description="x", failure_kind="gate_failed", check_changed=["a"], claim_pid=4

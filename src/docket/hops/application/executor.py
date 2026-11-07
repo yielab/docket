@@ -28,6 +28,7 @@ from docket.hops.gates.pre_hop import (
     _block_on_missing_resources,
     _park_if_check_changed,
     _pause_lead_for_budget,
+    _record_protected_hashes,
     _refuse_unmet_profile,
 )
 from docket.kernel.errors import DispatchError
@@ -588,6 +589,7 @@ def dispatch_task(
         result = TaskResult(task_id=task_id, status="done", hops=list(prior))
 
         _refuse_unmet_profile(project, task_id, runtime_steps)
+        _record_protected_hashes(ctx, runtime_steps)
         _run_pipeline(ctx, runtime_steps, pipeline_index, pending_rework_by_index, result, prior)
         if result.status == "done":
             _park_if_check_changed(ctx, runtime_steps, result)

@@ -1,16 +1,18 @@
 """Paths a change may not touch without a person: the files a check is defined by.
 
 Pure functions over repository-relative paths, with one reader of a worktree
-(``changed_protected``). See security-gates.spec.md ("Protected paths and the reviewed digest") and
+(``changed_protected``) and one of a folder (``hash_protected``, ``changed_hashes``). See security-gates.spec.md ("Protected paths and the reviewed digest") and
 pod-dispatch.spec.md ("A change that edits its own check").
 """
 
 from __future__ import annotations
 
 import fnmatch
+import hashlib
+import os
 import posixpath
 import shlex
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from pathlib import Path
 
 from docket.kernel.errors import InvalidInput
@@ -159,3 +161,63 @@ def changed_protected(
         return []
     named = command_files(commands, frozenset(_git.git_tracked_files(worktree)))
     return protected_among(changed, (*DEFAULT_PATTERNS, *patterns), named)
+
+
+#: Directories a folder walk never enters, and the most files it lists before it stops.
+_UNWALKED_DIRS = frozenset({".git", "node_modules", ".venv", "__pycache__"})
+MAX_WALKED_FILES = 20000
+
+
+def _folder_files(root: Path) -> list[str]:
+    """The ``/``-separated paths of the regular files under *root*, symlinks not followed."""
+    found: list[str] = []
+    for current, dirs, names in os.walk(root, followlinks=False):
+        dirs[:] = sorted(d for d in dirs if d not in _UNWALKED_DIRS)
+        base = Path(current)
+        for name in sorted(names):
+            if len(found) >= MAX_WALKED_FILES:
+                return found
+            if (base / name).is_symlink():
+                continue
+            found.append((base / name).relative_to(root).as_posix())
+    return found
+
+
+def _digests(
+    root: Path, patterns: Iterable[str], commands: Iterable[str], named_from: Collection[str] | None
+) -> dict[str, str]:
+    files = _folder_files(root)
+    candidates = (
+        frozenset(files) if named_from is None else frozenset(files) & frozenset(named_from)
+    )
+    wanted = protected_among(
+        files, (*DEFAULT_PATTERNS, *patterns), command_files(commands, candidates)
+    )
+    digests: dict[str, str] = {}
+    for path in wanted:
+        try:
+            digests[path] = hashlib.sha256((root / path).read_bytes()).hexdigest()
+        except OSError:
+            continue
+    return digests
+
+
+def hash_protected(
+    directory: str | Path, patterns: Iterable[str], commands: Iterable[str]
+) -> dict[str, str]:
+    """The sha256 of each protected file under *directory*: the defaults, *patterns* and the files
+    *commands* name, keyed by relative path. ``{}`` when the folder cannot be read."""
+    return _digests(Path(directory), patterns, commands, None)
+
+
+def changed_hashes(
+    directory: str | Path,
+    recorded: Mapping[str, str],
+    patterns: Iterable[str],
+    commands: Iterable[str],
+) -> list[str]:
+    """The sorted protected paths whose digest under *directory* differs from *recorded*: edited,
+    added or removed since. A file a command names is protected only if *recorded* holds it, so a
+    check that reads the deliverable does not protect a file the task first created."""
+    now = _digests(Path(directory), patterns, commands, recorded)
+    return sorted(p for p in {*recorded, *now} if recorded.get(p) != now.get(p))

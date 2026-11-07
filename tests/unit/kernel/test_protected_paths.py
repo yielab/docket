@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -97,6 +98,77 @@ def test_changed_protected_sees_a_file_inside_a_new_untracked_directory(
     fake_git.git_changed_files = lambda _cwd, *, all_untracked=False: listed[all_untracked]
     fake_git.git_tracked_files = lambda _cwd: []
     assert _pp.changed_protected("/wt", "base", "branch", (), ()) == ["config/tsconfig.json"]
+
+
+def _folder(root: Path) -> Path:
+    """A folder with a protected file, a file a check names, and an ordinary one."""
+    (root / "checks").mkdir(parents=True)
+    (root / "checks" / "verify.sh").write_text("exit 0\n")
+    (root / "package.json").write_text("{}\n")
+    (root / "report.md").write_text("draft\n")
+    return root
+
+
+def test_hash_protected_digests_defaults_patterns_and_command_named_files(tmp_path: Path) -> None:
+    root = _folder(tmp_path)
+    (root / "notes.cfg").write_text("x\n")
+
+    got = _pp.hash_protected(root, ["*.cfg"], ["sh checks/verify.sh"])
+
+    assert sorted(got) == ["checks/verify.sh", "notes.cfg", "package.json"]
+    assert got["package.json"] == hashlib.sha256(b"{}\n").hexdigest()
+
+
+def test_hash_protected_skips_vcs_and_dependency_directories_and_symlinks(tmp_path: Path) -> None:
+    root = _folder(tmp_path)
+    for skipped in (".git", "node_modules"):
+        (root / skipped).mkdir()
+        (root / skipped / "package.json").write_text("{}\n")
+    (root / "link.json").symlink_to(root / "package.json")
+
+    assert sorted(_pp.hash_protected(root, ["*.json"], ())) == ["package.json"]
+
+
+def test_hash_protected_of_a_missing_folder_is_empty(tmp_path: Path) -> None:
+    assert _pp.hash_protected(tmp_path / "absent", (), ["sh a.sh"]) == {}
+
+
+def test_changed_hashes_lists_an_edited_added_and_removed_protected_file_sorted(
+    tmp_path: Path,
+) -> None:
+    root = _folder(tmp_path)
+    (root / "ruff.toml").write_text("a\n")
+    before = _pp.hash_protected(root, (), ["sh checks/verify.sh"])
+
+    (root / "checks" / "verify.sh").write_text("exit 0 # edited\n")
+    (root / "ruff.toml").unlink()
+    (root / "tox.ini").write_text("new\n")
+    (root / "report.md").write_text("final\n")
+
+    assert _pp.changed_hashes(root, before, (), ["sh checks/verify.sh"]) == [
+        "checks/verify.sh",
+        "ruff.toml",
+        "tox.ini",
+    ]
+
+
+def test_changed_hashes_is_empty_when_only_an_ordinary_file_changed(tmp_path: Path) -> None:
+    root = _folder(tmp_path)
+    before = _pp.hash_protected(root, (), ["sh checks/verify.sh"])
+
+    (root / "report.md").write_text("final\n")
+
+    assert _pp.changed_hashes(root, before, (), ["sh checks/verify.sh"]) == []
+
+
+def test_changed_hashes_does_not_protect_a_named_file_the_task_created(tmp_path: Path) -> None:
+    root = _folder(tmp_path)
+    before = _pp.hash_protected(root, (), ["cat brief.md"])
+
+    (root / "brief.md").write_text("the deliverable\n")
+
+    assert before == {"package.json": hashlib.sha256(b"{}\n").hexdigest()}
+    assert _pp.changed_hashes(root, before, (), ["cat brief.md"]) == []
 
 
 class TestPrivateControlNames:

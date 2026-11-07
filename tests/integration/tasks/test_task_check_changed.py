@@ -184,7 +184,7 @@ def test_a_task_that_edits_only_src_ends_done(tmp_path: Path) -> None:
         )
 
         task = _only_task()
-        assert (res.status, task.status) == ("done", "done")
+        assert (res.status, task.status) == ("done", "done"), task.reason
         assert task.check_changed == []
 
 
@@ -198,3 +198,94 @@ def test_a_team_pattern_protects_a_path_the_defaults_do_not(tmp_path: Path) -> N
         _sweep.dispatch_pod("demo", runner=_Editor({"src/app.js": "console.log(2)\n"}), max_tasks=1)
 
         assert _only_task().check_changed == ["src/app.js"]
+
+
+_FOLDER_PIPELINE = (
+    "name: draft-and-check\nsteps:\n  - draft: writer\n  - check:\n"
+    "      run: 'python3 checks/verify.py'\n"
+)
+
+
+class _FolderEditor:
+    """The writer hop writes ``edits`` into the pod's working folder."""
+
+    def __init__(self, folder: Path, edits: dict[str, str]) -> None:
+        self.folder = folder
+        self.edits = edits
+
+    def __call__(
+        self,
+        agent_id: str,
+        session_key: str,
+        message: str,
+        timeout: int,
+        env: dict[str, str] | None = None,
+    ) -> TurnResult:
+        if agent_id.endswith("-writer"):
+            for rel, text in self.edits.items():
+                (self.folder / rel).parent.mkdir(parents=True, exist_ok=True)
+                (self.folder / rel).write_text(text)
+        return TurnResult(True, "done", {})
+
+
+@contextmanager
+def _folder_pod(tmp_path: Path) -> Iterator[Path]:
+    """A ``routine`` pod ``ops`` on a folder holding ``checks/verify.py``; yields the folder."""
+    home = tmp_path / ".docket"
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    folder = tmp_path / "work"
+    (folder / "checks").mkdir(parents=True)
+    (folder / "checks" / "verify.py").write_text("raise SystemExit(0)\n")
+    with use_home(Home(home)):
+        _pod.build_pod_from_blueprint("ops", "routine", location=str(folder))
+        path = _pod.pod.bound_pipeline_path("ops")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_FOLDER_PIPELINE, encoding="utf-8")
+        digest = hashlib.sha256(_FOLDER_PIPELINE.encode("utf-8")).hexdigest()
+        _fleet.meta_set(_pod.pod.member_id("ops", "lead"), "pipeline", digest)
+        yield folder
+
+
+def test_a_folder_task_that_edits_the_script_its_check_runs_parks(tmp_path: Path) -> None:
+    with _folder_pod(tmp_path) as folder:
+        _queue.enqueue_task_once("ops", "pass the check", channel="cli")
+
+        (res,) = _sweep.dispatch_pod(
+            "ops",
+            runner=_FolderEditor(folder, {"checks/verify.py": "raise SystemExit(0)  # edited\n"}),
+        )
+
+        (task,) = TaskRepository.for_pod("ops").list()
+        assert (res.status, task.status) == ("waiting_approval", "waiting_approval")
+        assert task.check_changed == ["checks/verify.py"]
+        assert set(task.protected_hashes or {}) == {"checks/verify.py"}
+        record = _ap.approval_get(pending_token("ops", task.id))
+        assert record["context"]["kind"] == "check_changed"
+        assert record["context"]["paths"] == ["checks/verify.py"]
+
+
+def test_a_folder_task_that_edits_only_its_report_ends_done(tmp_path: Path) -> None:
+    with _folder_pod(tmp_path) as folder:
+        _queue.enqueue_task_once("ops", "write the report", channel="cli")
+
+        (res,) = _sweep.dispatch_pod("ops", runner=_FolderEditor(folder, {"report.md": "done\n"}))
+
+        (task,) = TaskRepository.for_pod("ops").list()
+        assert (res.status, task.status) == ("done", "done"), task.reason
+        assert task.check_changed == []
+
+
+def test_a_folder_task_that_adds_a_protected_file_parks_and_a_grant_ends_it_done(
+    tmp_path: Path,
+) -> None:
+    with _folder_pod(tmp_path) as folder:
+        _queue.enqueue_task_once("ops", "add a config", channel="cli")
+
+        _sweep.dispatch_pod("ops", runner=_FolderEditor(folder, {"tox.ini": "[tox]\n"}))
+
+        (task,) = TaskRepository.for_pod("ops").list()
+        assert task.check_changed == ["tox.ini"]
+        _resolve(pending_token("ops", task.id), "granted")
+        (granted,) = TaskRepository.for_pod("ops").list()
+        assert granted.status == "done"

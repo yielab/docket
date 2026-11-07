@@ -34,6 +34,7 @@ from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _models_policy
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _teams_pod_settings
+from docket.teams.models import WorkspaceKind
 from docket.teams.pod import pod_full_roster
 from docket.teams.settings import load_pod_settings
 
@@ -310,25 +311,65 @@ def _checked_commands(
     return [c for c in commands if c]
 
 
-def _park_if_check_changed(
-    ctx: UnitContext, runtime_steps: tuple[_orch.PlannedNode, ...], result: TaskResult
+def _folder_dir(project: str) -> str:
+    """The working folder of a ``workdir`` pod, ``""`` for a pod with a codebase."""
+    if _teams_pod_settings.workspace_kind(project) != WorkspaceKind.workdir:
+        return ""
+    return str(_fleet.meta_get(_pod.member_id(project, "lead"), "workDir", "") or "")
+
+
+def _record_protected_hashes(
+    ctx: UnitContext, runtime_steps: tuple[_orch.PlannedNode, ...]
 ) -> None:
-    """A finished task whose diff touches a protected path (teams/workspace/protected_paths.py) parks
-    ``waiting_approval`` for a person whatever the profile, instead of ending ``done``. A task
-    with no recorded worktree is not checked."""
+    """Before a folder pod's first hop, record the digest of each protected file in its folder on
+    the task (pod-dispatch.spec.md "A change that edits its own check", 7). A task that has
+    them, or any task of a pod with a codebase, is left as it is."""
+    folder = _folder_dir(ctx.project)
+    if not folder or ctx.task.protected_hashes is not None:
+        return
+    hashes = _protected.hash_protected(
+        folder,
+        load_pod_settings(ctx.project).protects,
+        _checked_commands(ctx.project, ctx.task, runtime_steps),
+    )
+    ctx.task.protected_hashes = hashes
+    TaskRepository.for_pod(ctx.project).update(
+        ctx.task_id, lambda r: setattr(r, "protected_hashes", hashes)
+    )
+
+
+def _changed_protected_paths(
+    ctx: UnitContext, runtime_steps: tuple[_orch.PlannedNode, ...]
+) -> list[str]:
+    """The protected paths the finished task changed: in its worktree against the task branch's
+    base, or in a folder pod's folder against the digests recorded at the start. ``[]`` for a
+    task that ran in place."""
+    folder = _folder_dir(ctx.project)
+    if folder:
+        recorded = ctx.task.protected_hashes
+        if recorded is None:
+            return []
+        patterns = load_pod_settings(ctx.project).protects
+        commands = _checked_commands(ctx.project, ctx.task, runtime_steps)
+        return _protected.changed_hashes(folder, recorded, patterns, commands)
     record = ctx.task.worktree
     directory = claimed_worktree_dir(ctx.task)
     branch = record.branch if record is not None else ""
     base = record.base_commit if record is not None else ""
     if not (directory and branch and base):
-        return
-    paths = _protected.changed_protected(
-        directory,
-        base,
-        branch,
-        load_pod_settings(ctx.project).protects,
-        _checked_commands(ctx.project, ctx.task, runtime_steps),
-    )
+        return []
+    patterns = load_pod_settings(ctx.project).protects
+    commands = _checked_commands(ctx.project, ctx.task, runtime_steps)
+    return _protected.changed_protected(directory, base, branch, patterns, commands)
+
+
+def _park_if_check_changed(
+    ctx: UnitContext, runtime_steps: tuple[_orch.PlannedNode, ...], result: TaskResult
+) -> None:
+    """A finished task that touched a protected path (kernel/protected_paths.py) parks
+    ``waiting_approval`` for a person whatever the profile, instead of ending ``done``. A task
+    that ran in place in a codebase is not checked."""
+    paths = _changed_protected_paths(ctx, runtime_steps)
     if not paths:
         return
     listed = _decide.describe_changed_paths(paths, _protected.MAX_LISTED_PATHS)

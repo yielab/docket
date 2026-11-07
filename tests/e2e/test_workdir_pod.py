@@ -12,6 +12,7 @@ import sys
 import textwrap
 import threading
 from collections.abc import Callable, Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -711,3 +712,56 @@ def test_a_task_on_the_routine_blueprint_pipeline_leaves_the_captured_rows_in_re
         s for (e, _r, s) in oracles.trace_skeleton(w, w.pod, report_task) if e == "hop_started"
     ]
     assert steps == ["compile", "draft", "review"]
+
+
+CHECKED_DRAFT = """name: checked-draft
+steps:
+  - draft: writer
+  - check:
+      run: "python3 checks/verify.py"
+"""
+
+
+def _checked_workdir(
+    world: Callable[..., World], fake_model: Callable[..., FakeModel], *edits: Any
+) -> tuple[World, Path]:
+    """A folder pod holding ``checks/verify.py`` whose writer makes *edits* (tool calls)."""
+    model = fake_model(script={"writer": [*edits, say("Done.")]})
+    w, work_dir = workdir_pod(world, model, pipeline_yaml=CHECKED_DRAFT)
+    (work_dir / "checks").mkdir()
+    (work_dir / "checks" / "verify.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+    return w, work_dir
+
+
+def test_a_folder_pod_that_edits_its_own_check_waits_for_a_person(
+    world: Callable[..., World], fake_model: Callable[..., FakeModel]
+) -> None:
+    w, _work_dir = _checked_workdir(
+        world,
+        fake_model,
+        write_file("checks/verify.py", "raise SystemExit(0)  # always\n"),
+        write_file("report.md", BRIEF),
+    )
+    task_id = w.add_task("Make the check pass")
+
+    w.docket("run", "--pod", w.pod, "--pipeline", str(w.pipeline), "--timeout", "30", check=False)
+
+    assert w.task(task_id)["task"]["status"] == "waiting_approval"
+    approvals = [
+        e["payload"]
+        for e in oracles.trace_events(w, w.pod, task_id)
+        if e["event_type"] == "approval_required"
+    ]
+    assert [(a["kind"], a["paths"]) for a in approvals] == [("check_changed", ["checks/verify.py"])]
+
+
+def test_a_folder_pod_that_edits_only_its_report_ends_done(
+    world: Callable[..., World], fake_model: Callable[..., FakeModel]
+) -> None:
+    w, work_dir = _checked_workdir(world, fake_model, write_file("report.md", BRIEF))
+    task_id = w.add_task("Write the report")
+
+    w.docket("run", "--pod", w.pod, "--pipeline", str(w.pipeline), "--timeout", "30")
+
+    assert w.task(task_id)["task"]["status"] == "done"
+    assert (work_dir / "report.md").read_text(encoding="utf-8") == BRIEF
