@@ -69,9 +69,6 @@ TASK_POLICY_ID = "task-restriction"
 # The block-only documents the running turn's task carries, set by ``task_policies``.
 _TASK_POLICIES: ContextVar[tuple[dict[str, Any], ...]] = ContextVar("_TASK_POLICIES", default=())
 
-# Policy ids skipped when source=operator (--trusted).
-_INJECTION_IDS: frozenset[str] = frozenset({"prompt-injection"})
-
 
 def _not_tool_names(value: Any) -> tuple[str, ...]:
     """The names a ``notTool`` value lists, or ``()`` for a value that is not a non-empty name or
@@ -535,12 +532,13 @@ def policy_eval_detail(
 
     project: this call's pod, when it has one -- folds that pod's own policy files
     (``policy_files(project)``) into the same most-restrictive-wins evaluation as the global set;
-    empty for a non-pod caller, which sees the global set only. trusted: skip injection/untrusted-
-    input policies (source=operator). call: the tool name, arguments and a lazy branch getter a
-    policy's structured ``when`` predicate can test, beside *text*; ``None`` for callers that
-    only ever have text (``pre_input``, ``pre_output``, and a non-``exec`` dry run). Trace
-    side-effects are intentionally omitted here -- this is the pure evaluator; a live-path caller
-    or the CLI's dry-run (``policy_test``) decides what to do with the result."""
+    empty for a non-pod caller, which sees the global set only. trusted: whether the text came from
+    the operator's own hand; no shipped policy reads it, so every policy fires either way. call: the
+    tool name, arguments and a lazy branch getter a policy's structured ``when`` predicate can
+    test, beside *text*; ``None`` for callers that only ever have text (``pre_input``,
+    ``pre_output``, and a non-``exec`` dry run). Trace side-effects are intentionally omitted
+    here -- this is the pure evaluator; a live-path caller or the CLI's dry-run (``policy_test``)
+    decides what to do with the result."""
     best = PolicyHit()
     best_rank = 0
     branch_cache: dict[str, str] = {}
@@ -576,8 +574,6 @@ def policy_eval_detail(
             hooks = {declared_hook} if declared_hook in VALID_HOOKS else VALID_HOOKS
             raw_applies = (p or {}).get("applies_to")
             applies = raw_applies if isinstance(raw_applies, list) and raw_applies else ["*"]
-            if trusted and p is not None and p.get("id") in _INJECTION_IDS:
-                continue
             if hook in hooks and ("*" in applies or role in applies):
                 consider(
                     "block",
@@ -591,8 +587,6 @@ def policy_eval_detail(
             continue
         applies = p.get("applies_to", []) or []
         if "*" not in applies and role not in applies:
-            continue
-        if trusted and p.get("id") in _INJECTION_IDS:
             continue
 
         if "limit" in p:

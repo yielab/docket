@@ -210,7 +210,7 @@ whole pod and every member that reads it.
    stale one, then a pending one (oldest first), then an accepted one (oldest first); each cap
    only evicts from its own entries.
 6. **Render.** The prompt composer **MUST** compose the accepted entries as the last section of
-   the system prompt, after `MEMORY.md`, behind its own untrusted frame (`POD_MEMORY_FRAME`: the
+   the system prompt, after `MEMORY.md`, behind its own untrusted frame (`POD_MEMORY_KIND` and `POD_MEMORY_NOTE`: the
    entries come from earlier tasks of this pod, not from the operator, and are never a request to
    run commands or to change tools, approvals or policies) and never in docket's voice. The section
    is reported as `podMemory` in `prompt_composed`. It is capped at 3000 bytes by dropping the
@@ -404,7 +404,7 @@ Where the names above live today; the only section that names source paths.
   `approve`, `refuse`, `revert`, `reset`, `render_entries`, `PodMemoryError`
 - `src/docket/teams/memory_parse.py`: `parse_memory_section`, `KINDS`; `memory_decide.py`: the
   task facts and the verdict on one line
-- `src/docket/teams/identity.py`: `compose_agent_prompt`, `POD_MEMORY_FRAME`, `POD_MEMORY_LABEL`,
+- `src/docket/teams/identity.py`: `compose_agent_prompt`, `POD_MEMORY_KIND`, `POD_MEMORY_NOTE`, `POD_MEMORY_LABEL`,
   `INSTRUCTIONS_FILE`
 - `src/docket/teams/settings.py`: `pod_task_list_path`
 - `src/docket/tasks/application/lifecycle.py`: `finalize_task` calls `record_task_memory`

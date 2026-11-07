@@ -17,6 +17,7 @@ from tests.support.loop_harness import (
     _final,
     _tool_call_response,
     _write_gate_policy,
+    unframed,
 )
 from tests.support.model_server import call, say
 
@@ -432,10 +433,10 @@ class TestCooperativeRunCancellation:
             "tool",
         ]
         assert stored.messages[2].tool_call_id == "first-call"
-        assert stored.messages[2].content == "first done"
+        assert unframed(stored.messages[2].content) == "first done"
         assert stored.messages[3].tool_call_id == "second-call"
         assert (
-            stored.messages[3].content
+            unframed(stored.messages[3].content)
             == "REFUSED [run_cancelled]: run cancellation requested before execution"
         )
         assert not _session_units.find_orphaned_tool_messages(stored.messages)
@@ -729,9 +730,8 @@ class TestLlmCallTrace:
         assert assistant_turn["parts"] == [
             {"type": "tool_call", "id": "c1", "name": "echo", "arguments": '{"text": "[REDACTED]"}'}
         ]
-        assert tool_turn["parts"] == [
-            {"type": "tool_call_response", "id": "c1", "response": "[REDACTED]"}
-        ]
+        (response,) = tool_turn["parts"]
+        assert (response["id"], unframed(response["response"])) == ("c1", "[REDACTED]")
         assert second["outputMessages"] == [
             {"role": "assistant", "parts": [{"type": "text", "content": "ok"}]}
         ]

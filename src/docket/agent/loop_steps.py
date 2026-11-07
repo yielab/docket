@@ -99,7 +99,7 @@ class _RoundIntake:
     """What one round's tool results may take in (agent-loop requirement 115); the rule is in
     ``is_full``. An unknown window leaves the room unbounded."""
 
-    def __init__(self, budget: TurnBudget, assistant_msg: ChatMessage) -> None:
+    def __init__(self, budget: TurnBudget, assistant_msg: ChatMessage, delimiter: str) -> None:
         self.budget = budget
         self.room = budget.intake_room()
         self.calls = assistant_msg.tool_calls
@@ -108,7 +108,7 @@ class _RoundIntake:
         self.index = -1
         self.full = False
         self.deferral = (
-            budget.message_cost(tool_result(self.calls[0], _DEFERRED_ANSWER))
+            budget.message_cost(tool_result(self.calls[0], _DEFERRED_ANSWER, delimiter=delimiter))
             if self.room is not None and self.calls
             else 0
         )
@@ -174,7 +174,7 @@ class ToolStep:
         closing_output: str | None = None
         closing_args: dict[str, Any] | None = None
         self.state.ctx.rationale = assistant_msg.content or ""
-        intake = _RoundIntake(self.budget, assistant_msg)
+        intake = _RoundIntake(self.budget, assistant_msg, self.state.untrusted_delimiter)
         for call in assistant_msg.tool_calls:
             _trace_tool_call(
                 self.state.project,
@@ -214,7 +214,9 @@ class ToolStep:
                 self.consecutive_denial_kinds.append(result.denial_kind)
             elif result.decision == "allow" and result.executed:
                 self.consecutive_denial_kinds.clear()
-            tool_msgs.append(tool_result(call, tool_output))
+            tool_msgs.append(
+                tool_result(call, tool_output, delimiter=self.state.untrusted_delimiter)
+            )
             intake.take(tool_msgs[-1])
             round_entries.append(_ProgressDetector.entry(call, result.ok, tool_output))
             if result.denial_kind == "run_cancelled" or self.state.cancellation_requested():
@@ -304,7 +306,7 @@ class ToolStep:
             task_id=self.state.trace_task_id,
             output=_DEFERRED_ANSWER,
         )
-        return tool_result(call, _DEFERRED_ANSWER)
+        return tool_result(call, _DEFERRED_ANSWER, delimiter=self.state.untrusted_delimiter)
 
     def _ends_turn(self, tool_name: str) -> bool:
         tool = self.state.registry.get(tool_name)

@@ -32,6 +32,7 @@ from docket.agent.session_units import (
 )
 from docket.kernel import clock as _clock
 from docket.kernel import text as _text
+from docket.kernel import untrusted
 from docket.kernel.home import current_home
 from docket.kernel.tool_outcome import artifact_path_in
 from docket.platform import read_json, read_modify_write
@@ -271,14 +272,15 @@ def _call_target(args: dict[str, Any] | None) -> str:
     return ""
 
 
-def _result_notice(call: ToolCall | None, message: ChatMessage) -> str:
+def _result_notice(call: ToolCall | None, message: ChatMessage, output: str) -> str:
+    """The notice for a result whose *output* (the text inside its frame) is no longer shown."""
     name = call.name if call else message.name or "tool"
     target = _call_target(_call_arguments(call) if call else None)
-    lines = message.content.count("\n") + 1 if message.content else 0
+    lines = output.count("\n") + 1 if output else 0
     head = f"{name} {target}" if target else name
-    artifact = artifact_path_in(message.content)
+    artifact = artifact_path_in(output)
     seen = (
-        f"[{head}: {lines} lines, {len(message.content):,} characters. "
+        f"[{head}: {lines} lines, {len(output):,} characters. "
         "You read this earlier in this session; its text is no longer in this view"
     )
     if artifact:
@@ -287,18 +289,21 @@ def _result_notice(call: ToolCall | None, message: ChatMessage) -> str:
 
 
 def _condense_result(call: ToolCall | None, message: ChatMessage) -> ChatMessage:
-    content = message.content
-    if content.startswith(_ERROR_PREFIXES):
-        if len(content) <= _ERROR_KEEP_CHARS:
+    framed = untrusted.unframe(message.content)
+    output = framed[2] if framed else message.content
+    if output.startswith(_ERROR_PREFIXES):
+        if len(output) <= _ERROR_KEEP_CHARS:
             return message
-        rest = len(content) - _ERROR_KEEP_CHARS
-        content = f"{content[:_ERROR_KEEP_CHARS]}\n[{rest:,} more characters omitted]"
-        artifact = artifact_path_in(message.content)
+        rest = len(output) - _ERROR_KEEP_CHARS
+        cut = f"{output[:_ERROR_KEEP_CHARS]}\n[{rest:,} more characters omitted]"
+        artifact = artifact_path_in(output)
         if artifact:
-            content += f"\n[full output: {artifact}]"
-        return ChatMessage(message.role, content, [], message.tool_call_id, message.name)
-    notice = _result_notice(call, message)
-    if len(notice) >= len(content):
+            cut += f"\n[full output: {artifact}]"
+        if framed:
+            cut = untrusted.frame(framed[0], cut, delimiter=framed[1])
+        return ChatMessage(message.role, cut, [], message.tool_call_id, message.name)
+    notice = _result_notice(call, message, output)
+    if len(notice) >= len(message.content):
         return message
     return ChatMessage(message.role, notice, [], message.tool_call_id, message.name)
 

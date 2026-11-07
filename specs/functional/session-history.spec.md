@@ -244,9 +244,10 @@ This specification does NOT cover:
     model could take as the tool refusing a repeated call. `<target>` is the call's first non-empty
     argument among `path`, `file_path`, `command`, `pattern`, `url`, `query`, cut to its first line
     and 80 characters (ending `...`), and is omitted when the call has none. Each message keeps
-    its role, `tool_call_id` and `name`. A result beginning
-    `ERROR:`, `REFUSED [` or `AWAITING APPROVAL:` stays whole up to 400 characters and is
-    otherwise cut to its first 400 with a count of the rest. User and system messages are never
+    its role, `tool_call_id` and `name`. A result whose output (inside its
+    untrusted frame, `agent-loop.spec.md` requirement 117) begins
+    `ERROR:`, `REFUSED [` or `AWAITING APPROVAL:` stays whole up to 400 characters of output and is
+    otherwise cut to its first 400 with a count of the rest, the frame kept around it. User and system messages are never
     changed. A result that carries an artifact line (`agent-loop.spec.md` requirement 91) has its
     notice read `[<tool> <target>: N lines, M characters. You read this earlier in this session;
     its text is no longer in this view; the full output is in <path>: read it with read(path,

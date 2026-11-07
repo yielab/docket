@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from tests.support.driver_harness import _final_response, _ScriptedBackend
+from tests.support.loop_harness import unframed
 from tests.support.pods import write_meta_overrides as _write_meta
 from tests.support.trace import trace_events
 
@@ -77,7 +78,7 @@ def test_a_bash_result_over_the_cap_ends_with_its_artifact_and_the_file_holds_it
 ) -> None:
     backend, whole = _run(tmp_path)
 
-    first = next(m for m in backend.calls[1] if m.role == "tool").content
+    first = unframed(next(m for m in backend.calls[1] if m.role == "tool").content)
     path = artifact_path_in(first)
     assert path is not None
     assert first.endswith(f"[full output: {path} — read it with read(path, offset, limit)]")
@@ -90,7 +91,7 @@ def test_a_bash_result_over_the_cap_ends_with_its_artifact_and_the_file_holds_it
 def test_read_returns_the_lines_past_the_cut_from_the_artifact(tmp_path: Path) -> None:
     backend, _ = _run(tmp_path)
 
-    window = [m for m in backend.calls[2] if m.role == "tool"][1].content
+    window = unframed([m for m in backend.calls[2] if m.role == "tool"][1].content)
     lines = window.splitlines()
     assert lines[0] == "2400\trow 02400 xxxxxxxxxxxx"
     assert lines[49] == "2449\trow 02449 xxxxxxxxxxxx"
@@ -99,7 +100,7 @@ def test_read_returns_the_lines_past_the_cut_from_the_artifact(tmp_path: Path) -
 def test_the_trace_records_the_artifact_path_on_the_tool_result(tmp_path: Path) -> None:
     backend, _ = _run(tmp_path)
 
-    first = next(m for m in backend.calls[1] if m.role == "tool").content
+    first = unframed(next(m for m in backend.calls[1] if m.role == "tool").content)
     results = [e for e in trace_events(_POD) if e["event_type"] == "tool_result"]
     assert results[0]["payload"]["artifact"] == artifact_path_in(first)
     assert "artifact" not in results[1]["payload"]

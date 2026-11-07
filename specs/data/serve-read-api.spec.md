@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 6.7.0
+**Version**: 6.8.0
 **Status**: Stable
 **Last Updated**: 2026-11-07
 
@@ -495,7 +495,7 @@ Request body (the addressable-task fields `externalRef`, `idempotencyKey`, `base
 |---|---|---|---|
 | `description` | string | Yes | `400` if absent, empty or not a string. |
 | `priority` | `"high"\|"normal"\|"low"` | No | Defaults to `"normal"`; an unrecognized value falls back to `"normal"` — the same normalization the CLI/MCP callers get. |
-| `trusted` | boolean | No | Overrides the `pre_input` policy check's trust flag for this one enqueue. Omitted, it keeps the CLI/MCP default (trusted, because the task's `source` is `operator`). It does **not** change the persisted task's `source` field or introduce a new trust/source vocabulary — the only thing it touches is which `pre_input` policies are eligible to fire (whether the `prompt-injection` policy id is skipped). |
+| `trusted` | boolean | No | Whether the enqueue is trusted input. Omitted, a task from HTTP is **not** trusted (the CLI's `docket task add` is; `security-gates.spec.md` "Policy engine on the live path" requirement 2). It does **not** change the persisted task's `source` field or introduce a trust/source vocabulary; the flag reaches `policy_eval_detail`, which no shipped policy reads, so every `pre_input` policy fires either way. |
 | `brief` | object | No | A `TaskBrief` document (operator-v2, `operator-loop.spec.md`), the HTTP counterpart of `docket task add --brief`. A non-object value is `400`; an invalid one is `422` before anything is enqueued. A valid one is appended to the task description as a `## Pre-brief` section and persisted on the task's `brief` field. |
 
 Success response: a new task answers `201` with `"created": true`; a repeated `idempotencyKey`

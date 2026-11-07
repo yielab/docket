@@ -24,7 +24,7 @@ anything happening:
    parsed, so nothing below it ever runs for an unauthorized sender.
 2. **Content screening** (:func:`_handle_delegate`). Message text that is
    about to become agent input (a delegated task) is run through the
-   existing ``pre_input`` policy hook's ``prompt-injection`` policy, exactly
+   existing ``pre_input`` policy hook (the pod's own policies), exactly
    the way ``agent/tools/mcp_tools.py`` screens a remote MCP server's tool
    descriptions before they reach a model -- the same untrusted-external-text
    threat class, the same evaluator, no new hook invented. ``block``/

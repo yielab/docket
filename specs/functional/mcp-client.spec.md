@@ -131,8 +131,7 @@ This specification does NOT cover:
 
 14. Before registration, every remote tool's `"<name>: <description>"` text **MUST** be evaluated
     through `policy_eval_detail(role, "pre_input", text, trusted=False, project=<the calling pod>)`,
-    the same evaluator (and the same shipped `prompt-injection` policy) that screens task text, the
-    pod's own `on: input` policies included.
+    the same evaluator that screens task text, the pod's own `on: input` policies included.
 15. A `block` or `require_approval` result **MUST** prevent that tool from being registered at all,
     and **MUST** be audited (`mcp_client.tool_description_blocked`). `require_approval` is
     deliberately folded into the same refusal as `block`: there is no per-tool human-approval

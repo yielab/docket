@@ -16,6 +16,7 @@ from tests.support.loop_harness import (
     _tool_call_response,
     _truncated,
     _write_gate_policy,
+    unframed,
 )
 
 from docket.agent import loop as _loop
@@ -141,7 +142,7 @@ class TestSingleExecutionPath:
         # ran (not a stubbed/skipped path).
         second_call_messages = backend.calls[1]
         tool_msg = next(m for m in second_call_messages if m.role == "tool")
-        assert tool_msg.content == "hi"
+        assert unframed(tool_msg.content) == "hi"
 
 
 class TestTruncatedResponses:
@@ -564,7 +565,7 @@ class TestApprovalParked:
         assert len(pending) == 1
         record = load_session(session_key)
         assert [message.role for message in record.messages] == ["user", "assistant", "tool"]
-        shown = record.messages[-1].content
+        shown = unframed(record.messages[-1].content)
         assert shown.startswith("REFUSED [approval_parked]: ")
         assert "a person must approve this call; the task resumes once they do" in shown
         assert pending[0]["token"] not in shown and "apr-" not in shown

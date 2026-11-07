@@ -22,19 +22,12 @@ _DOC: dict[str, Any] = yaml.safe_load(_CORPUS.read_text(encoding="utf-8"))
 _ROWS: list[dict[str, Any]] = _DOC["rows"]
 _FALSE_POSITIVES: list[dict[str, Any]] = _DOC["false_positives"]
 
-_STRENGTH = {"allowed": 0, "warned": 1, "asked": 3, "denied": 4}
-_LIMITS = {"opaque-code", "variable", "script-name", "phrase-tripwire"}
+_STRENGTH = {"allowed": 0, "asked": 3, "denied": 4}
+_LIMITS = {"opaque-code", "variable", "script-name"}
 
 
 def _row_id(row: dict[str, Any]) -> str:
     return f"{row['policy']}|{row['isolation']}|{row['role']}|{row['command'][:60]!r}"
-
-
-def _recorded(row: dict[str, Any]) -> str:
-    """The measured outcome in the vocabulary of ``expected``."""
-    if row["outcome"] != "allowed":
-        return str(row["outcome"])
-    return "warned" if row["policy_action"] == "warn" else "allowed"
 
 
 @pytest.fixture
@@ -46,9 +39,6 @@ def installed(tmp_path: Path) -> Any:
 
 
 def _measure(row: dict[str, Any], workspace: Path) -> str:
-    if row["hook"] != "pre_tool_call":
-        hit = _policy.policy_eval_detail(row["role"], row["hook"], row["command"])
-        return {"allow": "allowed", "warn": "warned"}[hit.action]
     tool = registry_for_role(builtin_registry(), row["role"]).get("bash")
     if tool is None:
         return "denied"  # the role never had the tool
@@ -69,7 +59,7 @@ def test_the_gate_answers_the_expected_outcome(row: dict[str, Any], installed: P
 
 
 def test_no_expected_outcome_is_weaker_than_the_measured_one() -> None:
-    weaker = [_row_id(r) for r in _ROWS if _STRENGTH[r["expected"]] < _STRENGTH[_recorded(r)]]
+    weaker = [_row_id(r) for r in _ROWS if _STRENGTH[r["expected"]] < _STRENGTH[r["outcome"]]]
 
     assert weaker == []
 

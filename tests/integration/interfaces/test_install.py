@@ -154,7 +154,7 @@ def test_init_without_an_endpoint_builds_the_team_and_points_at_setup(
         assert not Home(home).model_registry_file.exists()
         # The guardrail policies are installed by init itself (security-gates "Policy engine on
         # the live path" 1), not deferred to setup: a fresh home must not screen nothing.
-        assert (Home(home).policies_dir / "prompt-injection.yaml").is_file()
+        assert (Home(home).policies_dir / "block-destructive.yaml").is_file()
 
 
 def test_init_with_an_endpoint_does_not_mention_setup(

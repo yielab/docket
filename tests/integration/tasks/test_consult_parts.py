@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 from tests.support.home import record_isolation_off
 from tests.support.llm import final as _final
+from tests.support.loop_harness import unframed
 from tests.support.pods import build_pod
 
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
@@ -245,7 +246,7 @@ class TestDecide:
         assert task.status == "done" and task.consultations == 3
         assert [(e.state, e.policy) for e in parts] == [("decided", "recommendation")] * 3
         assert [(e.part.index, e.part.count) for e in parts if e.part] == [(1, 3), (2, 3), (3, 3)]
-        (tool_result,) = [m.content for m in backend.calls[-1] if m.role == "tool"]
+        (tool_result,) = [unframed(m.content) for m in backend.calls[-1] if m.role == "tool"]
         assert [line.split(":")[0] for line in tool_result.splitlines()] == [
             "Question 1 of 3",
             "Question 2 of 3",

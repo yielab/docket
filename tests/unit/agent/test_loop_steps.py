@@ -16,6 +16,7 @@ from docket.agent.ports import CapabilityGap, ChatMessage, TokenUsage, ToolCall,
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.capability_gap import PodOffer
 from docket.agent.tools.registry import Tool, ToolRegistry
+from docket.kernel import untrusted
 
 SUBJECT = "docket.agent.loop_steps"
 
@@ -61,6 +62,11 @@ class TestProgressDetector:
             assert not detector.observe(self._round())
 
 
+def _framed_hi(state: Any) -> str:
+    """The echo tool's result as the turn frames it, with the turn's delimiter."""
+    return untrusted.frame("result of echo", "hi", delimiter=state.untrusted_delimiter)
+
+
 class TestDispatchToolBatch:
     """A batch is either wholly dispatched and persisted once, or not dispatched at all."""
 
@@ -100,7 +106,7 @@ class TestDispatchToolBatch:
         assert len(appended) == 1
         assert [m.role for m in appended[0]] == ["assistant", "tool"]
         assert messages == appended[0]
-        assert appended[0][1].content == "hi"
+        assert appended[0][1].content == _framed_hi(state)
 
     def test_the_persisted_results_are_byte_identical_to_what_dispatch_returned(
         self, make_turn_state: MakeState, monkeypatch: pytest.MonkeyPatch
@@ -119,8 +125,8 @@ class TestDispatchToolBatch:
             ToolStep(state, TurnBudget(state)).dispatch_tool_batch(messages, message, TokenUsage())
             is None
         )
-        assert [m.content for m in appended[0] if m.role == "tool"] == ["hi"]
-        assert messages[-1].content == "hi"
+        assert [m.content for m in appended[0] if m.role == "tool"] == [_framed_hi(state)]
+        assert messages[-1].content == _framed_hi(state)
         assert not state.notice_sent
 
     def test_consecutive_denials_reach_the_configured_limit(

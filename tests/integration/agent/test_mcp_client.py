@@ -6,7 +6,7 @@ the chokepoint holds for an MCP-provided tool exactly as for a built-in one (`pr
 gates it through the real `dispatch_tool`, handler proven never to run); namespacing (`mcp__`
 prefix plus server name) makes a built-in collision structurally impossible; failure isolation
 (an unreachable/slow/misbehaving server degrades to "unavailable", never blocking another's
-tools or a turn); and untrusted tool descriptions are screened through `prompt-injection`
+tools or a turn); and untrusted tool descriptions are screened through `pre_input`
 before registration. Every test stubs at the SDK boundary with fake callables or monkeypatched
 client attributes -- no subprocess, no network, no real `mcp` package import.
 """

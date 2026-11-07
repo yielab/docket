@@ -63,6 +63,11 @@ def _redacted(model: _M | None) -> _M | None:
     return type(model).model_validate(_redact_strings(model.model_dump(by_alias=True)))
 
 
+# The channels whose task text comes from outside the operator's terminal: an enqueue over them is
+# not trusted unless the request says so.
+_UNTRUSTED_CHANNELS = frozenset({"http", "mcp"})
+
+
 def _enqueue_pre_input_gate(
     project: str, session_id: str, task_id: str, description: str, *, trusted: bool
 ) -> _policy.PolicyHit:
@@ -137,7 +142,8 @@ def enqueue_task_once(
 ) -> tuple[TaskRecord, bool]:
     """Locked read-modify-write returning ``(task, created)``; DispatchError persists nothing.
     A queued ``idempotency_key`` returns that task with ``created`` False; *options* are the
-    addressable-task fields. *channel* (cli|http|telegram|mcp) is recorded, never trusted."""
+    addressable-task fields. *channel* (cli|http|telegram|mcp) is recorded; *trusted* defaults to
+    False over ``http`` and ``mcp`` and to True otherwise."""
     path = pod_task_list_path(project)
     if not path.parent.is_dir():
         raise DispatchError(f"no pod for '{project}' (run from its directory: docket init)")
@@ -181,7 +187,7 @@ def enqueue_task_once(
 
     task_id = _ids.new_id("task")
     session_id = f"agent:{project}:{task_id}"
-    effective_trusted = True if trusted is None else trusted
+    effective_trusted = channel not in _UNTRUSTED_CHANNELS if trusted is None else trusted
 
     hit = _enqueue_pre_input_gate(project, session_id, task_id, screened, trusted=effective_trusted)
     if hit.action == "block":

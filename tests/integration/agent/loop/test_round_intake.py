@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Sequence
 
-from tests.support.loop_harness import _final
+from tests.support.loop_harness import _final, unframed
 from tests.support.trace import trace_events
 
 from docket.agent import loop as _loop
@@ -161,11 +161,11 @@ class TestARoundTakesInWhatTheWindowHolds:
         assert compactions_before_second_reply == [0]
         second = _tool_messages(backend.calls[1])
         assert len(second) == _CALLS
-        kept = [m for m in second if not m.content.startswith(_DEFERRAL)]
-        deferred = [m for m in second if m.content.startswith(_DEFERRAL)]
+        kept = [m for m in second if not unframed(m.content).startswith(_DEFERRAL)]
+        deferred = [m for m in second if unframed(m.content).startswith(_DEFERRAL)]
         assert 0 < len(kept) < _CALLS and len(kept) + len(deferred) == _CALLS
         assert [m.tool_call_id for m in kept] == [f"c{n}" for n in range(len(kept))]
-        assert all(m.content.startswith(f"{i} rrr") for i, m in enumerate(kept))
+        assert all(unframed(m.content).startswith(f"{i} rrr") for i, m in enumerate(kept))
         assert "call it again in your next response" in deferred[0].content
         # The first calls ran in order; the next response asked for two deferred ones again.
         assert ran[: len(kept)] == list(range(len(kept)))

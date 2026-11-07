@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from unittest.mock import ANY
 
 import pytest
 
@@ -22,6 +23,7 @@ from docket.agent.ports import (
     tool_result,
     user,
 )
+from docket.kernel import untrusted
 from docket.models.adapters import anthropic_wire as wire
 
 SUBJECT = "docket.models.adapters.anthropic_wire"
@@ -91,7 +93,8 @@ class TestEncoding:
             "input": {"command": "ls"},
         }
         assert [b["type"] for b in results] == ["tool_result", "tool_result", "text"]
-        assert results[0] == {"type": "tool_result", "tool_use_id": "t1", "content": "a.txt"}
+        assert (results[0]["type"], results[0]["tool_use_id"]) == ("tool_result", "t1")
+        assert untrusted.unframe(results[0]["content"]) == ("result of bash", ANY, "a.txt")
         assert results[2]["text"] == "go on"
 
     def test_a_call_whose_arguments_do_not_parse_is_sent_with_an_empty_input(self) -> None:

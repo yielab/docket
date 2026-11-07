@@ -16,6 +16,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from docket.kernel import untrusted
 from tests.support import e2e_oracles as oracles
 from tests.support.e2e import World
 from tests.support.model_server import FakeModel, Request, call, say, write_file
@@ -103,11 +104,16 @@ def _the_model_saw_the_rules_and_the_reason_but_no_token(model: FakeModel, ident
         if t["function"]["name"] == "bash"
     )
     assert "Runs without approval: " in bash and "Needs approval: " in bash
-    refusals = [
-        m["content"]
+    results = [
+        untrusted.unframe(str(m.get("content")))
         for r in sent
         for m in r.messages
-        if m.get("role") == "tool" and str(m.get("content")).startswith("REFUSED [approval_parked]")
+        if m.get("role") == "tool"
+    ]
+    refusals = [
+        parts[2]
+        for parts in results
+        if parts is not None and parts[2].startswith("REFUSED [approval_parked]")
     ]
     assert refusals and all(
         "not on the curated allowlist" in text

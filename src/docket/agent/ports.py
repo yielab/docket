@@ -40,6 +40,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
+from docket.kernel import untrusted
 from docket.kernel.errors import InvalidInput
 from docket.kernel.gate import GateCall, GateContext, GateDecision, Screened
 from docket.kernel.home import current_home
@@ -578,11 +579,13 @@ def assistant(content: str = "", tool_calls: Sequence[ToolCall] = ()) -> ChatMes
     return ChatMessage(role="assistant", content=content, tool_calls=list(tool_calls))
 
 
-def tool_result(call: ToolCall, content: str) -> ChatMessage:
-    """The result of executing *call*, addressed back to the model. Takes the ``ToolCall``
+def tool_result(call: ToolCall, content: str, *, delimiter: str | None = None) -> ChatMessage:
+    """The result of executing *call*, addressed back to the model, framed as untrusted data
+    (``kernel/untrusted.py``) with the turn's *delimiter*. Takes the ``ToolCall``
     rather than a loose id/name pair so a result can never be attributed to the wrong call:
     an endpoint that receives a ``tool_call_id`` it did not issue rejects the whole request."""
-    return ChatMessage(role="tool", content=content, tool_call_id=call.id, name=call.name)
+    framed = untrusted.frame(f"result of {call.name}", content, delimiter=delimiter)
+    return ChatMessage(role="tool", content=framed, tool_call_id=call.id, name=call.name)
 
 
 @dataclass(frozen=True)

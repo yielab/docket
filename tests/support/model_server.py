@@ -20,6 +20,8 @@ from typing import Any
 
 import pytest
 
+from docket.kernel import untrusted
+
 _ROLE_LINE = re.compile(r"the \*\*([^*]+)\*\* of the \*\*")
 _HOLD_LIMIT_S = 30.0
 _CONTEXT_FULL = "request exceeds the available context size"
@@ -67,10 +69,13 @@ class Request:
         return next((_text(m) for m in reversed(self.messages) if m.get("role") == "user"), "")
 
     def tool_result(self, call_id: str) -> str | None:
-        """The content of the tool message answering *call_id*, or ``None``."""
+        """The text inside the untrusted frame of the tool message answering *call_id*, or
+        ``None``."""
         for message in self.messages:
             if message.get("role") == "tool" and message.get("tool_call_id") == call_id:
-                return _text(message)
+                text = _text(message)
+                framed = untrusted.unframe(text)
+                return framed[2] if framed else text
         return None
 
 

@@ -62,10 +62,8 @@ def post_task(h: HttpExchange, project: str) -> None:
         return
     priority_raw = task_body.get("priority", "normal")
     priority = str(priority_raw) if priority_raw else "normal"
-    # `trusted` (optional) overrides the `pre_input` policy check's trust
-    # flag for this enqueue only — see tasks.application.queue.enqueue_task_once. Absent
-    # (None) leaves every existing caller's behaviour byte-for-byte
-    # unchanged; this is the only place that field is threaded through.
+    # `trusted` (optional) overrides the `pre_input` check's trust flag for this enqueue. Absent
+    # (None), a task from HTTP is not trusted: see tasks.application.queue.enqueue_task_once.
     trusted_raw = task_body.get("trusted")
     trusted = bool(trusted_raw) if trusted_raw is not None else None
 

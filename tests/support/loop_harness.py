@@ -13,6 +13,7 @@ from docket.agent.ports import (
     ToolSpec,
     assistant,
 )
+from docket.kernel import untrusted
 from docket.kernel.home import current_home
 
 # What every summarizer prompt carries besides the turns it replaces: the instruction text (about
@@ -47,6 +48,13 @@ class ScriptedBackend:
         if not self._responses:
             raise AssertionError("ScriptedBackend ran out of scripted responses")
         return self._responses.pop(0)
+
+
+def unframed(content: str) -> str:
+    """The text inside a tool result's untrusted frame."""
+    parts = untrusted.unframe(content)
+    assert parts is not None, content
+    return parts[2]
 
 
 def _final(content: str = "done", usage: TokenUsage | None = None) -> ChatResponse:

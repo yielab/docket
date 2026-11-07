@@ -212,12 +212,10 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   `base64 -d | sh`), a command, flag or argument held in a shell variable (`$R -r build`,
   `git push origin $B`) and a package script whose body docket cannot see (`npm run release`) pass
   the policies unless the binary itself is off the allowlist. With isolation on, the jail contains
-  what such code can reach; with it off (the default), nothing does. The two text screens are
-  tripwires, not classifiers: `prompt-injection` warns on a few known phrases (a paraphrase, a
-  translation or an encoded payload passes), and the always-on output redaction masks fixed
-  secret shapes (provider API keys, GitHub and AWS tokens, `*_PASSWORD=`, JWTs, private key
-  blocks, `Bearer` credentials, email addresses), not a secret that is spelled out, reversed or
-  encoded.
+  what such code can reach; with it off (the default), nothing does. The always-on output
+  redaction is a tripwire, not a classifier: it masks fixed secret shapes (provider API keys,
+  GitHub and AWS tokens, `*_PASSWORD=`, JWTs, private key blocks, `Bearer` credentials, email
+  addresses), not a secret that is spelled out, reversed or encoded.
   `specs/functional/security-gates.spec.md`, "Known limits of the command gate", is the list.
 - **A pod can widen its own allowlist** with `docket pod set allowCommands uv,tox`
   (comma-separated) for its own turns only — a high-risk-class binary like `git` or `npm` is
@@ -517,10 +515,11 @@ locally. Review what landed before you push.
 ## What If Something Goes Wrong?
 
 ### Prompt Injection Found
-docket's `prompt-injection` policy is a phrase tripwire, not a defence. It matches a short list of
-override wording ("ignore previous instructions", "you are now", and similar) in untrusted input and
-**warns**. It does not block, so the input still reaches the model. Paraphrases, other languages and
-encodings pass it, so a quiet policy proves nothing about the input.
+docket does not detect injected instructions: a phrase list misses a paraphrase, another language
+or an encoding. What it does is mark the edges. Every tool result reaches the model between two
+delimiter lines under a header that says it is untrusted data, and repository instructions, the
+skills index and pod memory carry the same frame, so the model can tell data from your voice. The
+frame is not a defence: a model can still obey what it reads.
 
 What limits the damage is the gate and the jail: the gate decides every tool call docket dispatches,
 and the jail limits what those calls can reach where isolation is on. The Reviewer may or may not

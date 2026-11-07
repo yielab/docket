@@ -23,6 +23,7 @@ from docket.agent.ports import (
     ToolSpec,
 )
 from docket.agent.tools.registry import ToolContext, ToolRegistry
+from docket.kernel import untrusted
 
 
 @dataclass
@@ -48,6 +49,8 @@ class TurnState:
     # The ratio this turn's first task call measured over its raw estimate, for the driver to
     # record against the model (agent-loop.spec.md requirement 46a).
     first_call_ratio: float | None = None
+    # The delimiter every tool result of this turn is framed with (security-gates "Untrusted text is framed").
+    untrusted_delimiter: str = field(default_factory=untrusted.new_delimiter)
     trace_task_id: str = ""
     total_usage: TokenUsage = field(default_factory=TokenUsage)
     tool_calls_executed: int = 0

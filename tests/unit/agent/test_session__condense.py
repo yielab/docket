@@ -5,19 +5,31 @@ Covers which tool results are condensed, in batches, and the notice a condensed 
 
 from tests.support import home as _support_home
 
+from docket.agent import ports as _ports
 from docket.agent import session as _sess
 from docket.agent.ports import (
     ChatMessage,
     ToolCall,
     assistant,
-    tool_result,
     user,
 )
+from docket.kernel import untrusted
 from docket.kernel.home import current_home
 
 _isolate_sessions_dir = _support_home.isolate_sessions_dir
 
 SUBJECT = "docket.agent.session"
+
+
+def tool_result(call: ToolCall, content: str) -> ChatMessage:
+    """A tool message holding *content* as given: the size rules here count whatever it holds."""
+    return ChatMessage(role="tool", content=content, tool_call_id=call.id, name=call.name)
+
+
+def _framed_exchange(n: int, body: str) -> list[ChatMessage]:
+    """A read whose result is framed as the loop frames it."""
+    call = ToolCall(id=f"c{n}", name="read", arguments=f'{{"path":"src/f{n}.py"}}')
+    return [assistant("", tool_calls=[call]), _ports.tool_result(call, body)]
 
 
 def _read_exchange(n: int, body: str | None = None) -> list[ChatMessage]:
@@ -76,21 +88,31 @@ class TestCondenseHistory:
         assert out[2].content == "ok"
         assert out[4].content.startswith("[read src/f1.py")
 
-    def test_errors_stay_short_and_whole(self) -> None:
-        """A short error is kept verbatim and a long one keeps only its head."""
+    def test_errors_stay_short_and_whole_inside_their_frame(self) -> None:
+        """A short error is kept verbatim and a long one keeps only its head, frame and all."""
         short = "ERROR: not a file: src/f0.py"
         long = "ERROR: " + "x" * 3000
         messages = [
             user("t"),
-            *_read_exchange(0, short),
-            *_read_exchange(1, long),
+            *_framed_exchange(0, short),
+            *_framed_exchange(1, long),
             *_read_exchange(2),
         ]
         out = _sess.condense_history(messages, keep=1, budget=0)
-        assert out[2].content == short
-        assert out[4].content.startswith("ERROR: xxx")
-        assert len(out[4].content) < 600
-        assert "more characters" in out[4].content
+        assert out[2] == messages[2]
+        cut = untrusted.unframe(out[4].content)
+        assert cut is not None and cut[0] == "result of read"
+        assert cut[2].startswith("ERROR: xxx")
+        assert len(out[4].content) < 700
+        assert "more characters" in cut[2]
+
+    def test_a_framed_plain_result_becomes_a_notice_that_counts_the_output_not_the_frame(
+        self,
+    ) -> None:
+        body = "\n".join(["x" * 100] * 50)
+        messages = [user("t"), *_framed_exchange(0, body), *_read_exchange(1), *_read_exchange(2)]
+        out = _sess.condense_history(messages, keep=1, budget=0)
+        assert out[2].content.startswith("[read src/f0.py: 50 lines, 5,049 characters.")
 
     def test_large_write_arguments_in_old_messages_become_a_count(self) -> None:
         """An old write keeps valid JSON arguments with the large string replaced."""
@@ -341,15 +363,15 @@ class TestCondenseHistorySmallResults:
         failed = "ERROR: command exited 1\n" + "e" * 2_000 + "\n\n" + line
         messages = [
             user("t"),
-            *self._exchange(0, "bash", '{"command":"make"}', failed),
+            *_framed_exchange(0, failed),
             *self._exchange(1, "read", '{"path":"b"}', "b" * 3_000),
         ]
 
         out = _sess.condense_history(messages, keep=1, budget=0)
 
-        assert next(m for m in out if m.role == "tool").content.endswith(
-            "\n[full output: /pod/cache/artifacts/abc.txt]"
-        )
+        cut = untrusted.unframe(next(m for m in out if m.role == "tool").content)
+        assert cut is not None
+        assert cut[2].endswith("\n[full output: /pod/cache/artifacts/abc.txt]")
 
 
 class TestWindowResultsBudget:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from docket.hops.application.driver import DocketDriver
 from docket.kernel.home import current_home
 from tests.support.llm import RecordingScriptedBackend
+from tests.support.loop_harness import unframed
 
 
 def run_turn(
@@ -18,8 +19,8 @@ def run_turn(
 
 
 def tool_replies(backend: RecordingScriptedBackend) -> list[str]:
-    """The tool results the model was shown, in order."""
-    return [m.content for call in backend.calls[1:] for m in call if m.role == "tool"]
+    """The tool results the model was shown, in order, without the untrusted frame."""
+    return [unframed(m.content) for call in backend.calls[1:] for m in call if m.role == "tool"]
 
 
 def trace_text() -> str:

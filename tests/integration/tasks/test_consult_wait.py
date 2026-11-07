@@ -20,6 +20,7 @@ import pytest
 from tests.support.approvals import answer_question
 from tests.support.home import record_isolation_off
 from tests.support.llm import final as _final
+from tests.support.loop_harness import unframed
 from tests.support.pods import build_pod
 
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
@@ -138,7 +139,7 @@ def _task(task_id: str) -> TaskRecord:
 
 
 def _tool_results(backend: _Backend) -> list[str]:
-    return [m.content for m in backend.calls[-1] if m.role == "tool"]
+    return [unframed(m.content) for m in backend.calls[-1] if m.role == "tool"]
 
 
 class TestAnsweredInPlace:

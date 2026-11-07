@@ -125,7 +125,6 @@ class TestInitInstallsTheBaselinePolicies:
             rc = _agents.run_init(_agents.InitRequest(name="demo", location=str(code)))
             assert rc == 0
             installed = sorted(p.name for p in current_home().policies_dir.glob("*.yaml"))
-            assert "prompt-injection.yaml" in installed
             assert "block-destructive.yaml" in installed or "block-destructive.json" in installed
 
 

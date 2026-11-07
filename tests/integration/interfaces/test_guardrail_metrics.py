@@ -149,14 +149,14 @@ class TestPolicyHitsFromTrace:
             "sess-1",
             "lead",
             "guardrail_check",
-            json.dumps({"hook": "pre_input", "policy": "prompt-injection", "action": "warn"}),
+            json.dumps({"hook": "pre_input", "policy": "test-screen", "action": "warn"}),
         )
         trace_event(
             "proj-a",
             "sess-1",
             "lead",
             "guardrail_check",
-            json.dumps({"hook": "pre_input", "policy": "prompt-injection", "action": "warn"}),
+            json.dumps({"hook": "pre_input", "policy": "test-screen", "action": "warn"}),
         )
         trace_event(
             "proj-b",
@@ -172,7 +172,7 @@ class TestPolicyHitsFromTrace:
         assert (
             _metric_value(
                 text,
-                'docket_policy_hits_total{policy_id="prompt-injection",hook="pre_input",action="warn"}',
+                'docket_policy_hits_total{policy_id="test-screen",hook="pre_input",action="warn"}',
             )
             == "2"
         )
