@@ -22,7 +22,7 @@ from evals.tests.homes import finished, hop, make_home
 
 runner = CliRunner()
 KEY = "sk-abcdefghijklmnopqrstuvwxyz0123456789"
-LEAKS = re.compile(r"sk-|/home/|ox")
+LEAKS = re.compile(r"sk-|/home/|alice")
 
 
 def git(repo: Path, *args: str) -> str:
@@ -45,7 +45,7 @@ def codebase(tmp_path: Path) -> tuple[Path, str]:
     repo = tmp_path / "shop"
     repo.mkdir()
     git(repo, "init", "-q", "-b", "main")
-    (repo / "calc.py").write_text(BUGGY + f"API_KEY = '{KEY}'\nROOT = '/home/ox/Sites/shop'\n")
+    (repo / "calc.py").write_text(BUGGY + f"API_KEY = '{KEY}'\nROOT = '/home/alice/Sites/shop'\n")
     git(repo, "add", "-A")
     git(repo, "commit", "-q", "-m", "base")
     base = git(repo, "rev-parse", "HEAD")
@@ -60,8 +60,8 @@ def failed_task(base: str, **fields: object) -> TaskRecord:
         1,
         done=False,
         hops=[hop(evidence={"commit": "c", "baseCommit": base, "diffStat": None})],
-        description=f"Fix add() in calc.py. The deploy key is {KEY}; the checkout lives in /home/ox/Sites/shop.",
-        reason=f"gate failed: pytest said no under /home/ox/Sites/shop with {KEY}",
+        description=f"Fix add() in calc.py. The deploy key is {KEY}; the checkout lives in /home/alice/Sites/shop.",
+        reason=f"gate failed: pytest said no under /home/alice/Sites/shop with {KEY}",
         failure_kind="gate_failed",
         **fields,
     )
