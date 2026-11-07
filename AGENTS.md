@@ -44,7 +44,12 @@ task; load only the referenced section or spec.
    imports everything. No function-local `docket.*` import; no module over 1,000 lines (D-78). The
    contracts are enforced by `tests/architecture/`; `cli/`, `core/` and `edges/` no longer exist.
    `dispatch_tool` is in `agent/tools/registry.py` and the store in `platform/store.py`.
-5. Run focused checks first; run the full required gates before handoff. Never regenerate a golden
+5. A change to what the agent sees or may do (a prompt, the context rules, a role, a pipeline, a
+   guardrail, the default model) names its eval suite, its threshold and its base commit before it
+   starts, and writes the task first when none captures the defect. The contract is
+   `specs/test-framework.md` "Agent evals". A change that leaves the agent's inputs and powers alone
+   needs only the steps above.
+6. Run focused checks first; run the full required gates before handoff. Never regenerate a golden
    to hide an unintended change or edit a counting script to make a claim pass.
 
 Prefer compact evidence in handoffs: decision, files changed, tests run, unresolved risk, next
