@@ -204,7 +204,7 @@ class World:
         found = _TASK_ID.search(result.out + result.err)
         assert found, f"no task id in the output of task add:\n{result.describe()}"
         listed = self.docket("task", "list", "--pod", self.pod, "--json").json()["tasks"]
-        return next(t["id"] for t in listed if t["id"].startswith(found.group(0)))
+        return str(next(t["id"] for t in listed if t["id"].startswith(found.group(0))))
 
     def task(self, task_id: str) -> dict[str, Any]:
         """The task record, as ``docket task show --json`` prints it."""
