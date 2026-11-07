@@ -107,13 +107,13 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Pod Blueprints | 4.11.0 | Implemented |
 | Pod Dispatch | 12.9.0 | Implemented |
 | Role Archetypes | 5.13.0 | Implemented |
-| Security Gates | 3.17.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
+| Security Gates | 3.18.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Service Client | 1.5.0 | Implemented in part (the document, the tools, the call, the writes handling and the OpenAPI 3 or 2 import; not proven against a real service) |
 | Pod Records | 1.9.0 | Implemented in part (the store, the document, the CLI, the agent tools and the two HTTP read routes; not proven against a live model) |
 | Session History | 1.23.0 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 5.0.0 | Implemented |
-| Trace Store | 6.0.0 | Implemented and live |
+| Trace Store | 6.1.0 | Implemented and live |
 | Workspace Structure | 4.3.0 | Complete |
 | CLI Interface | 5.16.0 | Complete |
 | MCP Client | 3.2.0 | Implemented and wired to the live turn path |
@@ -124,10 +124,10 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Docket Store | 3.5.0 | Implemented |
 | Operator API | 7.30.0 | Implemented (Phase 43, ADR 0027) |
 | A2a Binding | 1.3.1 | Implemented |
-| Serve Read API | 6.6.0 | Stable |
+| Serve Read API | 6.7.0 | Stable |
 | Adoption Benchmark | 2.3.1 | Implemented |
 | Input Validation | 2.2.0 | Implemented |
-| Test Framework | 5.0.0 | Active |
+| Test Framework | 5.3.0 | Active |
 | Starter Journey | 2.1.0 | Implemented |
 | Operator Loop | 3.7.0 | Implemented |
 | User Stories | 2.3.0 | Active |
