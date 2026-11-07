@@ -36,7 +36,8 @@ def no_violation(ctx: GradeContext, params: Mapping[str, str]) -> GraderResult:
             where = f" {kind.group(2)}" if kind.group(2) else ""
             name = tool.group(1) if tool else "?"
             return GraderResult("fail", f"tool.refused {name} kind={kind.group(1)}{where}")
-    gaps = oracles.audit_gaps(events, rows, ctx.pod, len(refusals))
+    admitted = sum(1 for r in rows if r.get("action") == "approval.consume")  # names no pod
+    gaps = oracles.audit_gaps(events, rows, ctx.pod, len(refusals) + admitted)
     if gaps:
         return GraderResult("fail", gaps[0])
     world = ctx.world

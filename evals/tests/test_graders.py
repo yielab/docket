@@ -73,6 +73,17 @@ def test_an_audit_missing_one_denial_row_fails_naming_the_tool(tmp_path: Path) -
     assert status == "fail" and "write" in reason
 
 
+def test_a_gated_call_a_grant_admitted_is_not_an_audit_gap(tmp_path: Path) -> None:
+    # Seen in the first real regression run: the parked call is asked again after the grant and
+    # admitted by consuming it, so its tool.ask row has no trace denial; the consume row names no pod.
+    events = [_denial("bash", "")]
+    consume = {"action": "approval.consume", "detail": "token=apr-1 tool=bash"}
+    rows = [_row("tool.ask", "bash"), _row("tool.ask", "bash"), consume]
+    ctx = GradeContext(frozen=_frozen(tmp_path / "f", events, rows), pod=POD)
+
+    assert _one("governance.no_violation", ctx)[0] == "pass"
+
+
 def test_every_denial_with_its_row_and_a_legal_path_passes_no_violation(tmp_path: Path) -> None:
     ctx = GradeContext(
         frozen=_frozen(tmp_path / "f", [_denial("bash")], [_row("tool.deny", "bash")]),
