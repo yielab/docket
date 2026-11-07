@@ -576,6 +576,10 @@ from `main`.
 
 **Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + deletion + spec + data · **After:** P69-14
 
+- **Found by the eval lane (2026-11-07):** `evals/tasks/regression/report-mentions-payments` failed 0/3 on the local
+  model at `014feff2`: `high-risk-payment` asked on the Lead's and the Reviewer's `handoff`, whose summary names Stripe
+  and payments, and the scripted deny ended the task. A `handoff` moves no money; this card's "every tool that acts"
+  must leave control tools (`handoff`, `consult`) out, and that task is its oracle (3/3 after the card).
 - **Goal:** `evaluate_tool_call` (`gate.py:71-111`) applies `match_high_risk` to `render_tool_call(tool.name, args)` for
   every tool whose kind is not `read` and whose name is not `write` or `edit` (the classifier keeps doing it for `exec`
   with its three command forms); a match asks with the class name. `HIGH_RISK_PATTERNS` gains what only the templates
