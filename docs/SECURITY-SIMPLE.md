@@ -516,9 +516,16 @@ locally. Review what landed before you push.
 ## What If Something Goes Wrong?
 
 ### Prompt Injection Found
+docket's `prompt-injection` policy is a phrase tripwire, not a defence. It matches a short list of
+override wording ("ignore previous instructions", "you are now", and similar) in untrusted input and
+**warns**. It does not block, so the input still reaches the model. Paraphrases, other languages and
+encodings pass it, so a quiet policy proves nothing about the input.
+
+What limits the damage is the gate and the jail: the gate decides every tool call docket dispatches,
+and the jail limits what those calls can reach where isolation is on. The Reviewer may or may not
+notice injected text, and nothing here measures how often it does. Check by hand:
 ```bash
-# Reviewer will catch it and REJECT
-# If somehow missed, search manually:
+# A phrase search only: it misses anything reworded
 grep -rn "ignore previous\|you are now" ~/Sites/myproject/src/
 ```
 
@@ -532,10 +539,16 @@ Truly destructive bins (`rm`, `dd`, `docker`, `systemctl`, ...) are gated on a d
 (see the status note above).
 
 ### Hardcoded Secret Found
+docket does not scan your source for hardcoded secrets. What it does is narrower. `secrets.redact`
+runs on every trace event, so a secret that passes through docket's trace is written redacted. The
+audit log records credential names, not values (see The Audit Log below). `docket log` shows the
+gate's non-allow decisions. Where isolation is on, the jail limits what a command can reach on disk
+and on the network.
+
+The Reviewer may or may not notice a hardcoded secret, and nothing here measures that. Check by hand:
 ```bash
-# Reviewer will catch it and REJECT
-# If missed, search manually:
-grep -rn "api_key.*=.*['\"][a-zA-Z0-9]{20,}" ~/Sites/myproject/src/
+# Matches api_key = "..." style literals only; other shapes slip past
+grep -rnE "api_key.*=.*['\"][a-zA-Z0-9]{20,}" ~/Sites/myproject/src/
 ```
 
 ---
