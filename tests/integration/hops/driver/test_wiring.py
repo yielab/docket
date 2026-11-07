@@ -16,6 +16,7 @@ from tests.support.driver_harness import (
     _ScriptedBackend,
 )
 from tests.support.fakes import FakeJail
+from tests.support.loop_harness import unframed
 from tests.support.pods import write_meta_overrides as _write_meta
 from tests.support.roles import write_role_overlay
 
@@ -164,7 +165,7 @@ class TestIsolationWiring:
 
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
-        assert tool_msg.content == "sandbox=off"
+        assert unframed(tool_msg.content) == "sandbox=off"
 
     def test_no_recorded_choice_runs_on_the_host_without_probing_a_backend(
         self, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
@@ -187,7 +188,7 @@ class TestIsolationWiring:
 
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
-        assert tool_msg.content == "sandbox=off"
+        assert unframed(tool_msg.content) == "sandbox=off"
         assert not [e for e in read_audit() if e["action"] == "isolation.refused"]
 
     def test_isolation_on_with_no_backend_refuses_naming_the_fixes(
@@ -221,7 +222,7 @@ class TestIsolationWiring:
 
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
-        assert tool_msg.content == "sandbox=auto"
+        assert unframed(tool_msg.content) == "sandbox=auto"
 
     def test_isolation_on_no_backend_refuses_the_turn_rather_than_running_unsandboxed(
         self, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
@@ -291,7 +292,7 @@ class TestIsolationWiring:
 
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
-        assert tool_msg.content == "sandbox=auto"
+        assert unframed(tool_msg.content) == "sandbox=auto"
 
 
 # DOCKET_APPROVAL_MODE travels the same internal env-coordinate route as
@@ -314,7 +315,7 @@ class TestApprovalModeWiring:
 
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
-        assert tool_msg.content == "approval_mode=wait"
+        assert unframed(tool_msg.content) == "approval_mode=wait"
 
     def test_env_refuse_reaches_the_tool_context(self) -> None:
         _write_meta("mode-refuse-agent")
@@ -334,7 +335,7 @@ class TestApprovalModeWiring:
 
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
-        assert tool_msg.content == "approval_mode=refuse"
+        assert unframed(tool_msg.content) == "approval_mode=refuse"
 
     def test_an_unrecognized_value_falls_back_to_wait(self) -> None:
         _write_meta("mode-garbage-agent")
@@ -354,7 +355,7 @@ class TestApprovalModeWiring:
 
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
-        assert tool_msg.content == "approval_mode=wait"
+        assert unframed(tool_msg.content) == "approval_mode=wait"
 
     def test_the_env_coordinate_never_leaks_into_the_tool_visible_environment(self) -> None:
         # "env" (not "echo") is on governance.security.SAFE_BINS' curated allowlist,
@@ -447,7 +448,7 @@ class TestAllowCommandsWiring:
 
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
-        assert tool_msg.content == "allow_commands="
+        assert unframed(tool_msg.content) == "allow_commands="
 
     def test_a_pod_member_sees_its_leads_configured_setting(self) -> None:
         _write_meta("shop-implementer")
@@ -462,7 +463,7 @@ class TestAllowCommandsWiring:
 
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
-        assert tool_msg.content == "allow_commands=tox,uv"
+        assert unframed(tool_msg.content) == "allow_commands=tox,uv"
 
     def test_a_member_of_a_different_pod_sees_no_extra_bins(self) -> None:
         _write_meta("shop-implementer")
@@ -478,7 +479,7 @@ class TestAllowCommandsWiring:
 
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
-        assert tool_msg.content == "allow_commands="
+        assert unframed(tool_msg.content) == "allow_commands="
 
     def test_a_malformed_pod_setting_fails_closed_to_no_extra_bins(
         self, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
@@ -501,7 +502,7 @@ class TestAllowCommandsWiring:
 
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
-        assert tool_msg.content == "allow_commands="
+        assert unframed(tool_msg.content) == "allow_commands="
 
     def test_the_extra_bin_actually_reaches_the_real_gate_end_to_end(self) -> None:
         """The whole-path proof: `uname`, off SAFE_BINS, executes unattended
@@ -637,7 +638,7 @@ class TestApprovalWaitWiring:
         )
         result = driver.run_turn(agent_id, f"agent:{agent_id}:default", "go", 30, env)
         assert result.ok is True
-        return str(next(m for m in backend.calls[1] if m.role == "tool").content)
+        return unframed(next(m for m in backend.calls[1] if m.role == "tool").content)
 
     def test_the_approval_wait_travels_in_the_env_and_leaves_the_global_alone(
         self, tmp_path: Path

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from tests.support.driver_harness import _final_response, _ScriptedBackend
+from tests.support.loop_harness import unframed
 from tests.support.pods import write_meta_overrides as _write_meta
 
 from docket.agent.ports import (
@@ -101,7 +102,7 @@ def test_verify_runs_exactly_the_steps_command_in_its_directory_and_reports_the_
     _turn("implementer", tmp_path, _plan(tmp_path, command), backend)
 
     tool_message = next(m for m in backend.calls[1] if m.role == "tool")
-    assert tool_message.content == "exit 3\nchecked the thing"
+    assert unframed(tool_message.content) == "exit 3\nchecked the thing"
     assert (tmp_path / "marker.txt").read_text() == "ran\n"
     assert not (tmp_path / "other.txt").exists()
 
@@ -109,7 +110,7 @@ def test_verify_runs_exactly_the_steps_command_in_its_directory_and_reports_the_
 def test_a_silent_failure_is_just_the_exit_code(tmp_path: Path) -> None:
     backend = _RecordingBackend([_verify_call({}), _final_response("done")])
     _turn("implementer", tmp_path, _plan(tmp_path, "false"), backend)
-    assert next(m for m in backend.calls[1] if m.role == "tool").content == "exit 1"
+    assert unframed(next(m for m in backend.calls[1] if m.role == "tool").content) == "exit 1"
 
 
 def test_a_command_the_classifier_would_ask_about_is_not_parked_and_leaves_no_audit_row(
@@ -120,7 +121,7 @@ def test_a_command_the_classifier_would_ask_about_is_not_parked_and_leaves_no_au
     env = {**_plan(tmp_path, command), DOCKET_APPROVAL_MODE: "refuse"}
     _turn("implementer", tmp_path, env, backend)
 
-    assert next(m for m in backend.calls[1] if m.role == "tool").content == "exit 0"
+    assert unframed(next(m for m in backend.calls[1] if m.role == "tool").content) == "exit 0"
     assert [e for e in _audit.read_audit() if str(e["action"]).startswith("tool.")] == []
 
 
@@ -130,4 +131,4 @@ def test_the_report_is_normalized_like_a_bash_result(tmp_path: Path) -> None:
     _turn("implementer", tmp_path, _plan(tmp_path, command), backend)
 
     tool_message = next(m for m in backend.calls[1] if m.role == "tool")
-    assert tool_message.content == "exit 1\nfail\nboom  [x 30]"
+    assert unframed(tool_message.content) == "exit 1\nfail\nboom  [x 30]"

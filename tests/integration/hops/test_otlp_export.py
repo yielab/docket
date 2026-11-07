@@ -30,6 +30,7 @@ from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, 
 from docket.hops.application import driver as docket_runtime
 from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
+from docket.kernel import untrusted
 from docket.kernel.home import current_home, use_home
 from docket.observability import exporter as _exporter
 from docket.observability import telemetry as _telemetry
@@ -415,7 +416,9 @@ class TestCapturedContentReachesTheWire:
         user = next(m for m in second if m["role"] == "user")
         assert "CANARY-TASK" in json.dumps(user)
         tool_part = next(m for m in second if m["role"] == "tool")["parts"][0]
-        assert tool_part["response"].startswith("1\tCANARY-FILE-")
+        framed = tool_part["response"].split("\n")
+        assert framed[0] == untrusted.head("result of read")
+        assert framed[2].startswith("1\tCANARY-FILE-")
         assert len(tool_part["response"].split("…[truncated")[0]) == 100
         output = self._attr(chats[-1], "gen_ai.output.messages") or ""
         assert "CANARY-REPLY" in output

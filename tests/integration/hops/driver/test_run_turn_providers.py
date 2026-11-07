@@ -13,6 +13,7 @@ from tests.support.driver_harness import (
     _ScriptedBackend,
 )
 from tests.support.home import record_isolation_off
+from tests.support.loop_harness import unframed
 from tests.support.pods import write_meta_overrides as _write_meta
 
 from docket.agent.ports import (
@@ -34,8 +35,9 @@ SUBJECT = "docket.hops.application.driver"
 
 
 def _tool_reply(backend: _ScriptedBackend) -> str:
-    """The tool message's text, without the leading line number `read` prefixes."""
-    return next(m for m in backend.calls[1] if m.role == "tool").content.removeprefix("1\t").strip()
+    """The tool message's text, without the untrusted frame and the line number `read` prefixes."""
+    tool = next(m for m in backend.calls[1] if m.role == "tool")
+    return unframed(tool.content).removeprefix("1\t").strip()
 
 
 class TestRunTurn:

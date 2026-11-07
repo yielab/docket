@@ -14,6 +14,7 @@ from tests.support.driver_harness import (
     _read_call_response,
     _ScriptedBackend,
 )
+from tests.support.loop_harness import unframed
 from tests.support.pods import write_meta_overrides as _write_meta
 
 from docket.agent.ports import (
@@ -362,4 +363,4 @@ class TestConsultParkWiring:
 
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
-        assert tool_msg.content == expected
+        assert unframed(tool_msg.content) == expected
