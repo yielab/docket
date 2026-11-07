@@ -2,10 +2,10 @@
 `governance/policy.py`'s `policy_eval_detail` is wired into `agent/tools/registry.py`'s single decision point
 (`evaluate_tool_call`), combined with the command classifier (most-restrictive-wins); an `ask`
 verdict routes to a synchronous waiter on the real approval store (`wait_for_approval`) so a
-tool call actually blocks on a human, not a no-op -- without this, docket ships four
+tool call actually blocks on a human, not a no-op -- without this, docket ships
 `pre_tool_call` templates and evaluates none.
 Pins: `render_tool_call`'s exact shape (every shipped pattern depends on it); `block-destructive`
-gating `rm -rf` through `dispatch_tool` with the handler proven not to run; `high-risk-deploy`
+gating `rm -rf` through `dispatch_tool` with the handler proven not to run; the built-in `prod-deploy` class
 catching `git push origin main` by argument while `.../feature/x` stays allowed; `block` denies,
 `require_approval` asks then executes iff granted, an unanswered approval times out to denied,
 every decision is audited. No test sleeps for real: the clock is injected or monkeypatched.
@@ -171,7 +171,7 @@ class TestBlockDestructiveShippedTemplate:
 
 
 class TestHighRiskDeployByArgument:
-    """Acceptance: high-risk-deploy catches `git push origin main` by
+    """The built-in prod-deploy class catches `git push origin main` by
     argument, while `git push origin feature/x` stays allowed."""
 
     def test_push_to_main_is_gated_push_to_a_feature_branch_is_not(self, ctx: ToolContext) -> None:
@@ -183,9 +183,8 @@ class TestHighRiskDeployByArgument:
         allowed = evaluate_tool_call(bash_tool, {"command": "git push origin feature/x"}, ctx)
 
         assert gated.decision == "ask"
-        assert gated.policy_id == "high-risk-deploy"
+        assert "prod-deploy" in gated.reason
         assert allowed.decision == "allow"
-        assert allowed.policy_id in ("", "high-risk-deploy")  # no hit at all, or hit-but-allow
         assert allowed.policy_action in ("", "allow")
 
 

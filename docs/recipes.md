@@ -32,7 +32,6 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 | [`intake`](#intake) | 1 member, pipeline `intake` | The Lead reasons about a task before any code changes: a typed brief, a deterministic resource check, and an operator question when something only a human can answer. |
 | [`mutation`](#mutation) | pipeline `mutation` | Fails a task whose changed source files are not well covered by their tests, measured by mutation testing with mutmut (must be installed). |
 | [`no-egress`](#no-egress) | 3 policies | Ask before a bash-run network client, package install, or fetch call leaves the workspace. |
-| [`ops-approval`](#ops-approval) | 1 policy | A policy that asks a person before an operator's deploy- or production-shaped command runs. |
 | [`outward`](#outward) | 2 policies | The policy pack of a respond pod - a send tool asks a person first, and the pod's sends are capped. |
 | [`parallel-explore`](#parallel-explore) | 2 members, pipeline `parallel-explore` | Two cheap-tier Researchers mapping disjoint parts of the code in parallel, then an Implementer gated on its verify command, with one retry back to the Lead. |
 | [`prod-approval`](#prod-approval) | 1 policy | Ask before an implementer or operator runs a deploy/production-shaped command. |
@@ -641,54 +640,6 @@ rm ~/.docket/config/pods/<project>/policies/no-egress-ask-package-installs.yaml
 rm ~/.docket/config/pods/<project>/policies/no-egress-ask-fetch.yaml
 ```
 
-## ops-approval
-
-A policy that asks a person before an operator's deploy- or production-shaped command runs.
-
-**Brings:** 1 policy. **Summary line:** `roles 0 · policies 1 · members 0 · pipeline none · plugins 0 · skills 0 · settings 0`
-
-```bash
-docket init --recipe ops-approval
-docket pod update ops-approval
-```
-
-A policy that asks a person before the Operator runs a deploy- or production-shaped command
-(`kubectl apply`, `terraform apply`, `git push` to `main`, `npm publish`, `docker push` and
-the like), whatever pipeline step the command belongs to. It ships no pipeline and no members,
-because the `operate` pod blueprint (`docket init --blueprint operate`) already has the Operator,
-a human approval step before it acts, and a Reviewer after it. `operator` is a built-in starter
-archetype (`docket pod roles`).
-
-Use this recipe on a pod that has an `operator` member: an `operate` pod, or any pod that added
-one with `docket pod add operator`.
-
-### Apply it
-
-```bash
-docket pod update ops-approval    # onto an existing pod
-```
-
-`apply` validates the policy pack before writing anything and is safe to run again (a second run
-plans every item `skip`). `--dry-run` prints the plan without writing.
-
-Answer the resulting approval with `docket task answer <id> --option approve_once` / `--option deny` (`docket inbox` prints the exact line; also
-reachable over HTTP, MCP or Telegram `/answer` — every channel is audited). Unanswered
-requests are denied after `APPROVAL_TIMEOUT` (900s).
-
-### Files
-
-- `pod.yaml` — what `apply` reads: `kind: pod`, `name: ops-approval`, no members.
-- `policies/ops-approval-high-risk.yaml` — applied into the pod's own policy directory; it has a
-  structured `tool: bash` predicate alongside its `matches`, so it only evaluates the regex
-  against an actual shell command rather than every `pre_tool_call` hook's rendered text; it
-  requires approval for deploy/production shaped commands from the operator role.
-
-### Undo
-
-```bash
-rm ~/.docket/config/pods/<project>/policies/ops-approval-high-risk.yaml
-```
-
 ## outward
 
 The policy pack of a respond pod - a send tool asks a person first, and the pod's sends are capped.
@@ -943,13 +894,11 @@ docket pod update prod-approval
 
 A policy pack: one guardrail policy, no roles, no pipeline, no members.
 
-**Threat model, in three sentences.** `ops-approval` gates the Operator role, but a pod's
-Implementer can run the exact same deploy commands through `bash` on the way to "done", and the
-Implementer has no approval gate of its own in most pipelines. A production-shaped command --
-`kubectl apply`, `terraform apply`, `docker push`, a `git push` to `main` -- is expensive to
-undo and easy to run by habit under time pressure, from either role. This pack asks before
-either role runs one, independent of whatever pipeline step reached it, closing the same gap
-`ops-approval` closes but for the role that most often actually holds the shell.
+**Threat model, in three sentences.** A pod's Implementer can run deploy commands through `bash`
+on the way to "done", and the Implementer has no approval gate of its own in most pipelines. A
+production-shaped command -- `kubectl apply`, `terraform apply`, `docker push`, a `git push` to
+`main` -- is expensive to undo and easy to run by habit under time pressure, from either role.
+This pack asks before either role runs one, independent of whatever pipeline step reached it.
 
 ### Apply it
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import urllib.parse
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -25,7 +26,7 @@ from docket.governance import quota as _quota
 from docket.governance.audit import audit_log
 from docket.governance.gate_rules import AskRoute
 from docket.governance.secrets import redact as _redact
-from docket.governance.security import classify_command
+from docket.governance.security import classify_command, high_risk_reason, match_high_risk
 from docket.kernel.gate import (
     Decision,
     GateCall,
@@ -37,6 +38,10 @@ from docket.kernel.gate import (
 from docket.kernel.operator_contract import canonical_args_digest
 from docket.kernel.ports import git as _git
 
+#: The file tools carry content, not an action: no high-risk class reads it.
+_FILE_TOOLS = frozenset({"write", "edit"})
+#: Kinds that act on nothing outside docket's own records: no high-risk class reads their calls.
+_INERT_KINDS = frozenset({"read", "record"})
 _SEND_REASON = "this tool acts outside the machine; a person approves exactly what leaves"
 
 
@@ -70,9 +75,10 @@ def render_tool_call(name: str, args: dict[str, Any]) -> str:
 
 def evaluate_tool_call(tool: GatedTool, args: dict[str, Any], ctx: GateContext) -> ToolVerdict:
     """Decide whether this call may proceed. **The** decision point: combines the
-    argument-aware command classifier (``exec`` tools only, not a ``pregranted`` one) and the ``pre_tool_call``
-    policy hook in this one function so "what gates a call" has a single answer,
-    most-restrictive-wins (deny beats ask beats allow) -- see
+    argument-aware command classifier (an ``exec`` tool that is not ``pregranted``), the built-in
+    high-risk classes read over every other tool that acts (not ``read``, ``record``, ``write``
+    or ``edit``) and the ``pre_tool_call`` policy hook in this one function so "what gates a
+    call" has a single answer, most-restrictive-wins (deny beats ask beats allow) -- see
     specs/functional/security-gates.spec.md items 1-3 for why argument-awareness
     matters (``git`` is allowlisted, ``git push origin production`` is not). Never audits or
     traces, that is ``govern``'s job."""
@@ -86,6 +92,10 @@ def evaluate_tool_call(tool: GatedTool, args: dict[str, Any], ctx: GateContext) 
         )
         if cmd_verdict.action != "allow":
             command = (_rules.decision_for_command_action(cmd_verdict.action), cmd_verdict.reason)
+    elif tool.kind not in _INERT_KINDS and tool.name not in _FILE_TOOLS:
+        reason = _high_risk_of_call(tool.name, args)
+        if reason:
+            command = ("ask", reason)
 
     call = _policy.ToolCallFacts(
         tool=tool.name,
@@ -109,6 +119,27 @@ def evaluate_tool_call(tool: GatedTool, args: dict[str, Any], ctx: GateContext) 
         if over is not None:
             return over
     return ToolVerdict(decision, reason, policy_id=hit.policy_id, policy_action=hit.action)
+
+
+def _high_risk_of_call(name: str, args: dict[str, Any]) -> str:
+    """The high-risk reason for the rendered call or any string argument read as a command, else ``""``."""
+    for text in (render_tool_call(name, args), *_strings(args)):
+        risk = match_high_risk(text)
+        if risk is not None:
+            return high_risk_reason(risk)
+    return ""
+
+
+def _strings(value: Any) -> Iterator[str]:
+    """Every string inside *value* (a dict's values, a list's items), nested to any depth."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _strings(item)
 
 
 def _over_quota(tool: GatedTool, ctx: GateContext) -> ToolVerdict | None:

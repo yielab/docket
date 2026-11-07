@@ -55,7 +55,6 @@ RECIPES_DIR = _templates.RECIPES_DIR
 REQUIRED_RECIPES = (
     "secure-build",
     "research-review",
-    "ops-approval",
     "explore-then-edit",
     "strong-plan-cheap-edit",
     "parallel-explore",

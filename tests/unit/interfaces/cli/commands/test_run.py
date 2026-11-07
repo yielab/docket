@@ -98,7 +98,7 @@ class _ScriptedBackend:
 
 def _gated_bash_backend(after_gate: str) -> _ScriptedBackend:
     """Lead plans normally; the Implementer's first call is a `bash` command
-    `high-risk-deploy` gates (`then: ask`). A third reply answers the model
+    the built-in `prod-deploy` class gates (an `ask`). A third reply answers the model
     once the gate resolves, granted or denied, so the hop always finishes."""
     call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "git push origin main"}))
     return _ScriptedBackend(

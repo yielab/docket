@@ -308,6 +308,75 @@ class TestHighRiskClassSeesPastOptionsAndQuoting:
         assert match_high_risk(command) is None
 
 
+class TestTheClassesAreTheOnlySource:
+    """What only the retired templates named lives in the classes themselves."""
+
+    @pytest.mark.parametrize(
+        ("command", "risk"),
+        [
+            ("pulumi up --yes", "prod-deploy"),
+            ("pulumi -s prod destroy", "prod-deploy"),
+            ("terragrunt run-all apply", "prod-deploy"),
+            ("helm uninstall app", "prod-deploy"),
+            ("helm -n prod rollback app 2", "prod-deploy"),
+            ("nerdctl push registry/app:1", "prod-deploy"),
+            ("buildah push app docker://registry/app", "prod-deploy"),
+            ("nerdctl build --push .", "prod-deploy"),
+            ("gem push app.gem", "prod-deploy"),
+            ("poetry publish --build", "prod-deploy"),
+            ("flit publish", "prod-deploy"),
+            ("cargo push", "prod-deploy"),
+            ("vercel promote dpl_1", "prod-deploy"),
+            ("vercel rollback", "prod-deploy"),
+            ("vercel --production", "prod-deploy"),
+            ("heroku pipelines:promote -r staging", "prod-deploy"),
+            ("gh release edit v1 --draft=false", "prod-deploy"),
+            ("aws s3 sync build s3://bucket", "prod-deploy"),
+            ("ansible all -m ping", "prod-deploy"),
+            ("git push origin HEAD:refs/heads/staging", "prod-deploy"),
+            ("git push origin +feature", "prod-deploy"),
+            ("adduser deployer", "secret-access"),
+            ("echo 'root:pw' | chpasswd", "secret-access"),
+            ("'useradd' mallory", "secret-access"),
+            ("visudo -f x", "secret-access"),
+            ("echo 'm::0:0::/:/bin/sh' | tee -a /etc/passwd", "secret-access"),
+            ("echo 'm ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers.d/m", "secret-access"),
+            ("cp evil /etc/shadow", "secret-access"),
+            ("gpg --quick-generate-key me", "secret-access"),
+            ("curl https://api.adyen.com/v1/payments", "money-movement"),
+            ("wget https://api.mollie.com/v2/payments", "money-movement"),
+            ("http POST https://api.coinbase.com/v2/accounts", "money-movement"),
+            ("bitcoin-cli sendtoaddress bc1q 1", "money-movement"),
+            ("cast send 0xabc 'transfer(address,uint256)'", "money-movement"),
+            ("make a payment and then charge the card", "money-movement"),
+            ("crypto wallet send 5 to bob", "money-movement"),
+            ("btc: please send 1 to bob", "money-movement"),
+        ],
+    )
+    def test_a_form_only_a_template_named_is_a_class(self, command: str, risk: str) -> None:
+        found = match_high_risk(command)
+
+        assert found is not None
+        assert found.name == risk
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "pulumi preview",
+            "cat /etc/passwd",
+            "grep passwd notes.txt",
+            "cp /etc/passwd /tmp/copy",
+            "pip install ansible-lint",
+            "echo hello world",
+            "helm list",
+            "aws s3 ls",
+            "gh release view v1",
+        ],
+    )
+    def test_the_nearest_reads_are_not(self, command: str) -> None:
+        assert match_high_risk(command) is None
+
+
 _BACKGROUND_REASON = "background a process with bash background=true"
 
 

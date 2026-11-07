@@ -183,10 +183,10 @@ class TestBuiltinAndStarterArchetypes:
         assert found.gate_contract.kind == "none"
         assert "exactly that message" in found.soul_template
 
-    def test_the_outward_and_ops_approval_recipes_validate_and_carry_no_pipeline_or_roles(
+    def test_the_outward_recipe_validates_and_carries_no_pipeline_or_roles(
         self,
     ) -> None:
-        for name in ("outward", "ops-approval"):
+        for name in ("outward",):
             recipe = RECIPES_DIR / name
             assert not (recipe / "pipeline.yaml").exists(), name
             assert not (recipe / "roles").exists(), name

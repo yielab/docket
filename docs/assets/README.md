@@ -8,7 +8,7 @@ real run; there are no terminal screenshots and no invented output.
 | --- | --- | --- | --- |
 | `hero.gif` | A diagram, not captured output: the four pod shapes `docket` ships (`build`, `respond`, `operate`, `routine`), with the roles and gates of `specs/functional/pod-blueprints.spec.md`. A task walks each shape, one reviewer sends work back for rework, one step waits for a person, and a strip under all four shows the audit log growing | none (drawn by the renderer) | Docs index |
 | `isolation.png` | The Implementer's own workspace and git worktree, with `docket setup sandbox` showing isolation on (Landlock, network `none`) (the capture runs `docket setup sandbox on`); the operator's checkout holds only the exported team | `3-isolation` | Agent teams guide |
-| `governance.png` | The policy dry-run asks for a high-risk push; the Lead parks a consultation first and the operator answers it with `task answer`; then the Implementer's `bash` call parks the task as `waiting_approval` under `high-risk-deploy`, the audit logs `tool.ask`, the trace records the denial with `executed: false`, and the audit chain verifies | `4-gate` | Security guide |
+| `governance.png` | The policy dry-run asks for a high-risk push; the Lead parks a consultation first and the operator answers it with `task answer`; then the Implementer's `bash` call parks the task as `waiting_approval` under the `prod-deploy` class, the audit logs `tool.ask`, the trace records the denial with `executed: false`, and the audit chain verifies | `4-gate` | Security guide |
 
 The renderer uses the vendored `DejaVuSansMono.ttf` so glyphs and layout do not depend on host font
 packages. Its redistribution terms are retained in `DejaVu-FONT-LICENSE.txt`. The font is a source

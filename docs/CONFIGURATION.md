@@ -809,7 +809,7 @@ full page, generated from the recipes themselves, is [the recipe library](recipe
 | Kind | Recipes | What `apply` plans on a lean pod |
 |---|---|---|
 | Team | `secure-build`, `research-review`, `intake` | roles and members it needs, a pipeline, sometimes a policy |
-| Policy pack | `git-safety`, `no-egress`, `secrets-guard`, `prod-approval`, `ops-approval`, `outward` | policy items only: no roster change, no pipeline change |
+| Policy pack | `git-safety`, `no-egress`, `secrets-guard`, `prod-approval`, `outward` | policy items only: no roster change, no pipeline change |
 | Methodology | `tdd`, `spec-first`, `spec-writer`, `reflexion`, `cross-family-review`, `frugal` | the members the practice needs from the built-in and starter roles, and the smallest pipeline that *is* the practice (`frugal` also sets a budget) |
 | Check | `anti-tautology`, `mutation` | a pipeline with a `run:` step that fails the task when its tests prove nothing (`mutation` needs mutmut installed) |
 | Tooling | `code-intel` | MCP servers for the pod (structural search, read-only language intelligence) |

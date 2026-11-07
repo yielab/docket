@@ -253,7 +253,6 @@ docket pod check 'git push origin production' --role implementer
   Text:   git push origin production
   Result: ask
   Reason: matches high-risk action class 'prod-deploy': Production deploys and release pushes
-  Policy: 'high-risk-deploy' -> require_approval
 ```
 
 In a live run from a terminal that call waits for `docket task answer <escalation-id> --option approve_once` (also over HTTP,
@@ -263,7 +262,7 @@ executes, the audit log carries `tool.ask`, and the trace records the denial wit
 `executed: false`:
 
 <p align="center">
-  <img src="assets/governance.png" alt="Real terminal output: the policy dry-run answers ask; the Lead parks a question that docket task answer resolves; the Implementer's git push origin production parks the task for approval under high-risk-deploy; the audit log shows tool.ask, the trace shows the denial with executed false, and the chain verifies clean" width="760">
+  <img src="assets/governance.png" alt="Real terminal output: the policy dry-run answers ask; the Lead parks a question that docket task answer resolves; the Implementer's git push origin production parks the task for approval under the prod-deploy class; the audit log shows tool.ask, the trace shows the denial with executed false, and the chain verifies clean" width="760">
 </p>
 
 ---

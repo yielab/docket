@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.18.0
+**Version**: 3.19.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -47,8 +47,7 @@ and chain (audit.spec.md).
    command classifier plus `pre_tool_call` policies, active on every tool call docket dispatches;
    nothing turns it off. `git` and `npm` are on the allowlist, so `git status` does not ask, but
    `classify_command` matches `HIGH_RISK_PATTERNS` against the whole command line before it
-   consults `SAFE_BINS`, so `git push origin main` asks, and the `high-risk-deploy` `pre_tool_call`
-   policy asks on the same call independently (see "High-risk action classes").
+   consults `SAFE_BINS`, so `git push origin main` asks (see "High-risk action classes").
    - **Segments.** Every segment behind `;`, `&&`, `||` and `|` is classified. An unquoted,
      unescaped newline (`\n`, `\r\n`) **MUST** start a new segment exactly like `;`, since
      `/bin/sh` starts a new command there; a newline inside quotes stays text and a
@@ -291,7 +290,16 @@ and chain (audit.spec.md).
    with its quoting undone (`"vault" kv put`, `api.s""tripe.com`) and with its options dropped
    (`kubectl -n prod apply`, `vault -address=x kv put`, `git -c k=v push origin main`), so an
    option before the verb or a quoted word does not hide it. It is a small seed, not exhaustive
-   coverage, and it is not configurable.
+   coverage, and it is not configurable. It is the one source of the high-risk classes: no policy
+   template, recipe or pack repeats a class, and every program, verb or phrase a class names is
+   in its pattern (`prod-deploy` holds `pulumi up|destroy`, `terragrunt apply|destroy`,
+   `helm uninstall|rollback`, `nerdctl|buildah push`, `cargo|gem|poetry|flit publish|push`,
+   `vercel promote|rollback`, `heroku pipelines:promote`, `gh release upload|edit`,
+   `aws s3 sync` and `ansible`; `secret-access` holds the account and password programs
+   (`adduser`, `useradd`, `usermod`, `userdel`, `chpasswd`, `passwd`, `chage`, `visudo`) and a
+   write to `/etc/passwd`, `/etc/shadow`, `/etc/group` or `/etc/sudoers`; `money-movement` holds
+   the payment providers' domains, `bitcoin-cli`/`litecoin-cli` sends, `cast send` and the
+   bounded payment, crypto and refund phrases).
 2. On every path docket controls, a high-risk match **MUST** take effect regardless of whether the
    invoked binary is on the curated allowlist; allowlist membership **MUST NOT** bypass a match.
    `classify_command` checks the classes before the allowlist, and `run_command` refuses a match
@@ -302,11 +310,21 @@ and chain (audit.spec.md).
 4. **Prod-deploy** **MUST** be described as fully enforced too. Two of its bins (`git`, `npm`) are
    on the allowlist, but every tool call of every turn passes `dispatch_tool`, which classifies a
    `bash` call's full command line with `classify_command` (telling `git push origin main` from
-   `git status` by argument, not binary) and separately evaluates the `high-risk-deploy`
-   `pre_tool_call` template. Both are argument-aware and both apply to every call.
+   `git status` by argument, not binary).
 5. The full high-risk class list (name, description, pattern, and which allowlisted bins a class
    overlaps, which the classifier's argument-awareness still gates) **MUST** be visible, read-only,
    via `docket setup sandbox classes`. This command **MUST NOT** change any configuration.
+6. **Every tool that acts.** `evaluate_tool_call` **MUST** match the classes against every call of
+   a tool whose kind is not `read` or `record`, and whose name is not `write` or `edit`: the
+   `exec` tools through `classify_command` (above), every other one (an MCP or service tool, a
+   `send` tool, `process_stop`) against its call rendered by `render_tool_call` and against each
+   string value of its arguments read as a command (so `kubectl -n prod apply` in a `command`,
+   `args` or `text` argument is read the way `bash` reads it). A match **MUST** `ask`, the reason
+   naming the class, with no policy installed. A `write` or `edit` call carries file content, not
+   an action: it moves no money and deploys nothing until something runs it, and running it is the
+   classes' job. A `read` tool, `handoff` and `consult` among them, acts on nothing: a `handoff`
+   whose summary names Stripe or a deploy **MUST NOT** ask. A `record` tool writes a row in
+   docket's own record store and is left out for the same reason as `write`.
 
 ### Known limits of the command gate
 
@@ -372,8 +390,8 @@ where it applies to commands docket itself launches.
    claimed as one in user-facing material.
 5. **Additive, not the gate.** The two classification points above (`run_command`'s refusal, the
    `pre_output` scan) add to the in-turn gate; they are not where a hop's tool calls are gated.
-   `dispatch_tool`'s classifier and the `high-risk-deploy` `pre_tool_call` template gate every
-   call before it runs.
+   `dispatch_tool`'s gate (the classifier for `exec`, requirement 6 of "High-risk action classes"
+   for every other acting tool) checks every call before it runs.
 
 ### Policy engine on the live path
 
@@ -550,10 +568,10 @@ policy is refused. A policy can test structured facts of a tool call beside its 
    malformed `--arg` is a usage error (exit 2).
 8. Every shipped policy template **MUST** be short-form YAML, installed under its own file name
    (`block-destructive.yaml`), with the id, predicate, applies-to, action and message its policy
-   suite pins. The four `ask` templates (`block-destructive`, `high-risk-credentials`,
-   `high-risk-deploy`, `high-risk-payment`) **MUST** be written with `when.command` for what a
+   suite pins. The `ask` template (`block-destructive`; the high-risk classes are built in, not a
+   template) **MUST** be written with `when.command` for what a
    shell command does, `tool`/`path` for the file tools and `matches` only for text without
-   structure. A `matches` item of these templates **MUST** carry `notTool: [write, edit]`: the content
+   structure. A `matches` item of this template **MUST** carry `notTool: [write, edit]`: the content
    of a file the built-in file tools write is not an action (it moves no money and drops no table
    until something runs it, and running it is `command`'s and the high-risk classes'), and a call's
    arguments are rendered JSON-encoded on one line, so a pattern over a file's content reads the
@@ -1783,12 +1801,12 @@ ToolResult(decision='deny', executed=False, denial_kind='approval_timeout',
            reason='<policy reason>; approval timed out and was denied')
 ```
 
-`high-risk-deploy` catches a production push by argument; the same tool with a feature branch is
-untouched:
+The built-in `prod-deploy` class catches a production push by argument; the same tool with a
+feature branch is untouched:
 
 ```text
 >>> evaluate_tool_call(bash_tool, {"command": "git push origin main"}, ctx)
-ToolVerdict(decision='ask', policy_id='high-risk-deploy', ...)
+ToolVerdict(decision='ask', reason="matches high-risk action class 'prod-deploy': ...", ...)
 >>> evaluate_tool_call(bash_tool, {"command": "git push origin feature/x"}, ctx)
 ToolVerdict(decision='allow', policy_id='', ...)
 ```
@@ -1992,8 +2010,9 @@ $ git clone https://anywhere.example/repo.git
   is no switch that turns auditing off (audit.spec.md).
 - A high-risk pattern match **MUST NOT** be bypassed by allowlist status on any path docket
   controls. All three classes are fully enforced: a `git push origin main`-shaped command through
-  `dispatch_tool`, which every pod-dispatch hop's calls pass, is gated by argument, by both the
-  command classifier and the `high-risk-deploy` policy.
+  `dispatch_tool`, which every pod-dispatch hop's calls pass, is gated by argument by the
+  command classifier, and the same text in any other acting tool's arguments is gated by the
+  same class.
 - A task rejected by a `pre_input` `block` policy **MUST NOT** be written to the pod's queue:
   `enqueue_task_once` **MUST** raise before the locked read-modify-write, not after. A `pre_output`
   `block` **MUST NOT** let a later pipeline step run; the hop that tripped it **MUST** be the
@@ -2146,7 +2165,7 @@ $ git clone https://anywhere.example/repo.git
   `tool_approval_poll_interval_s`, `approval_timeout`, `fetch_allowed_domains`,
   `fetch_max_response_bytes`, `fetch_timeout_s`, `policies_dir`, `plugins_dir`, `approvals_dir`,
   `sandbox_docker_image`, `jail_tmp_dir`, `prepare_cache_dir`, `pod_config_dir`
-- `src/docket/templates/policies/`: the six shipped policy templates
+- `src/docket/templates/policies/`: the three shipped policy templates
 - Tests that pin this spec: `tests/integration/agent/test_pre_tool_call_policy.py`
   (`TestRenderToolCallShape`, `TestBlockDestructiveShippedTemplate`,
   `TestDispatchToolApprovalRouting`), `tests/integration/governance/test_policy_engine.py`,

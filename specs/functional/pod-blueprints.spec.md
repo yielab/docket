@@ -121,9 +121,9 @@ This specification does NOT cover:
     role file; the send tool the Actor holds is the operator's role overlay's to name.
 71. A shipped recipe **MUST** carry only what a blueprint cannot. `outward` is `respond`'s policy
     pack (`ask` before every `send` tool, a send quota) and a README; it ships no pipeline, no
-    `roles/` directory and no members. `ops-approval` is an approval policy and a README for a pod
-    that wants a person to approve deploy-shaped operator commands; it ships no pipeline and no
-    members, because `operate` has the Operator. `intake` stays: an intake step on a `build` pod.
+    `roles/` directory and no members. A deploy-shaped command asks whatever the role, through the
+    built-in high-risk classes (security-gates.spec.md, "High-risk action classes"), so `operate`
+    needs no recipe for its Operator. `intake` stays: an intake step on a `build` pod.
 
 ### Workspace kind and the working directory
 
@@ -659,7 +659,6 @@ requirement 1). The shipped library groups by what a directory contains, not by 
 | --- | --- | --- |
 | Team | `secure-build` | roles (`security-vetter`, read-only) + policies + members + pipeline + skills (`security-review`) |
 | Team | `research-review` | members (`researcher`, `analyst`, `writer`, `reviewer`) + pipeline |
-| Policy pack | `ops-approval` | policies only: an approval policy for a deploy- or production-shaped operator command (`operate` has the Operator and its approval step) |
 | Policy pack | `outward` | policies only: ask before every `send` tool, and a send quota, for a `respond` pod; no MCP server ships, the README shows the server shapes and how the operator's role overlay names the Actor's send tool |
 | Policy pack | `git-safety` | policies only |
 | Policy pack | `no-egress` | policies only |
@@ -688,10 +687,8 @@ client, a package install, or a `fetch` call; `secrets-guard` blocks a write/edi
 like a credential file (`.env`, `.pem`, `.key`, `id_rsa`, `.p12`) or whose rendered text carries a
 private-key header, an AWS access-key id shape, or a bearer-token shape, and redacts the same
 shapes from output; `prod-approval` asks before an implementer or operator runs a
-deploy/production-shaped command, generalising `ops-approval`'s own policy beyond the operator
-role. `secure-build`'s and `ops-approval`'s own policies are stated the same way (an `anyOf` of
-`{tool, path}` pairs plus a `matches` for text; a `tool: bash` predicate beside the existing
-`matches`, respectively) rather than free-text matching.
+deploy/production-shaped command. `secure-build`'s own policy is stated the same way (an `anyOf`
+of `{tool, path}` pairs plus a `matches` for text) rather than free-text matching.
 
 Each methodology recipe is expressed only with the dialect `pipeline-format.spec.md` defines
 (`verify`, `verdict`, `on:` with `max`, `parallel`, `run:`, `model:`, `input`, and the manifest's

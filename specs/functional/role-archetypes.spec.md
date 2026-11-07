@@ -377,10 +377,9 @@ This specification does NOT cover:
    directories, never a global one). `docket pod update <file>` and `docket pod add <role>` remain
    valid for a partial or hand-tuned application. `docket pod recipes [<name>]` lists and shows
    the library (`pod-blueprints.spec.md`).
-5. At least three recipes **MUST** ship: one gating an Implementer's change on a custom read-only
-   reviewing role with a bounded rework cycle (`secure-build`), one over the research archetypes
-   with the reviewer's veto (`research-review`), and one gating an `operator` step on a human `approval`
-   gate (`ops-approval`). Each **MUST** carry a test that loads it from the shipped library (not a
+5. At least two recipes **MUST** ship: one gating an Implementer's change on a custom read-only
+   reviewing role with a bounded rework cycle (`secure-build`), and one over the research archetypes
+   with the reviewer's veto (`research-review`). Each **MUST** carry a test that loads it from the shipped library (not a
    hand-copied transcription) and validates it the way `docket pod validate` would.
 
 ### Role→model policy integration

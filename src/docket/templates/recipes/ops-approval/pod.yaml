@@ -1,3 +1,0 @@
-kind: pod
-name: ops-approval
-description: A policy that asks a person before an operator's deploy- or production-shaped command runs.

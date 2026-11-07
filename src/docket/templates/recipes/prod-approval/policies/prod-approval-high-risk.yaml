@@ -1,6 +1,6 @@
 kind: policy
 name: prod-approval-high-risk
-description: Any deploy/production-shaped command from an implementer or operator requires approval, independent of the pipeline's own approval gate -- the generalisation of ops-approval's own policy to a role that writes code, not only one that acts on it.
+description: Any deploy/production-shaped command from an implementer or operator requires approval, independent of the pipeline's own approval gate.
 appliesTo: [implementer, operator]
 when:
   tool: bash

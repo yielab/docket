@@ -2,13 +2,11 @@
 
 A policy pack: one guardrail policy, no roles, no pipeline, no members.
 
-**Threat model, in three sentences.** `ops-approval` gates the Operator role, but a pod's
-Implementer can run the exact same deploy commands through `bash` on the way to "done", and the
-Implementer has no approval gate of its own in most pipelines. A production-shaped command --
-`kubectl apply`, `terraform apply`, `docker push`, a `git push` to `main` -- is expensive to
-undo and easy to run by habit under time pressure, from either role. This pack asks before
-either role runs one, independent of whatever pipeline step reached it, closing the same gap
-`ops-approval` closes but for the role that most often actually holds the shell.
+**Threat model, in three sentences.** A pod's Implementer can run deploy commands through `bash`
+on the way to "done", and the Implementer has no approval gate of its own in most pipelines. A
+production-shaped command -- `kubectl apply`, `terraform apply`, `docker push`, a `git push` to
+`main` -- is expensive to undo and easy to run by habit under time pressure, from either role.
+This pack asks before either role runs one, independent of whatever pipeline step reached it.
 
 ## Apply it
 

@@ -131,7 +131,7 @@ class TestCommandClassifierIsArgumentAware:
     def test_echo_redirect_verdict_is_not_weakened_by_the_allowlist_change(self) -> None:
         """Adding `echo` to SAFE_BINS must not turn a redirected invocation into an
         unattended write: with no workspace to contain it, both targets still ask."""
-        for command in ("echo x > f", "echo x > /etc/passwd"):
+        for command in ("echo x > f", "echo x > /etc/hosts"):
             verdict = classify_command(command)
             assert verdict.action == "ask", command
             assert verdict.reason.startswith("output redirect to "), command
@@ -160,24 +160,6 @@ class TestGitGlobalOptionsBeforePush:
         verdict = classify_command(command)
         assert verdict.action == "ask", command
         assert verdict.risk_class == "prod-deploy"
-
-    def test_the_shipped_policy_matches_the_same_shapes(self, tmp_path: Path) -> None:
-        from docket.governance import policy as _policy
-        from docket.kernel.home import Home, use_home
-
-        def action(command: str) -> str:
-            args = {"command": command}
-            call = _policy.ToolCallFacts("bash", args, lambda: "")
-            return _policy.policy_eval_detail(
-                "implementer", "pre_tool_call", f"bash command={command!r}", call=call
-            ).action
-
-        with use_home(Home(tmp_path / ".docket")):
-            _policy.install_policies()
-
-            for command in ("git -c x=y push origin main", "git --no-pager push origin main"):
-                assert action(command) == "require_approval", command
-            assert action("git push origin feature/x") == "allow"
 
 
 class TestRedirectsIntoTheWorkspace:

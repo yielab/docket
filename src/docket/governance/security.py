@@ -98,11 +98,14 @@ class HighRiskClass:
     bins: tuple[str, ...] = ()
 
 
+# The accounts, password and sudo files a write to which hands over the machine.
+_AUTH_FILES = r"/etc/(?:passwd|shadow|group|sudoers)"
+
 # Seed list of high-risk action classes: money-movement, prod-deploy, and
 # secret-access. Intentionally small and named — a policy foundation, not
 # exhaustive coverage. Not user-configurable yet; a config-file override is
-# a natural follow-up. All three classes are fully enforced via
-# `classify_command` (argument-aware).
+# a natural follow-up. All three classes are fully enforced: `classify_command` reads an exec
+# tool's command, `gate.evaluate_tool_call` every other tool that acts (argument-aware).
 #
 # Each pattern is searched in three forms of a command (see `_command_forms`): the raw text, each
 # invocation with its quoting undone, and each invocation with its options dropped, so an option
@@ -114,8 +117,13 @@ HIGH_RISK_PATTERNS: tuple[HighRiskClass, ...] = (
         name="money-movement",
         description="Payment/financial operations: charges, refunds, payouts, transfers",
         pattern=(
-            r"\bstripe\b|\bpaypal\b|\bbraintree\b|charge\s+customer|refund.*amount"
+            r"\bstripe\b|\bpaypal\b|\bbraintree\b|charge\s+customer"
             r"|wire\s+transfer|bank\s+transfer|\bpayout\b"
+            r"|payment\W+(?:\w+\W+){0,4}charge|refund\W+(?:\w+\W+){0,4}amount"
+            r"|\b(?:crypto|btc|eth)\b\W+(?:\w+\W+){0,4}send"
+            r"|\b(?:adyen|mollie|squareup|plaid|wise|coinbase|checkout|braintreegateway)\.com\b"
+            r"|\b(?:bitcoin|litecoin)-cli(?:\s+\S+)?\s+(?:sendtoaddress|sendmany|send)\b"
+            r"|\bcast(?:\s+\S+)?\s+send\b"
         ),
     ),
     HighRiskClass(
@@ -123,14 +131,20 @@ HIGH_RISK_PATTERNS: tuple[HighRiskClass, ...] = (
         description="Production deploys and release pushes",
         pattern=(
             r"\bgit\b(?:\s+\S+)*?\s+push\b.*(?:\b(?:main|master|production|prod)\b|--(?:all|mirror)\b)"
-            r"|\b(npm|pnpm|yarn)(?:\s+\S+)?\s+publish\b|\bcargo\s+publish\b|\btwine\s+upload\b"
-            r"|\b(docker|podman)(?:\s+\S+)?\s+(push|stop)\b|\b(docker|podman)\b.*\s--push\b"
-            r"|\b(terraform|tofu)(?:\s+\S+)?\s+(apply|destroy)\b"
+            r"|\bgit\b(?:\s+\S+)*?\s+push\b[^;&|\n]*(?:\s\+\S|\s[^\s:]*:\S)"
+            r"|\b(npm|pnpm|yarn)(?:\s+\S+)?\s+publish\b|\b(?:cargo|gem|poetry|flit)(?:\s+\S+)?\s+(?:publish|push)\b"
+            r"|\btwine\s+upload\b"
+            r"|\b(?:docker|podman)(?:\s+\S+)?\s+(?:push|stop)\b|\b(?:nerdctl|buildah)(?:\s+\S+)?\s+push\b"
+            r"|\b(?:docker|podman|nerdctl)\b.*\s--push\b"
+            r"|\b(?:terraform|tofu|terragrunt)(?:\s+\S+)?\s+(?:apply|destroy)\b|\bpulumi(?:\s+\S+)?\s+(?:up|destroy)\b"
             r"|\bkubectl(?:\s+\S+)?\s+(apply|delete|replace|rollout)\b"
-            r"|\bhelm(?:\s+\S+)?\s+(upgrade|install)\b"
-            r"|\b(flyctl|fly)(?:\s+\S+)?\s+deploy\b|\bvercel\b.*(\bdeploy\b|--prod\b)"
-            r"|\bgh(?:\s+\S+)?\s+release\s+(create|delete|upload)\b"
-            r"|\bheroku\b.*\b(releases:rollback|promote)\b|\bansible-playbook\b"
+            r"|\bhelm(?:\s+\S+)?\s+(?:upgrade|install|uninstall|rollback)\b"
+            r"|\b(flyctl|fly)(?:\s+\S+)?\s+deploy\b"
+            r"|\bvercel\b.*(?:\b(?:deploy|promote|rollback)\b|--prod(?:uction)?\b)"
+            r"|\bgh(?:\s+\S+)?\s+release\s+(?:create|delete|upload|edit)\b"
+            r"|\bheroku\b.*\b(?:releases:rollback|promote|pipelines:promote)\b"
+            r"|\baws\b.*\bs3\s+sync\b"
+            r"|\bansible-playbook\b|(?:^|[|;&]\s*)ansible(?![\w-])"
         ),
         bins=("git", "npm"),
     ),
@@ -140,9 +154,12 @@ HIGH_RISK_PATTERNS: tuple[HighRiskClass, ...] = (
         pattern=(
             r"\bvault(?:\s+\S+)?\s+(write|kv\s+put|token\s+create)\b|ssh-keygen"
             r"|\bopenssl\b.*\b(genrsa|genpkey|ecparam)\b|\bopenssl\s+req\b.*\s-newkey\b"
-            r"|\bgpg\b.*--(full-|quick-)?(gen-key|generate-key)\b"
+            r"|\bgpg2?\b.*--(full-|quick-)?(gen-key|generate-key)\b"
             r"|\bkubectl(?:\s+\S+)?\s+(create|apply)\b.*secret"
             r"|\baws\b.*\b(secretsmanager|ssm)\b.*\b(put|create|update)-?"
+            r"|(?:^|[|;&]\s*)(?:adduser|useradd|usermod|userdel|chpasswd|passwd|chage|visudo)(?![\w-])"
+            rf"|>>?\s*{_AUTH_FILES}|\btee\b[^;&|\n]*\s{_AUTH_FILES}"
+            rf"|\b(?:cp|mv|install)\b[^;&|\n]*\s{_AUTH_FILES}\S*\s*$"
         ),
     ),
 )
@@ -162,6 +179,11 @@ def _command_forms(command: str) -> list[str]:
         forms.append(" ".join(words))
         forms.append(" ".join(w for w in words if not w.startswith("-")))
     return forms
+
+
+def high_risk_reason(risk: HighRiskClass) -> str:
+    """What an approver is told when *risk* matched: its name and what it guards."""
+    return f"matches high-risk action class {risk.name!r}: {risk.description}"
 
 
 def match_high_risk(command: str) -> HighRiskClass | None:
@@ -468,7 +490,7 @@ def classify_command(
     if risk is not None:
         return CommandVerdict(
             "ask",
-            f"matches high-risk action class {risk.name!r}: {risk.description}",
+            high_risk_reason(risk),
             bin_name=os.path.basename(segments[0].tokens[0]),
             risk_class=risk.name,
         )

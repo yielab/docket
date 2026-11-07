@@ -186,7 +186,7 @@ blueprint cannot: a method, a policy pack, a set of records, a schedule. Nothing
 |---|---|---|
 | `build` | `tdd`, `intake` (and the other code recipes in [the library](recipes.md)) | `tdd` is a red-then-green pipeline whose `check-red` step fails the task if the new test passes; `intake` is a Lead step that writes a typed brief and a resource check before any code changes |
 | `respond` | `outward` | the policy pack: ask a person before every `send` tool, and cap the sends |
-| `operate` | `ops-approval` | a policy that asks a person before a deploy- or production-shaped command |
+| `operate` | none | the blueprint carries its Operator, its approval step and a Reviewer; the built-in high-risk classes ask a person before a deploy-shaped command |
 | `routine` | `records` | a set, a capture pipeline and a weekly report routine; apply it with `docket pod update records` on a `routine` pod |
 
 ```bash
@@ -206,7 +206,7 @@ its own.
 | Department | Shape | Recipes to apply | What you add |
 |---|---|---|---|
 | software | `build` | `tdd`, `intake` | the repository and its `verify` command; prose in `INSTRUCTIONS.md`; a policy such as `git-safety` if you want one |
-| ops | `operate` | `ops-approval` | a service or MCP declaration for each system it changes; the runbook as prose; the input its Monitor watches |
+| ops | `operate` | none | a service or MCP declaration for each system it changes; the runbook as prose; the input its Monitor watches |
 | support | `respond` | `outward` | a service or MCP declaration to read the queue and one to send a reply; the Actor's role overlay naming that send tool; prose for tone and when to escalate; the send quota |
 | growth | `respond` | `outward` | a service or MCP declaration for the channel it publishes or sends on; the Actor's role overlay; prose for audience and voice; a quota |
 | revenue | `respond` | `outward` | the CRM or billing system as a declared service (reads open, writes behind approval); the Actor's role overlay; prose for the rules it must not break |

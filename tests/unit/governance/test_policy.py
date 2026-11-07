@@ -1,9 +1,7 @@
-"""High-risk action classes.
+"""The shipped policy templates and the policy store, in a hermetic POLICIES_DIR.
 
-Tests that high-risk policy templates fire require_approval for payment,
-production-deploy, and credential-write patterns — including on binaries that
-are in SAFE_BINS (exec allowlist). Uses the same hermetic oc_dir fixture
-pattern as test_gates_policies_approve_deny.py.
+The high-risk classes are built in and are tested with the gate (test_gate.py) and the
+classifier (test_security.py), not here.
 """
 
 from __future__ import annotations
@@ -19,7 +17,6 @@ import pytest
 
 import docket.kernel.templates as _templates
 from docket.governance import policy as _policy
-from docket.governance import security as _sec
 from docket.governance.gate import render_tool_call
 from docket.kernel.home import current_home, use_home
 
@@ -30,7 +27,7 @@ SUBJECT = "docket.governance.policy"
 
 @pytest.fixture()
 def policies_dir(tmp_path: Path) -> Iterator[Path]:
-    """Temp POLICIES_DIR containing all shipped templates (including high-risk)."""
+    """Temp POLICIES_DIR containing all shipped templates."""
     d = tmp_path / "policies"
     d.mkdir()
     with use_home(dataclasses.replace(current_home(), policies_dir_override=d)):
@@ -44,42 +41,6 @@ def policies_dir(tmp_path: Path) -> Iterator[Path]:
         yield d
 
 
-# ── high-risk-payment ─────────────────────────────────────────────────────────
-
-
-class TestHighRiskPayment:
-    def test_stripe_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "stripe charge customer"
-        ).action
-        assert action == "require_approval"
-
-    def test_paypal_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "paypal payout send"
-        ).action
-        assert action == "require_approval"
-
-    def test_wire_transfer_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "initiate wire transfer to account"
-        ).action
-        assert action == "require_approval"
-
-    def test_refund_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "refund amount to customer card"
-        ).action
-        assert action == "require_approval"
-
-    def test_non_payment_text_not_gated(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "list all orders in the database"
-        ).action
-        # Should not trigger a high-risk gate.
-        assert action != "require_approval"
-
-
 def _call_action(tool: str, args: dict[str, str]) -> str:
     """What the baseline policies answer one *tool* call carrying *args*."""
     call = _policy.ToolCallFacts(tool, args, lambda: "")
@@ -88,50 +49,16 @@ def _call_action(tool: str, args: dict[str, str]) -> str:
     ).action
 
 
-_REPORT_SENTENCES = (
-    "La app cobra con Stripe.",
-    "Storynory pays a payout to narrators.",
-    "## Monetizacion\nPayment by subscription.\n\n" + "texto " * 400 + "\nNo extra charge.",
-    "Payment model: freemium.\nLas monedas se recargan (recharge) cada semana.",
-    "Refund policy: 14 days.\n...\nThe amount of stories per month is 30.",
-    "Payment is optional; the first story is free of charge.",
-)
-
-
 class TestAFileIsNotAnAction:
     """The free-text clause of an `ask` template does not read a file tool's content
-    (security-gates "Policy format v1" 8): a report that mentions payments is not a payment."""
-
-    @pytest.mark.parametrize("tool", ["write", "edit"])
-    @pytest.mark.parametrize(
-        "content",
-        _REPORT_SENTENCES,
-        ids=["stripe", "payout", "far-apart", "recharge", "refund-amount", "free-of-charge"],
-    )
-    def test_a_report_that_mentions_payments_is_not_gated(
-        self, policies_dir: Path, tool: str, content: str
-    ) -> None:
-        key = "content" if tool == "write" else "new_string"
-        assert _call_action(tool, {"path": "informe.md", key: content}) == "allow"
+    (security-gates "Policy format v1" 8): a migration that drops a table drops nothing."""
 
     def test_a_migration_that_drops_a_table_is_written_freely(self, policies_dir: Path) -> None:
         args = {"path": "migrations/0002.sql", "content": "DROP TABLE legacy_orders;"}
         assert _call_action("write", args) == "allow"
 
-    def test_running_the_payment_still_asks(self, policies_dir: Path) -> None:
-        command = "curl https://api.stripe.com/v1/charges -u k: -d amount=100"
-        assert _bash_action(command) == "require_approval"
-
     def test_dropping_the_table_from_the_shell_still_asks(self, policies_dir: Path) -> None:
         assert _bash_action("psql -c 'drop table legacy_orders'") == "require_approval"
-
-    def test_an_mcp_tool_that_charges_still_asks(self, policies_dir: Path) -> None:
-        args = {"note": "charge customer 4242 for the plan"}
-        assert _call_action("mcp__pay__charge", args) == "require_approval"
-
-    def test_words_far_apart_in_one_command_no_longer_ask(self, policies_dir: Path) -> None:
-        command = "echo 'the payment page is done' && echo 'and every story is free of charge'"
-        assert _bash_action(command) == "allow"
 
 
 class TestNotToolValidation:
@@ -242,110 +169,6 @@ class TestBlockDestructiveTargets:
 
     def test_write_tool_content_naming_the_path_is_not_gated(self, policies_dir: Path) -> None:
         assert not _bd_hit(policies_dir, "write", {"path": "a.py", "content": "load(.env)"})
-
-
-# ── high-risk-deploy ──────────────────────────────────────────────────────────
-
-
-class TestHighRiskDeploy:
-    def test_git_push_main_requires_approval(self, policies_dir: Path) -> None:
-        # 'git' is in SAFE_BINS (exec allowlist) — policy still fires.
-        action = _bash_action("git push origin main")
-        assert action == "require_approval"
-
-    def test_git_push_production_requires_approval(self, policies_dir: Path) -> None:
-        action = _bash_action("git push origin production")
-        assert action == "require_approval"
-
-    def test_npm_publish_requires_approval(self, policies_dir: Path) -> None:
-        # 'npm' is in SAFE_BINS — policy still fires.
-        action = _bash_action("npm publish --access public")
-        assert action == "require_approval"
-
-    def test_terraform_apply_requires_approval(self, policies_dir: Path) -> None:
-        action = _bash_action("terraform apply -auto-approve")
-        assert action == "require_approval"
-
-    def test_helm_upgrade_requires_approval(self, policies_dir: Path) -> None:
-        action = _bash_action("helm upgrade my-chart ./chart --namespace prod")
-        assert action == "require_approval"
-
-    def test_git_push_feature_branch_not_gated(self, policies_dir: Path) -> None:
-        # Pushing to a feature branch is not high-risk.
-        action = _bash_action("git push origin feature/my-feature")
-        assert action != "require_approval"
-
-    def test_allowlisted_bin_still_gated_by_high_risk(self, policies_dir: Path) -> None:
-        # Core acceptance criterion: git and npm are in SAFE_BINS but the
-        # high-risk-deploy policy must override the allowlist.
-        assert "git" in _sec.SAFE_BINS
-        assert "npm" in _sec.SAFE_BINS
-        git_action = _bash_action("git push origin master")
-        npm_action = _bash_action("npm publish")
-        assert git_action == "require_approval", "git (allowlisted) must still gate on prod push"
-        assert npm_action == "require_approval", "npm (allowlisted) must still gate on publish"
-
-
-# ── high-risk-credentials ─────────────────────────────────────────────────────
-
-
-class TestHighRiskCredentials:
-    def test_vault_write_requires_approval(self, policies_dir: Path) -> None:
-        action = _bash_action("vault write secret/myapp api_key=xyz")
-        assert action == "require_approval"
-
-    def test_kubectl_create_secret_requires_approval(self, policies_dir: Path) -> None:
-        action = _bash_action("kubectl create secret generic db-creds")
-        assert action == "require_approval"
-
-    def test_openssl_genrsa_requires_approval(self, policies_dir: Path) -> None:
-        action = _bash_action("openssl genrsa -out key.pem 4096")
-        assert action == "require_approval"
-
-    def test_ssh_keygen_requires_approval(self, policies_dir: Path) -> None:
-        action = _bash_action("ssh-keygen -t ed25519 -C user@example.com")
-        assert action == "require_approval"
-
-    def test_adduser_requires_approval(self, policies_dir: Path) -> None:
-        action = _bash_action("adduser deployer")
-        assert action == "require_approval"
-
-    def test_read_secret_not_gated(self, policies_dir: Path) -> None:
-        # Reading a secret (vault read) is not a write — not high-risk.
-        action = _bash_action("vault read secret/myapp")
-        # No high-risk policy should fire on a read-only vault path.
-        assert action != "require_approval"
-
-
-# ── policy validation ─────────────────────────────────────────────────────────
-
-
-class TestHighRiskTemplatesValid:
-    """Every high-risk template must pass the schema validator."""
-
-    def test_payment_template_valid(self) -> None:
-        p = _templates.POLICY_TEMPLATES_DIR / "high-risk-payment.yaml"
-        assert p.exists(), "high-risk-payment.yaml template must exist"
-        err = _policy.validate_policy(p)
-        assert err == "", f"high-risk-payment.yaml invalid: {err}"
-
-    def test_deploy_template_valid(self) -> None:
-        p = _templates.POLICY_TEMPLATES_DIR / "high-risk-deploy.yaml"
-        assert p.exists(), "high-risk-deploy.yaml template must exist"
-        err = _policy.validate_policy(p)
-        assert err == "", f"high-risk-deploy.yaml invalid: {err}"
-
-    def test_credentials_template_valid(self) -> None:
-        p = _templates.POLICY_TEMPLATES_DIR / "high-risk-credentials.yaml"
-        assert p.exists(), "high-risk-credentials.yaml template must exist"
-        err = _policy.validate_policy(p)
-        assert err == "", f"high-risk-credentials.yaml invalid: {err}"
-
-    def test_all_three_have_class_field(self) -> None:
-        for name in ("high-risk-payment", "high-risk-deploy", "high-risk-credentials"):
-            p = _templates.POLICY_TEMPLATES_DIR / f"{name}.yaml"
-            doc = _policy.read_policy(p)
-            assert doc.get("class") == "high-risk", f"{name}.yaml must have class: high-risk"
 
 
 # ── policy store integrity (fail closed) ─────────────────────────────────────

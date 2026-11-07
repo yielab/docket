@@ -24,6 +24,7 @@ class _Tool:
     name: str = "write"
     kind: str = "write"
     deletes: bool = False
+    pregranted: bool = False
 
 
 @dataclass(frozen=True)
@@ -139,6 +140,84 @@ SEND_CALL = GateCall(SEND_TOOL, "call-send", SEND_ARGS)
 
 def _audit_actions() -> list[str]:
     return [str(e.get("action")) for e in _audit.read_audit()]
+
+
+class TestEveryToolThatActsMeetsTheHighRiskClasses:
+    """The built-in classes need no installed policy, and read only an action's arguments."""
+
+    def test_an_mcp_tool_that_charges_asks_naming_the_class(self) -> None:
+        tool = _Tool("mcp__pay__charge", "write")
+
+        verdict = _gate.evaluate_tool_call(tool, {"note": "charge customer 40"}, _Ctx())
+
+        assert verdict.decision == "ask"
+        assert "money-movement" in verdict.reason
+
+    def test_a_service_tool_carrying_a_command_reads_it_as_a_command(self) -> None:
+        tool = _Tool("svc__deploy__run", "write")
+
+        verdict = _gate.evaluate_tool_call(tool, {"args": "kubectl -n prod apply"}, _Ctx())
+
+        assert verdict.decision == "ask"
+        assert "prod-deploy" in verdict.reason
+
+    def test_a_command_nested_in_a_list_argument_is_read_too(self) -> None:
+        tool = _Tool("svc__deploy__run", "write")
+
+        verdict = _gate.evaluate_tool_call(tool, {"steps": [{"run": "terraform apply"}]}, _Ctx())
+
+        assert verdict.decision == "ask"
+
+    @pytest.mark.parametrize("name", ["write", "edit"])
+    def test_a_file_that_says_git_push_main_is_not_an_action(self, name: str) -> None:
+        args = {"path": "notes.md", "content": "git push origin main", "new_string": "stripe"}
+
+        assert _gate.evaluate_tool_call(_Tool(name, "write"), args, _Ctx()).decision == "allow"
+
+    @pytest.mark.parametrize("name", ["write", "edit"])
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "La app cobra con Stripe.",
+            "Storynory pays a payout to narrators.",
+            "## Monetizacion\nPayment by subscription.\n\n" + "texto " * 400 + "\nNo extra charge.",
+            "Payment model: freemium.\nLas monedas se recargan (recharge) cada semana.",
+            "Refund policy: 14 days.\n...\nThe amount of stories per month is 30.",
+            "Payment is optional; the first story is free of charge.",
+        ],
+        ids=["stripe", "payout", "far-apart", "recharge", "refund-amount", "free-of-charge"],
+    )
+    def test_a_report_that_mentions_payments_is_written_freely(
+        self, name: str, content: str
+    ) -> None:
+        args = {"path": "informe.md", "content": content, "new_string": content}
+
+        assert _gate.evaluate_tool_call(_Tool(name, "write"), args, _Ctx()).decision == "allow"
+
+    def test_words_far_apart_in_one_shell_command_do_not_ask(self) -> None:
+        command = "echo 'the payment page is done' && echo 'and every story is free of charge'"
+
+        verdict = _gate.evaluate_tool_call(_Tool("bash", "exec"), {"command": command}, _Ctx())
+
+        assert verdict.decision == "allow"
+
+    @pytest.mark.parametrize("name", ["handoff", "consult", "read", "grep"])
+    def test_a_tool_that_only_reads_or_hands_over_never_asks(self, name: str) -> None:
+        args = {"summary": "the report names Stripe, payments and a kubectl apply"}
+
+        assert _gate.evaluate_tool_call(_Tool(name, "read"), args, _Ctx()).decision == "allow"
+
+    def test_a_record_row_is_not_an_action(self) -> None:
+        tool = _Tool("records__refunds__add", "record")
+
+        verdict = _gate.evaluate_tool_call(tool, {"note": "charge customer 40"}, _Ctx())
+
+        assert verdict.decision == "allow"
+
+    def test_an_ordinary_call_of_an_acting_tool_is_allowed(self) -> None:
+        tool = _Tool("mcp__pay__lookup", "write")
+
+        assert _gate.evaluate_tool_call(tool, {"id": "42"}, _Ctx()).decision == "allow"
 
 
 class TestASendCall:
