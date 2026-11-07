@@ -1,0 +1,4 @@
+label: bad
+why: 'Each line is rounded first: three lines of 0.004 give 0.00 instead of 0.01. The visible lines are
+  already whole cents.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

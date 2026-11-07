@@ -1,0 +1,23 @@
+id: billing-refund-window-bad
+version: 1
+suite: reviewer
+shape: build
+origin: 'regression/report-mentions-payments (notes/billing.md); hand-built reviewer case billing-refund-window:
+  a mutant that passes the visible tests and fails a hidden one'
+instruction: Review change.diff, a proposed patch to this repository (it is not applied). REQUEST.md says
+  what the patch must do. Read the code it touches and judge whether it does exactly that, edge cases
+  included. Change nothing. End your reply with a last line that is exactly APPROVE or REQUEST-CHANGES.
+pipeline: pipeline.yaml
+pod:
+  blueprint: build
+  isolation: false
+operator:
+  approval: approve_once
+graders:
+  required:
+  - reviewer.verdict_matches
+  report:
+  - process.tokens
+  - process.time
+limits:
+  wall_seconds: 600

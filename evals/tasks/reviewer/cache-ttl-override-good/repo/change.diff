@@ -1,0 +1,41 @@
+diff --git a/cache.py b/cache.py
+--- a/cache.py
++++ b/cache.py
+@@ -5,18 +5,18 @@ TTL_S = 300
+ 
+ class Cache:
+     def __init__(self) -> None:
+-        self._items: dict[str, tuple[float, object]] = {}
++        self._items: dict[str, tuple[float, object, float]] = {}
+ 
+-    def set(self, key: str, value: object, now: float) -> None:
+-        self._items[key] = (now, value)
++    def set(self, key: str, value: object, now: float, ttl: float | None = None) -> None:
++        self._items[key] = (now, value, TTL_S if ttl is None else ttl)
+ 
+     def get(self, key: str, now: float) -> object | None:
+         """The value, or None when absent or 300 s old (expired from exactly 300 s on)."""
+         item = self._items.get(key)
+         if item is None:
+             return None
+-        stored, value = item
+-        if now - stored >= TTL_S:
++        stored, value, ttl = item
++        if now - stored >= ttl:
+             del self._items[key]
+             return None
+         return value
+diff --git a/tests/test_cache.py b/tests/test_cache.py
+--- a/tests/test_cache.py
++++ b/tests/test_cache.py
+@@ -11,3 +11,10 @@ def test_an_old_value_is_gone():
+     cache = cache_mod.Cache()
+     cache.set("session:42", "alice", now=0)
+     assert cache.get("session:42", now=400) is None
++
++
++def test_an_entry_can_carry_its_own_ttl():
++    cache = cache_mod.Cache()
++    cache.set("k", "v", now=0, ttl=10)
++    assert cache.get("k", now=5) == "v"
++    assert cache.get("k", now=20) is None

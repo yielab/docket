@@ -1,0 +1,36 @@
+diff --git a/tests/test_tokens.py b/tests/test_tokens.py
+--- a/tests/test_tokens.py
++++ b/tests/test_tokens.py
+@@ -4,3 +4,8 @@ import tokens
+ def test_the_boundary_second_is_expired():
+     assert tokens.is_expired(0, 60) is True
+     assert tokens.is_expired(0, 59) is False
++
++
++def test_a_long_gone_token_is_expired():
++    checker = tokens.TokenChecker(clock=lambda: 1_000)
++    assert checker.expired(30) is True
+diff --git a/tokens.py b/tokens.py
+--- a/tokens.py
++++ b/tokens.py
+@@ -1,8 +1,20 @@
+ """Token expiry; the clock is injected (tests must not patch time)."""
+ 
++import time
++from collections.abc import Callable
++
+ TTL_S = 60
+ 
+ 
+ def is_expired(issued_at: float, now: float) -> bool:
+     """A token issued at *issued_at* is expired from *issued_at* + 60 s on."""
+     return now - issued_at >= TTL_S
++
++
++class TokenChecker:
++    def __init__(self, clock: Callable[[], float] = time.time) -> None:
++        self._clock = clock
++
++    def expired(self, issued_at: float) -> bool:
++        """Whether a token issued at *issued_at* is expired by the injected clock."""
++        return is_expired(issued_at, self._clock())

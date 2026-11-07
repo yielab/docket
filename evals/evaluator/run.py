@@ -21,6 +21,7 @@ import typer
 
 from evals.evaluator.compare import ComparisonError, compare_runs, render, resolve_run
 from evals.evaluator.graders import GradeContext, grade_one
+from evals.evaluator.label import DIFF_FILE, read_label
 from evals.evaluator.nightly import (
     DEFAULT_MAX_TOKENS,
     LOCAL_BASE_URL,
@@ -101,14 +102,51 @@ def _grade(task: Task, grader: Grader, repo: Path, work: Path) -> Outcome:
     return Outcome(name, "pass" if result.status == "pass" else "fail", result.reason)
 
 
+def _check_case(task: Task, repo: Path, work: Path) -> list[Outcome]:
+    """The proof of a reviewer case's label: the diff the Reviewer reads is the solution patch, the
+    visible tests pass with it applied, and the hidden test passes for `good` and fails for `bad`."""
+    label = read_label(task.path).label
+    shown = (
+        (task.repo / DIFF_FILE).read_text(encoding="utf-8")
+        if (task.repo / DIFF_FILE).is_file()
+        else ""
+    )
+    patches = "".join(p.read_text(encoding="utf-8") for p in sorted(task.solution.glob("*.patch")))
+    if not shown or shown != patches:
+        return [Outcome(DIFF_FILE, "fail", f"repo/{DIFF_FILE} is not the diff in solution/*.patch")]
+    visible = run_hidden(repo, repo / "tests", work / "visible")
+    if visible.status != "pass":
+        return [
+            Outcome(
+                "visible", "fail", f"a {label} diff must pass the visible tests: {visible.status}"
+            )
+        ]
+    hidden = run_hidden(repo, task.hidden, work / "verify")
+    want = "pass" if label == "good" else "fail"
+    if hidden.status != want:
+        return [
+            Outcome(
+                "hidden",
+                "fail",
+                f"labelled {label}, so the hidden test must {want}; it {hidden.status}ed",
+            )
+        ]
+    return [
+        Outcome("hidden", "pass", f"labelled {label}: the hidden test {hidden.status}es as it must")
+    ]
+
+
 def check_task(task: Task) -> list[Outcome]:
-    """Apply the reference solution in a clean repository and grade every required grader."""
+    """Apply the reference solution in a clean repository and grade every required grader; a
+    reviewer case is checked against its label instead."""
     with tempfile.TemporaryDirectory(prefix="eval-check-") as tmp:
         work = Path(tmp)
         repo = _seed(task, work)
         reason = _apply_solution(task, repo)
         if reason is not None:
             return [Outcome("solution", "fail", reason)]
+        if task.spec.suite == "reviewer":
+            return _check_case(task, repo, work)
         return [_grade(task, g, repo, work) for g in task.spec.graders.required]
 
 

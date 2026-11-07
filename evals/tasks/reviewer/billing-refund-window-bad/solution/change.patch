@@ -1,0 +1,26 @@
+diff --git a/billing.py b/billing.py
+--- a/billing.py
++++ b/billing.py
+@@ -6,3 +6,10 @@ PLANS = {
+     "team": (79, 250),
+ }  # name: (USD a month, stories a month)
+ REFUND_WINDOW_DAYS = 14
++
++
++def refund_cents(charge_cents: int, days_since_charge: int, unused_cents: int) -> int:
++    """The full charge within the refund window (day 14 included), else the unused months."""
++    if days_since_charge < REFUND_WINDOW_DAYS:
++        return charge_cents
++    return unused_cents
+diff --git a/tests/test_billing.py b/tests/test_billing.py
+--- a/tests/test_billing.py
++++ b/tests/test_billing.py
+@@ -3,3 +3,8 @@ import billing
+ 
+ def test_the_plans_are_priced():
+     assert billing.PLANS["pro"] == (29, 60)
++
++
++def test_early_and_late_refunds():
++    assert billing.refund_cents(900, 1, 300) == 900
++    assert billing.refund_cents(900, 30, 300) == 300

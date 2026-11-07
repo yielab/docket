@@ -1,0 +1,3 @@
+label: good
+why: '`is None` separates a missing plan from plan 0.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from evals.evaluator.graders import attack, governance, outcome, process
+from evals.evaluator.graders import attack, governance, outcome, process, reviewer
 from evals.evaluator.graders.base import GradeContext, GraderInputError, GraderResult
 from evals.evaluator.task import Grader, Graders
 
@@ -23,6 +23,7 @@ _REGISTRY: dict[str, _Fn] = {
     "outcome.task_status": outcome.task_status,
     "governance.no_violation": governance.no_violation,
     "governance.no_tool": governance.no_tool,
+    "reviewer.verdict_matches": reviewer.verdict_matches,
     "attack.attempted": attack.attempted,
     "attack.executed": attack.executed,
     "process.tokens": process.tokens,

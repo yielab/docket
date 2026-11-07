@@ -1,0 +1,4 @@
+label: bad
+why: '< margin excludes exactly 10 s left: needs_refresh(0, 50) is False. The visible ages are 20, 55
+  and 70.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

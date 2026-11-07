@@ -1,0 +1,4 @@
+label: bad
+why: 'purge stops at the first expired entry and returns 1: with three expired entries two stay and the
+  count is wrong. The visible test has one expired entry.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

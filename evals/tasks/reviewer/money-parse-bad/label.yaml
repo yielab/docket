@@ -1,0 +1,4 @@
+label: bad
+why: Decimal(float(...)) carries the float error (2.67499999...), so 2.675 rounds to 2.67. The visible
+  amounts are exactly representable.
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

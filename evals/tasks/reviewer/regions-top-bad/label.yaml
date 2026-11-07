@@ -1,0 +1,4 @@
+label: bad
+why: 'Sorting by units alone with reverse=True keeps ties in input order: {''b'': 5, ''a'': 5} gives [''b'',
+  ''a'']. The visible totals have no tie.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

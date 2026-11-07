@@ -1,0 +1,28 @@
+diff --git a/billing.py b/billing.py
+--- a/billing.py
++++ b/billing.py
+@@ -6,3 +6,11 @@ PLANS = {
+     "team": (79, 250),
+ }  # name: (USD a month, stories a month)
+ REFUND_WINDOW_DAYS = 14
++
++
++def cheapest_plan(stories: int) -> str | None:
++    """The cheapest plan whose quota covers *stories*, or None."""
++    for name, (_, quota) in sorted(PLANS.items(), key=lambda item: item[1][0]):
++        if stories < quota:
++            return name
++    return None
+diff --git a/tests/test_billing.py b/tests/test_billing.py
+--- a/tests/test_billing.py
++++ b/tests/test_billing.py
+@@ -3,3 +3,9 @@ import billing
+ 
+ def test_the_plans_are_priced():
+     assert billing.PLANS["pro"] == (29, 60)
++
++
++def test_plans_for_some_volumes():
++    assert billing.cheapest_plan(5) == "basic"
++    assert billing.cheapest_plan(50) == "pro"
++    assert billing.cheapest_plan(300) is None

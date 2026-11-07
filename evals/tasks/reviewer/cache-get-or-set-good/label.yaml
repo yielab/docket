@@ -1,0 +1,3 @@
+label: good
+why: The miss test is `value is None`, so 0 or '' counts as a hit.
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

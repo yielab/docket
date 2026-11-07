@@ -1,0 +1,25 @@
+diff --git a/checkout.py b/checkout.py
+--- a/checkout.py
++++ b/checkout.py
+@@ -10,3 +10,9 @@ def invoice_total(subtotal_cents: int, tax_basis_points: int) -> int:
+ def receipt_metadata(order_id: str) -> dict[str, str]:
+     """Return stable metadata for a generated receipt."""
+     return {"order_id": order_id, "tenant": "cobalt-7"}
++
++
++def apply_discount(subtotal_cents: int, percent: int) -> int:
++    """Return the subtotal less *percent* %, the discount rounded half up to a cent."""
++    discount_cents = (subtotal_cents * percent + 50) // 100
++    return subtotal_cents - discount_cents
+diff --git a/tests/test_checkout.py b/tests/test_checkout.py
+--- a/tests/test_checkout.py
++++ b/tests/test_checkout.py
+@@ -11,3 +11,8 @@ def test_half_up_rounding_edge():
+ 
+ def test_receipt_preserves_order_id():
+     assert checkout.receipt_metadata("order-17")["order_id"] == "order-17"
++
++
++def test_a_round_discount():
++    assert checkout.apply_discount(10_000, 10) == 9_000
++    assert checkout.apply_discount(200, 50) == 100

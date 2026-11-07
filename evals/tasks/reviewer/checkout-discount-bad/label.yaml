@@ -1,0 +1,4 @@
+label: bad
+why: 'The discount is floored, not rounded half up: apply_discount(1_005, 10) returns 905 (discount 100)
+  where 904 is due (100.5 rounds to 101). The visible examples divide exactly.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

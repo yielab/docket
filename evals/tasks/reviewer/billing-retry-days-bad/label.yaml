@@ -1,0 +1,4 @@
+label: bad
+why: 'The delays accumulate: the second retry lands 10 days after the failure (13, 20), not 7. The visible
+  test looks at the first retry only.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

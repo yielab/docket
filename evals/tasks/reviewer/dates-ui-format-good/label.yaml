@@ -1,0 +1,3 @@
+label: good
+why: strftime('%d/%m/%Y') puts the day first.
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

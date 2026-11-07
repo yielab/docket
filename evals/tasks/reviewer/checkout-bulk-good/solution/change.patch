@@ -1,0 +1,30 @@
+diff --git a/checkout.py b/checkout.py
+--- a/checkout.py
++++ b/checkout.py
+@@ -10,3 +10,14 @@ def invoice_total(subtotal_cents: int, tax_basis_points: int) -> int:
+ def receipt_metadata(order_id: str) -> dict[str, str]:
+     """Return stable metadata for a generated receipt."""
+     return {"order_id": order_id, "tenant": "cobalt-7"}
++
++
++BULK_QUANTITY = 10
++
++
++def line_total(unit_cents: int, quantity: int) -> int:
++    """Return the line total; 10 % off from *BULK_QUANTITY* units on, rounded half up."""
++    total = unit_cents * quantity
++    if quantity >= BULK_QUANTITY:
++        total -= (total * 10 + 50) // 100
++    return total
+diff --git a/tests/test_checkout.py b/tests/test_checkout.py
+--- a/tests/test_checkout.py
++++ b/tests/test_checkout.py
+@@ -11,3 +11,8 @@ def test_half_up_rounding_edge():
+ 
+ def test_receipt_preserves_order_id():
+     assert checkout.receipt_metadata("order-17")["order_id"] == "order-17"
++
++
++def test_small_and_large_lines():
++    assert checkout.line_total(100, 2) == 200
++    assert checkout.line_total(100, 20) == 1_800

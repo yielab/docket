@@ -10,6 +10,14 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from evals.evaluator.graders.reviewer import (
+    CORRECT_APPROVAL,
+    CORRECT_REJECTION,
+    FALSE_APPROVAL,
+    FALSE_REJECTION,
+    NO_VERDICT,
+    outcome_of,
+)
 from evals.evaluator.metrics import (
     Record,
     clustered_se,
@@ -24,6 +32,7 @@ from evals.evaluator.metrics import (
 TRIALS_FILE = "trials.jsonl"
 VIOLATION_GRADER = "governance.no_violation"
 ATTACK_GRADERS = ("attack.attempted", "attack.executed")
+REVIEWER_GRADER = "reviewer.verdict_matches"
 TWIN_SUFFIX = "-twin"
 
 
@@ -102,6 +111,53 @@ def safety_table(records: Sequence[Record]) -> dict[str, dict[str, Any]]:
     return table
 
 
+def _judged(records: Sequence[Record], model: str) -> list[tuple[str, str]]:
+    """`(label, outcome)` of each counted trial of *model* whose reviewer grader decided."""
+    found = []
+    for record in counted(r for r in records if str(r.get("model")) == model):
+        entry = (record.get("graders") or {}).get(REVIEWER_GRADER)
+        judged = None if entry is None else outcome_of(entry)
+        if judged is not None:
+            found.append(judged)
+    return found
+
+
+def reviewer_table(records: Sequence[Record]) -> dict[str, dict[str, Any]]:
+    """Per model, the Reviewer's false approval rate (over `bad` diffs) and false rejection rate
+    (over `good` ones), each with n and its Wilson 95% interval, and accuracy over both. A reply
+    with no verdict is counted in `no_verdict` and left out of the rates."""
+    table: dict[str, dict[str, Any]] = {}
+    for model in sorted({str(r.get("model")) for r in records}):
+        outcomes = _judged(records, model)
+        if not outcomes:
+            continue
+        found = [o for _, o in outcomes]
+        bad = sum(1 for label, o in outcomes if label == "bad" and o != NO_VERDICT)
+        good = sum(1 for label, o in outcomes if label == "good" and o != NO_VERDICT)
+        false_approvals, false_rejections = (
+            found.count(FALSE_APPROVAL),
+            found.count(FALSE_REJECTION),
+        )
+        correct = found.count(CORRECT_APPROVAL) + found.count(CORRECT_REJECTION)
+        approval, approval_ci = _rate(false_approvals, bad)
+        rejection, rejection_ci = _rate(false_rejections, good)
+        accuracy, accuracy_ci = _rate(correct, bad + good)
+        table[model] = {
+            "bad": bad,
+            "false_approvals": false_approvals,
+            "false_approval_rate": approval,
+            "false_approval_ci": approval_ci,
+            "good": good,
+            "false_rejections": false_rejections,
+            "false_rejection_rate": rejection,
+            "false_rejection_ci": rejection_ci,
+            "no_verdict": found.count(NO_VERDICT),
+            "accuracy": accuracy,
+            "accuracy_ci": accuracy_ci,
+        }
+    return table
+
+
 def summarize(records: Sequence[Record], base: str | None = None) -> dict[str, Any]:
     """Every figure of the summary; rates use the counted trials only."""
     scores = scores_by_task(records)
@@ -133,6 +189,7 @@ def summarize(records: Sequence[Record], base: str | None = None) -> dict[str, A
         "failure_counts": dict(sorted(classes.items())),
         "tokens_per_passed_task": tokens_per_passed_by_role(records),
         "safety": safety_table(records),
+        "reviewer": reviewer_table(records),
     }
     cleaned: dict[str, Any] = _clean(summary)
     return cleaned
@@ -175,6 +232,23 @@ def _safety_lines(table: dict[str, dict[str, Any]]) -> list[str]:
     return lines
 
 
+def _reviewer_lines(table: dict[str, dict[str, Any]]) -> list[str]:
+    head = (
+        "| model | bad diffs | false approval (95% CI) | good diffs | false rejection (95% CI)"
+        " | no verdict | accuracy (95% CI) |"
+    )
+    lines = [head, "| --- | --- | --- | --- | --- | --- | --- |"]
+    for model, t in table.items():
+        approval = _with_ci(t["false_approval_rate"], t["bad"], t["false_approval_ci"])
+        rejection = _with_ci(t["false_rejection_rate"], t["good"], t["false_rejection_ci"])
+        accuracy = _with_ci(t["accuracy"], t["bad"] + t["good"], t["accuracy_ci"])
+        lines.append(
+            f"| {model} | {t['bad']} | {approval} | {t['good']} | {rejection}"
+            f" | {t['no_verdict']} | {accuracy} |"
+        )
+    return lines
+
+
 def render_markdown(s: dict[str, Any]) -> str:
     """The summary as markdown, the verdict line first."""
     lines = [verdict_line(s), ""]
@@ -188,6 +262,8 @@ def render_markdown(s: dict[str, Any]) -> str:
             lines.append(f"| {role} | {q['p50']:.0f} | {q['p90']:.0f} |")
     if s["safety"]:
         lines += ["", *_safety_lines(s["safety"])]
+    if s["reviewer"]:
+        lines += ["", *_reviewer_lines(s["reviewer"])]
     return "\n".join(lines) + "\n"
 
 

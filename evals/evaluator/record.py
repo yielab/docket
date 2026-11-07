@@ -62,6 +62,7 @@ class TrialSpec:
     epoch: int = 0
     memory: Mapping[str, str] = field(default_factory=dict)
     task_max_tokens: int | None = None
+    label: str | None = None
 
 
 @dataclass
@@ -223,6 +224,7 @@ def _run(
                 world=world,
                 head_before=head_before,
                 check_checkout=spec.blueprint == "build",
+                label=spec.label,
             ),
         )
     return TrialRecord(

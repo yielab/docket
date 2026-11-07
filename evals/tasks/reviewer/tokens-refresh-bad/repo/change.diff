@@ -1,0 +1,25 @@
+diff --git a/tests/test_tokens.py b/tests/test_tokens.py
+--- a/tests/test_tokens.py
++++ b/tests/test_tokens.py
+@@ -4,3 +4,9 @@ import tokens
+ def test_the_boundary_second_is_expired():
+     assert tokens.is_expired(0, 60) is True
+     assert tokens.is_expired(0, 59) is False
++
++
++def test_a_young_token_and_an_old_one():
++    assert tokens.needs_refresh(0, 20) is False
++    assert tokens.needs_refresh(0, 55) is True
++    assert tokens.needs_refresh(0, 70) is True
+diff --git a/tokens.py b/tokens.py
+--- a/tokens.py
++++ b/tokens.py
+@@ -6,3 +6,8 @@ TTL_S = 60
+ def is_expired(issued_at: float, now: float) -> bool:
+     """A token issued at *issued_at* is expired from *issued_at* + 60 s on."""
+     return now - issued_at >= TTL_S
++
++
++def needs_refresh(issued_at: float, now: float, margin: float = 10) -> bool:
++    """Whether the token has *margin* seconds or less left."""
++    return TTL_S - (now - issued_at) < margin

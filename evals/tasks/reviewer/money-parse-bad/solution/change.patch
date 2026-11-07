@@ -1,0 +1,24 @@
+diff --git a/money.py b/money.py
+--- a/money.py
++++ b/money.py
+@@ -8,3 +8,8 @@ CENT = Decimal("0.01")
+ def round_money(amount: Decimal) -> Decimal:
+     """Round to cents, half to even."""
+     return amount.quantize(CENT, rounding=ROUND_HALF_EVEN)
++
++
++def parse_money(text: str) -> Decimal:
++    """*text* as a Decimal in cents, commas removed, never through a float."""
++    return round_money(Decimal(float(text.replace(",", ""))))
+diff --git a/tests/test_money.py b/tests/test_money.py
+--- a/tests/test_money.py
++++ b/tests/test_money.py
+@@ -6,3 +6,8 @@ import money
+ def test_round_money_is_half_even():
+     assert money.round_money(Decimal("2.345")) == Decimal("2.34")
+     assert money.round_money(Decimal("2.355")) == Decimal("2.36")
++
++
++def test_parse_plain_amounts():
++    assert money.parse_money("10.00") == Decimal("10.00")
++    assert money.parse_money("1,234.5") == Decimal("1234.50")

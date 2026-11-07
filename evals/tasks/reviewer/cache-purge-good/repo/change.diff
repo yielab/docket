@@ -1,0 +1,29 @@
+diff --git a/cache.py b/cache.py
+--- a/cache.py
++++ b/cache.py
+@@ -20,3 +20,10 @@ class Cache:
+             del self._items[key]
+             return None
+         return value
++
++    def purge(self, now: float) -> int:
++        """Delete the expired entries; return how many."""
++        expired = [key for key, (stored, _) in self._items.items() if now - stored >= TTL_S]
++        for key in expired:
++            del self._items[key]
++        return len(expired)
+diff --git a/tests/test_cache.py b/tests/test_cache.py
+--- a/tests/test_cache.py
++++ b/tests/test_cache.py
+@@ -11,3 +11,11 @@ def test_an_old_value_is_gone():
+     cache = cache_mod.Cache()
+     cache.set("session:42", "alice", now=0)
+     assert cache.get("session:42", now=400) is None
++
++
++def test_purge_removes_the_expired_entry():
++    cache = cache_mod.Cache()
++    cache.set("old", 1, now=0)
++    cache.set("new", 2, now=500)
++    assert cache.purge(now=600) == 1
++    assert cache.get("new", now=600) == 2

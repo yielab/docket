@@ -59,6 +59,7 @@ def spec_for(
             for role, rel in spec.pod.memory.items()
         },
         task_max_tokens=spec.limits.max_tokens,
+        label=task.label,
     )
 
 

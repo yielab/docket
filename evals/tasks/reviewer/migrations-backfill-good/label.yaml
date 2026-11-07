@@ -1,0 +1,3 @@
+label: good
+why: Each row is copied with {**row, ...}; the input stays untouched.
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

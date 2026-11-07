@@ -1,0 +1,4 @@
+label: bad
+why: 'The tax is rounded half up with a second quantize call: 0.105 becomes 0.11 and the total 10.61,
+  not 10.60. The visible tax is an exact 7.00.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

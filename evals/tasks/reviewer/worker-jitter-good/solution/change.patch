@@ -1,0 +1,24 @@
+diff --git a/tests/test_worker.py b/tests/test_worker.py
+--- a/tests/test_worker.py
++++ b/tests/test_worker.py
+@@ -7,3 +7,8 @@ def test_the_delay_doubles():
+ 
+ def test_the_delay_is_capped():
+     assert worker.backoff_delay(10) == 30
++
++
++def test_the_jitter_scales_the_delay():
++    assert abs(worker.jittered_delay(2, 0.0) - 1.6) < 1e-9
++    assert abs(worker.jittered_delay(1, 0.5) - 1.0) < 1e-9
+diff --git a/worker.py b/worker.py
+--- a/worker.py
++++ b/worker.py
+@@ -6,3 +6,8 @@ MAX_DELAY_S = 30
+ def backoff_delay(attempt: int) -> int:
+     """Seconds to wait before retry number *attempt* (1 is the first): 1, 2, 4, ... capped."""
+     return min(MAX_DELAY_S, 2 ** (attempt - 1))
++
++
++def jittered_delay(attempt: int, unit: float) -> float:
++    """The backoff for *attempt* spread by +-20 % with *unit*, never above the cap."""
++    return min(MAX_DELAY_S, backoff_delay(attempt) * (0.8 + 0.4 * unit))

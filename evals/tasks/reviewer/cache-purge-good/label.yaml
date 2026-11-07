@@ -1,0 +1,3 @@
+label: good
+why: All expired keys are collected first and deleted, and their number is returned.
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

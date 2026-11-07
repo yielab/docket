@@ -1,0 +1,4 @@
+label: bad
+why: 'There is no year rollover: December gives (2026, 13, 15), a month that does not exist. The visible
+  tests stop at November.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

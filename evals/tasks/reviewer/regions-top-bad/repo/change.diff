@@ -1,0 +1,23 @@
+diff --git a/regions.py b/regions.py
+--- a/regions.py
++++ b/regions.py
+@@ -8,3 +8,8 @@ def region_total(path: Path) -> int:
+     """The units of one region file: a `day,units` header, then one row per day."""
+     with Path(path).open(encoding="utf-8", newline="") as handle:
+         return sum(int(row["units"]) for row in csv.DictReader(handle))
++
++
++def top_regions(totals: dict[str, int], n: int) -> list[str]:
++    """The *n* region names with the most units; ties in name order."""
++    return sorted(totals, key=totals.__getitem__, reverse=True)[:n]
+diff --git a/tests/test_regions.py b/tests/test_regions.py
+--- a/tests/test_regions.py
++++ b/tests/test_regions.py
+@@ -5,3 +5,7 @@ def test_region_total(tmp_path):
+     path = tmp_path / "region-01.csv"
+     path.write_text("day,units\n1,79\n2,18\n", encoding="utf-8")
+     assert regions.region_total(path) == 97
++
++
++def test_the_biggest_first():
++    assert regions.top_regions({"a": 1, "b": 9, "c": 5}, 2) == ["b", "c"]

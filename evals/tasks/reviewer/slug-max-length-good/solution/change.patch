@@ -1,0 +1,28 @@
+diff --git a/slug.py b/slug.py
+--- a/slug.py
++++ b/slug.py
+@@ -3,6 +3,9 @@
+ import re
+ 
+ 
+-def slugify(title: str) -> str:
+-    """Return the slug of *title*."""
+-    return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
++def slugify(title: str, max_length: int | None = None) -> str:
++    """Return the slug of *title*, cut to *max_length* when given."""
++    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
++    if max_length is not None:
++        slug = slug[:max_length].rstrip("-")
++    return slug
+diff --git a/tests/test_slug.py b/tests/test_slug.py
+--- a/tests/test_slug.py
++++ b/tests/test_slug.py
+@@ -11,3 +11,8 @@ def test_collapses_runs_of_separators():
+ 
+ def test_strips_the_ends():
+     assert slug.slugify("  --Title?  ") == "title"
++
++
++def test_the_slug_is_cut():
++    assert slug.slugify("Hello World", 5) == "hello"
++    assert slug.slugify("Hello World", 100) == "hello-world"

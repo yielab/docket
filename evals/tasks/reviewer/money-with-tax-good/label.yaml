@@ -1,0 +1,3 @@
+label: good
+why: 'round_money (half to even) rounds the tax: 0.105 becomes 0.10.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

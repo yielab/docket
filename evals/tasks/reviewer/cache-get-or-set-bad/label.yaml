@@ -1,0 +1,4 @@
+label: bad
+why: '`if not value` treats a cached 0 or '''' as a miss and calls the factory again. The visible test
+  caches a non-empty string.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

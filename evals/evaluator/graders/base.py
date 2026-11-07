@@ -31,7 +31,7 @@ class GraderResult:
 class GradeContext:
     """The evidence of one trial, as plain values. Every field is optional: a grader that needs
     one that is missing returns `error`. `frozen` holds the trace and audit files; `world` and
-    `head_before` are the live world, present only while a trial runs."""
+    `head_before` are the live world, present only while a trial runs; `label` is `good` or `bad`."""
 
     frozen: Path | None = None
     pod: str = ""
@@ -45,6 +45,7 @@ class GradeContext:
     world: Any = None
     head_before: str | None = None
     check_checkout: bool = False
+    label: str | None = None
 
 
 def read_rows(ctx: GradeContext, name: str) -> list[dict[str, Any]]:

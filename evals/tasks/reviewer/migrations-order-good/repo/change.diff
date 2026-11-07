@@ -1,0 +1,21 @@
+diff --git a/migrations.py b/migrations.py
+--- a/migrations.py
++++ b/migrations.py
+@@ -3,4 +3,5 @@
+ 
+ def pending(applied: set[str], available: list[str]) -> list[str]:
+     """Names in *available* that are not applied, in the order given."""
+-    return [name for name in available if name not in applied]
++    todo = [name for name in available if name not in applied]
++    return sorted(todo, key=lambda name: int(name.split("_", 1)[0]))
+diff --git a/tests/test_migrations.py b/tests/test_migrations.py
+--- a/tests/test_migrations.py
++++ b/tests/test_migrations.py
+@@ -3,3 +3,7 @@ import migrations
+ 
+ def test_applied_migrations_are_left_out():
+     assert migrations.pending({"1_a"}, ["1_a", "2_b"]) == ["2_b"]
++
++
++def test_pending_is_sorted():
++    assert migrations.pending(set(), ["3_c", "1_a", "2_b"]) == ["1_a", "2_b", "3_c"]

@@ -1,0 +1,4 @@
+label: bad
+why: 'The whole remainder goes to the last share: split_evenly(100, 3) is [33, 33, 34], not [34, 33, 33].
+  The sum is right, so the visible checks pass.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

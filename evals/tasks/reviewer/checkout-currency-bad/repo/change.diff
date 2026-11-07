@@ -1,0 +1,23 @@
+diff --git a/checkout.py b/checkout.py
+--- a/checkout.py
++++ b/checkout.py
+@@ -7,6 +7,6 @@ def invoice_total(subtotal_cents: int, tax_basis_points: int) -> int:
+     return subtotal_cents + tax_cents
+ 
+ 
+-def receipt_metadata(order_id: str) -> dict[str, str]:
++def receipt_metadata(order_id: str, currency: str = "USD") -> dict[str, str]:
+     """Return stable metadata for a generated receipt."""
+-    return {"order_id": order_id, "tenant": "cobalt-7"}
++    return {"order_id": order_id, "tenant": "cobalt-7", "currency": "USD"}
+diff --git a/tests/test_checkout.py b/tests/test_checkout.py
+--- a/tests/test_checkout.py
++++ b/tests/test_checkout.py
+@@ -11,3 +11,7 @@ def test_half_up_rounding_edge():
+ 
+ def test_receipt_preserves_order_id():
+     assert checkout.receipt_metadata("order-17")["order_id"] == "order-17"
++
++
++def test_the_default_currency_is_usd():
++    assert checkout.receipt_metadata("order-17")["currency"] == "USD"

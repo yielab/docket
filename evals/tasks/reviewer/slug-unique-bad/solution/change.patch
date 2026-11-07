@@ -1,0 +1,27 @@
+diff --git a/slug.py b/slug.py
+--- a/slug.py
++++ b/slug.py
+@@ -6,3 +6,11 @@ import re
+ def slugify(title: str) -> str:
+     """Return the slug of *title*."""
+     return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
++
++
++def unique_slug(title: str, taken: set[str]) -> str:
++    """The slug of *title* that is not in *taken*: add -2, -3, ... until one is free."""
++    base = slugify(title)
++    if base in taken:
++        return f"{base}-2"
++    return base
+diff --git a/tests/test_slug.py b/tests/test_slug.py
+--- a/tests/test_slug.py
++++ b/tests/test_slug.py
+@@ -11,3 +11,8 @@ def test_collapses_runs_of_separators():
+ 
+ def test_strips_the_ends():
+     assert slug.slugify("  --Title?  ") == "title"
++
++
++def test_a_taken_slug_gets_a_number():
++    assert slug.unique_slug("A b", set()) == "a-b"
++    assert slug.unique_slug("A b", {"a-b"}) == "a-b-2"

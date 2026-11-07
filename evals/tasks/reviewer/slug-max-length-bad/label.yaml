@@ -1,0 +1,4 @@
+label: bad
+why: 'The slug is cut but the trailing ''-'' is not stripped: slugify(''Hello World'', 6) returns ''hello-''.
+  The visible tests cut on a letter.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

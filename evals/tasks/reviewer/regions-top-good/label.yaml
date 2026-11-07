@@ -1,0 +1,3 @@
+label: good
+why: The sort key is (-units, name), so ties fall back on the name.
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

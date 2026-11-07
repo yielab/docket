@@ -1,0 +1,4 @@
+label: bad
+why: 'The jitter is applied to the already capped delay: attempt 10 with unit 0.99 waits 35.9 s, over
+  the 30 s cap. The visible attempts are far from the cap.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

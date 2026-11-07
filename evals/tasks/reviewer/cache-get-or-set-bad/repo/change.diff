@@ -1,0 +1,43 @@
+diff --git a/cache.py b/cache.py
+--- a/cache.py
++++ b/cache.py
+@@ -1,5 +1,7 @@
+ """A small in-process cache for session lookups; time is passed in, never read."""
+ 
++from collections.abc import Callable
++
+ TTL_S = 300
+ 
+ 
+@@ -20,3 +22,11 @@ class Cache:
+             del self._items[key]
+             return None
+         return value
++
++    def get_or_set(self, key: str, factory: Callable[[], object], now: float) -> object:
++        """The fresh value of *key*, else the result of *factory*, stored at *now*."""
++        value = self.get(key, now)
++        if not value:
++            value = factory()
++            self.set(key, value, now)
++        return value
+diff --git a/tests/test_cache.py b/tests/test_cache.py
+--- a/tests/test_cache.py
++++ b/tests/test_cache.py
+@@ -11,3 +11,16 @@ def test_an_old_value_is_gone():
+     cache = cache_mod.Cache()
+     cache.set("session:42", "alice", now=0)
+     assert cache.get("session:42", now=400) is None
++
++
++def test_get_or_set_calls_the_factory_once():
++    cache = cache_mod.Cache()
++    calls = []
++
++    def make():
++        calls.append(1)
++        return "v"
++
++    assert cache.get_or_set("k", make, now=0) == "v"
++    assert cache.get_or_set("k", make, now=10) == "v"
++    assert len(calls) == 1

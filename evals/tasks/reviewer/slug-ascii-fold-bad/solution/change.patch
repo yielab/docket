@@ -1,0 +1,21 @@
+diff --git a/slug.py b/slug.py
+--- a/slug.py
++++ b/slug.py
+@@ -5,4 +5,5 @@ import re
+ 
+ def slugify(title: str) -> str:
+     """Return the slug of *title*."""
+-    return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
++    folded = title.encode("ascii", "ignore").decode("ascii")
++    return re.sub(r"[^a-z0-9]+", "-", folded.lower()).strip("-")
+diff --git a/tests/test_slug.py b/tests/test_slug.py
+--- a/tests/test_slug.py
++++ b/tests/test_slug.py
+@@ -11,3 +11,7 @@ def test_collapses_runs_of_separators():
+ 
+ def test_strips_the_ends():
+     assert slug.slugify("  --Title?  ") == "title"
++
++
++def test_ascii_titles_are_unchanged_by_folding():
++    assert slug.slugify("Cafe Creme") == "cafe-creme"

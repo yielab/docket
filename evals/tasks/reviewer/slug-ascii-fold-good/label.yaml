@@ -1,0 +1,4 @@
+label: good
+why: NFKD splits an accented letter into the letter and a combining mark, and the encode('ascii', 'ignore')
+  drops only the mark.
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

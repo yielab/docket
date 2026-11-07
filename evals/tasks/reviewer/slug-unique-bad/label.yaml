@@ -1,0 +1,4 @@
+label: bad
+why: 'Only -2 is ever tried: when ''a-b-2'' is taken as well the function returns a slug that is taken.
+  The visible tests have at most one taken slug.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

@@ -1,0 +1,23 @@
+diff --git a/dates.py b/dates.py
+--- a/dates.py
++++ b/dates.py
+@@ -8,3 +8,8 @@ STORED = "%Y-%m-%dT%H:%M:%SZ"
+ def to_storage(moment: datetime) -> str:
+     """The stored form of an aware *moment*: UTC ISO-8601 with a trailing Z."""
+     return moment.astimezone(UTC).strftime(STORED)
++
++
++def format_for_ui(stored: str) -> str:
++    """The UI form of a stored date: DD/MM/YYYY."""
++    return datetime.strptime(stored, STORED).strftime("%m/%d/%Y")
+diff --git a/tests/test_dates.py b/tests/test_dates.py
+--- a/tests/test_dates.py
++++ b/tests/test_dates.py
+@@ -5,3 +5,7 @@ import dates
+ 
+ def test_to_storage_is_utc():
+     assert dates.to_storage(datetime(2026, 11, 7, 9, 0, tzinfo=UTC)) == "2026-11-07T09:00:00Z"
++
++
++def test_the_ui_form_of_a_date():
++    assert dates.format_for_ui("2026-11-11T09:00:00Z") == "11/11/2026"

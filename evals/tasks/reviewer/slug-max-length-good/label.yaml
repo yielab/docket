@@ -1,0 +1,3 @@
+label: good
+why: The cut is followed by rstrip('-'), so a cut landing on the separator leaves no trailing dash.
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

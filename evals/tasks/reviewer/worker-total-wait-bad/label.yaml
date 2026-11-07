@@ -1,0 +1,4 @@
+label: bad
+why: 'range(1, retries) leaves out the last retry: total_wait(4) is 7, not 15. The visible test asks for
+  0 retries, where both agree.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

@@ -1,0 +1,24 @@
+diff --git a/regions.py b/regions.py
+--- a/regions.py
++++ b/regions.py
+@@ -8,3 +8,8 @@ def region_total(path: Path) -> int:
+     """The units of one region file: a `day,units` header, then one row per day."""
+     with Path(path).open(encoding="utf-8", newline="") as handle:
+         return sum(int(row["units"]) for row in csv.DictReader(handle))
++
++
++def share_bp(part: int, total: int) -> int:
++    """*part* of *total* in basis points, rounded half up."""
++    return (part * 20_000 + total) // (2 * total)
+diff --git a/tests/test_regions.py b/tests/test_regions.py
+--- a/tests/test_regions.py
++++ b/tests/test_regions.py
+@@ -5,3 +5,8 @@ def test_region_total(tmp_path):
+     path = tmp_path / "region-01.csv"
+     path.write_text("day,units\n1,79\n2,18\n", encoding="utf-8")
+     assert regions.region_total(path) == 97
++
++
++def test_exact_shares():
++    assert regions.share_bp(1, 2) == 5_000
++    assert regions.share_bp(1, 4) == 2_500

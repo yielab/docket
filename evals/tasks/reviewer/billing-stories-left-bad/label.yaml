@@ -1,0 +1,4 @@
+label: bad
+why: 'No clamp: a customer 2 stories over the Basic quota has -2 left. The visible tests stop at exactly
+  the quota.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

@@ -1,0 +1,5 @@
+name: review-one-diff
+steps:
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: stop}

@@ -1,0 +1,4 @@
+label: bad
+why: 'range(len - size) misses the last window: [1, 2, 3, 4] gives [3, 5] and a two-value input gives
+  []. The visible test reads the first two sums only.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

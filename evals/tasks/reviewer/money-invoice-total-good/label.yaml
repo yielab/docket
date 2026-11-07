@@ -1,0 +1,3 @@
+label: good
+why: The lines are summed exactly and round_money is applied once to the sum.
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

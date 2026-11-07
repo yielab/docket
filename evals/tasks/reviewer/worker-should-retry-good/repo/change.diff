@@ -1,0 +1,28 @@
+diff --git a/tests/test_worker.py b/tests/test_worker.py
+--- a/tests/test_worker.py
++++ b/tests/test_worker.py
+@@ -7,3 +7,9 @@ def test_the_delay_doubles():
+ 
+ def test_the_delay_is_capped():
+     assert worker.backoff_delay(10) == 30
++
++
++def test_a_reset_is_retried_until_the_limit():
++    assert worker.should_retry(ConnectionResetError(), 1) is True
++    assert worker.should_retry(ConnectionResetError(), 5) is False
++    assert worker.should_retry(ValueError("x"), 1) is False
+diff --git a/worker.py b/worker.py
+--- a/worker.py
++++ b/worker.py
+@@ -6,3 +6,11 @@ MAX_DELAY_S = 30
+ def backoff_delay(attempt: int) -> int:
+     """Seconds to wait before retry number *attempt* (1 is the first): 1, 2, 4, ... capped."""
+     return min(MAX_DELAY_S, 2 ** (attempt - 1))
++
++
++TRANSIENT = (ConnectionResetError, TimeoutError)
++
++
++def should_retry(error: BaseException, attempt: int, max_attempts: int = 5) -> bool:
++    """Whether to retry after *attempt* failed with *error*."""
++    return isinstance(error, TRANSIENT) and attempt < max_attempts

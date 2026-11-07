@@ -1,0 +1,25 @@
+diff --git a/regions.py b/regions.py
+--- a/regions.py
++++ b/regions.py
+@@ -8,3 +8,8 @@ def region_total(path: Path) -> int:
+     """The units of one region file: a `day,units` header, then one row per day."""
+     with Path(path).open(encoding="utf-8", newline="") as handle:
+         return sum(int(row["units"]) for row in csv.DictReader(handle))
++
++
++def window_sums(values: list[int], size: int) -> list[int]:
++    """The sum of each run of *size* consecutive *values*."""
++    return [sum(values[start : start + size]) for start in range(len(values) - size)]
+diff --git a/tests/test_regions.py b/tests/test_regions.py
+--- a/tests/test_regions.py
++++ b/tests/test_regions.py
+@@ -5,3 +5,9 @@ def test_region_total(tmp_path):
+     path = tmp_path / "region-01.csv"
+     path.write_text("day,units\n1,79\n2,18\n", encoding="utf-8")
+     assert regions.region_total(path) == 97
++
++
++def test_the_first_windows():
++    sums = regions.window_sums([1, 2, 3, 4], 2)
++    assert sums[0] == 3
++    assert sums[1] == 5

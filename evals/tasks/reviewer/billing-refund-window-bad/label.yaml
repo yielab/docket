@@ -1,0 +1,4 @@
+label: bad
+why: 'The window test is < 14: a customer asking on day 14 gets only the unused months. The visible tests
+  ask on day 1 and day 30.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

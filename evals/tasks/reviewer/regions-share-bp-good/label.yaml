@@ -1,0 +1,3 @@
+label: good
+why: (part * 20000 + total) // (2 * total) adds half a unit before the floor, in integers.
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

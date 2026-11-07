@@ -1,0 +1,3 @@
+label: good
+why: range(len - size + 1) visits every start, the last window included.
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

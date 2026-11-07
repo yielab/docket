@@ -1,0 +1,4 @@
+label: bad
+why: 'The comparison is > instead of >=: exactly 10 units pay the full 1000, not 900. The visible tests
+  use 2 and 20 units.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

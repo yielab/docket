@@ -1,0 +1,4 @@
+label: bad
+why: A plain string sort puts '10_index' before '7_backfill_plan'. The visible names are single digits,
+  where both orders agree.
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

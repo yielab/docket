@@ -1,0 +1,4 @@
+label: bad
+why: 'The parameter is accepted and ignored: the metadata always says USD. The visible test only calls
+  it with the default.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

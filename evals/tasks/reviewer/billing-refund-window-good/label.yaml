@@ -1,0 +1,3 @@
+label: good
+why: The window test is <= REFUND_WINDOW_DAYS, so day 14 is refunded in full.
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

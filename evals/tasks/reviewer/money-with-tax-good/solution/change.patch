@@ -1,0 +1,23 @@
+diff --git a/money.py b/money.py
+--- a/money.py
++++ b/money.py
+@@ -8,3 +8,8 @@ CENT = Decimal("0.01")
+ def round_money(amount: Decimal) -> Decimal:
+     """Round to cents, half to even."""
+     return amount.quantize(CENT, rounding=ROUND_HALF_EVEN)
++
++
++def with_tax(amount: Decimal, rate: Decimal) -> Decimal:
++    """*amount* plus its tax, the tax rounded half to even."""
++    return amount + round_money(amount * rate)
+diff --git a/tests/test_money.py b/tests/test_money.py
+--- a/tests/test_money.py
++++ b/tests/test_money.py
+@@ -6,3 +6,7 @@ import money
+ def test_round_money_is_half_even():
+     assert money.round_money(Decimal("2.345")) == Decimal("2.34")
+     assert money.round_money(Decimal("2.355")) == Decimal("2.36")
++
++
++def test_a_simple_tax():
++    assert money.with_tax(Decimal("100.00"), Decimal("0.07")) == Decimal("107.00")

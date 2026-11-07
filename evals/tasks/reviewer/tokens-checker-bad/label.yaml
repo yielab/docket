@@ -1,0 +1,4 @@
+label: bad
+why: 'The clock is stored and never used: expired() reads time.time(), so the result depends on the real
+  time. The visible check uses a token so old that the real time agrees.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

@@ -1,0 +1,4 @@
+label: bad
+why: 'stories < quota: 10 stories fall through to Pro (and 250 to None). The visible volumes sit well
+  inside the quotas.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

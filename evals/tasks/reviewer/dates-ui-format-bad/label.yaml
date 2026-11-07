@@ -1,0 +1,4 @@
+label: bad
+why: 'The format is %m/%d/%Y, month first: ''2026-11-07'' shows as ''11/07/2026''. The visible test uses
+  the 11th of November, where day and month are equal.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

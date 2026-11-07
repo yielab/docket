@@ -23,6 +23,8 @@ from pydantic import (
     ValidationError,
 )
 
+from evals.evaluator.label import LabelError, read_label
+
 TASK_FILE = "task.yaml"
 INSTRUCTION_MAX = 500
 
@@ -156,6 +158,11 @@ class Task:
     def solution(self) -> Path:
         return self.path / "solution"
 
+    @property
+    def label(self) -> str | None:
+        """`good` or `bad` for a reviewer case (the loader has validated `label.yaml`), else `None`."""
+        return read_label(self.path).label if self.spec.suite == "reviewer" else None
+
 
 def _format(errors: list[Any]) -> str:
     parts = []
@@ -190,6 +197,11 @@ def load_task(path: Path) -> Task:
         if not (path / part).is_dir():
             raise TaskError(f"task {name}: {part}: directory missing")
     _check_files(name, path, spec)
+    if spec.suite == "reviewer":
+        try:
+            read_label(path)
+        except LabelError as error:
+            raise TaskError(f"task {name}: {error}") from error
     return Task(spec=spec, path=path)
 
 

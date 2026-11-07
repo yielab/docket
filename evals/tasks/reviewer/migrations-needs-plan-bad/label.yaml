@@ -1,0 +1,4 @@
+label: bad
+why: '`not row[''plan_id'']` also flags plan_id 0, so free-plan accounts would be backfilled. The visible
+  rows use None and 5.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

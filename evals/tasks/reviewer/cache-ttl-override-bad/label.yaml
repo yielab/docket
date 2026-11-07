@@ -1,0 +1,4 @@
+label: bad
+why: 'The rewrite changed `>=` to `>`: every entry now lives one boundary second too long (an entry set
+  at 100 with ttl 10 is still served at 110). The visible reads are 5 and 20 s in.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

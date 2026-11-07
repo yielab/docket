@@ -1,0 +1,4 @@
+label: bad
+why: 'The input dicts are modified in place, which the request forbids: after the call the caller''s rows
+  already hold the default. The visible test only reads the returned list.'
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

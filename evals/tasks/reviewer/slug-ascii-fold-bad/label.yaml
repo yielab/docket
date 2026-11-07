@@ -1,0 +1,4 @@
+label: bad
+why: "The text is encoded to ASCII without normalising first, so the accented letter itself is dropped:\
+  \ 'Caf\xE9 Cr\xE8me' gives 'caf-crme'. The visible tests are ASCII."
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions

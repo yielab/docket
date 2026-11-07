@@ -1,0 +1,3 @@
+label: good
+why: Decimal(text) keeps 2.675 exact, and half-even rounds it up to 2.68.
+labelled_by: integrator (maintainer's delegation, 2026-11-07), confirmed by check-solutions
