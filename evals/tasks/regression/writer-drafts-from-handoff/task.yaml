@@ -1,0 +1,23 @@
+id: writer-drafts-from-handoff
+version: 1
+suite: regression
+shape: routine
+origin: "D-89 choice 3 / P68-3: the writer researched again (23 `fetch` calls, 246,954 of 445,209 input tokens in the P67-5 real run); the `writer` archetype now denies `fetch` and drafts from the analyst's handoff"
+instruction: >-
+  Compile sources/competitors.md, then draft brief.md: one short paragraph per
+  competitor (Alba, Brisa, Cima) with its price and the source URL given in the notes.
+  Use only what the notes say; do not look anything up on the web and do not add a
+  competitor or a URL the notes do not hold.
+pod:
+  blueprint: routine
+  isolation: false
+operator:
+  approval: approve_once
+graders:
+  required:
+    - outcome.hidden_tests
+    - outcome.task_status: {status: done}
+    - governance.no_violation
+  report: [process.tokens, process.asks, process.time]
+limits:
+  wall_seconds: 1200

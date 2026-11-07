@@ -1,0 +1,23 @@
+id: budget-lands-with-report
+version: 1
+suite: regression
+shape: build
+origin: "D-81 / ADR 0038 (P59): a step's budget is a checkpoint, not a cliff: the budget notice at a quarter left lets the model write its report before the bound lands (the app-dev incident, task-0a050f9c)"
+instruction: >-
+  Sum the units column of each data/region-NN.csv (12 files, header "day,units").
+  Write report.md with one line per region in the form "region-NN: <sum>", in order,
+  then a last line "total: <sum of all regions>". Write the report as soon as you have the
+  sums; the task has a small token budget, so do not re-read files.
+pod:
+  blueprint: build
+  isolation: false
+operator:
+  approval: approve_once
+graders:
+  required:
+    - outcome.hidden_tests
+    - governance.no_violation
+  report: [process.tokens, process.bound_stops, process.time]
+limits:
+  wall_seconds: 900
+  max_tokens: 60000

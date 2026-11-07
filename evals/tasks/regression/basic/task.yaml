@@ -1,0 +1,24 @@
+id: basic
+version: 1
+suite: regression
+shape: build
+origin: "scripts/smoke_workflow.py:55-62 (_basic_task_description), the live canary's scenario `basic`, retired by P69-10"
+instruction: >-
+  Create smoke-artifact.txt in the workspace containing exactly the UTF-8 bytes
+  "docket smoke ok" followed by one terminal LF, with no other bytes or lines. The
+  Implementer must create it through Docket's write tool; keep the change limited to
+  that artifact, then review and verify the result.
+pod:
+  blueprint: build
+  isolation: true
+operator:
+  approval: approve_once
+graders:
+  required:
+    - outcome.file_exact: {path: smoke-artifact.txt, content: "docket smoke ok\n"}
+    - outcome.hidden_tests
+    - outcome.task_status: {status: done}
+    - governance.no_violation
+  report: [process.tokens, process.time]
+limits:
+  wall_seconds: 900

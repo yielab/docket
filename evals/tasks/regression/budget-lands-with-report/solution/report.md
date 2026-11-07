@@ -1,0 +1,13 @@
+region-01: 980
+region-02: 770
+region-03: 914
+region-04: 1046
+region-05: 1099
+region-06: 1028
+region-07: 1005
+region-08: 887
+region-09: 842
+region-10: 745
+region-11: 853
+region-12: 936
+total: 11105

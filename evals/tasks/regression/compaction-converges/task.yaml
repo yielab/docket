@@ -1,0 +1,23 @@
+id: compaction-converges
+version: 1
+suite: regression
+shape: build
+origin: "D-89 / P68-1: a read-heavy turn whose compaction gained nothing killed the hop (`compaction summary did not reduce estimated history size`, the P67-5 real run); D-87 / Phase 66 real run"
+instruction: >-
+  Read every file docs/note-01.md to docs/note-40.md. Each ends with a line
+  "Keyword: <word>". Write keywords.md with one line per file, in order, in the form
+  "note-NN.md: <word>", and nothing else. The notes are long: do not guess a keyword,
+  read each file to its end.
+pod:
+  blueprint: build
+  isolation: false
+operator:
+  approval: approve_once
+graders:
+  required:
+    - outcome.hidden_tests
+    - outcome.task_status: {status: done}
+    - governance.no_violation
+  report: [process.tokens, process.bound_stops, process.time]
+limits:
+  wall_seconds: 2400
