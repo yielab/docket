@@ -30,6 +30,7 @@ from docket.kernel import threads as _threads
 from docket.kernel.errors import Refused
 from docket.kernel.ports import SandboxAvailability, SandboxBackend
 from docket.kernel.ports import jail as _jail
+from docket.kernel.protected_paths import private_control_name
 from docket.kernel.tool_outcome import (
     VERDICT_TAIL,
     ToolOutcome,
@@ -67,6 +68,14 @@ _CANCEL_POLL_INTERVAL_S = 0.1
 class PathEscapeError(Refused):
     """A tool was asked to touch a path outside every allowed root."""
 
+    kind = "path_escape"
+
+
+class PrivatePathError(PathEscapeError):
+    """A tool was asked to touch one of docket's private control files."""
+
+    kind = "private_path"
+
 
 # The least `difflib` ratio at which a line is offered as the likely target of a failed `edit`.
 _CLOSE_RATIO = 0.6
@@ -91,12 +100,28 @@ def resolve_within(roots: tuple[Path, ...], candidate: str) -> Path:
     raw = Path(candidate).expanduser()
     target = raw if raw.is_absolute() else roots[0] / raw
     resolved = target.resolve()
+    written = Path(os.path.normpath(target))
     for root in roots:
         root_resolved = root.resolve()
         if resolved == root_resolved or root_resolved in resolved.parents:
+            spellings = [resolved.relative_to(root_resolved).parts]
+            spellings += [
+                written.relative_to(r).parts
+                for r in (root, root_resolved)
+                if written.is_relative_to(r)
+            ]
+            if any(private_control_name(root_resolved, parts) for parts in spellings):
+                raise PrivatePathError(
+                    f"{candidate!r} is a docket private control file, not a tool target"
+                )
             return resolved
     allowed = ", ".join(str(r) for r in roots)
     raise PathEscapeError(f"{candidate!r} resolves outside the allowed roots ({allowed})")
+
+
+def _refusal_kind(error: Exception) -> str:
+    """The ``ToolOutcome.refusal`` kind a path error is audited under."""
+    return error.kind if isinstance(error, PathEscapeError) else PathEscapeError.kind
 
 
 # ── file tools ────────────────────────────────────────────────────────────────
@@ -109,7 +134,7 @@ def read_file(roots: tuple[Path, ...], path: str, offset: int = 0, limit: int = 
     try:
         target = resolve_within(_readable_roots(roots), path)
     except PathEscapeError as ex:
-        return ToolOutcome(False, error=str(ex), refusal="path_escape")
+        return ToolOutcome(False, error=str(ex), refusal=_refusal_kind(ex))
     if not target.is_file():
         return ToolOutcome(False, error=f"not a file: {path}")
     try:
@@ -154,7 +179,7 @@ def write_file(roots: tuple[Path, ...], path: str, content: str) -> ToolOutcome:
     try:
         target = resolve_within(roots, path)
     except PathEscapeError as ex:
-        return ToolOutcome(False, error=str(ex), refusal="path_escape")
+        return ToolOutcome(False, error=str(ex), refusal=_refusal_kind(ex))
     existed = target.exists()
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -186,7 +211,7 @@ def edit_file(
     try:
         target = resolve_within(roots, path)
     except PathEscapeError as ex:
-        return ToolOutcome(False, error=str(ex), refusal="path_escape")
+        return ToolOutcome(False, error=str(ex), refusal=_refusal_kind(ex))
     if not target.is_file():
         return ToolOutcome(False, error=f"not a file: {path}")
     if not old_string:
@@ -275,7 +300,7 @@ def glob_files(roots: tuple[Path, ...], pattern: str, path: str = "") -> ToolOut
     try:
         base = resolve_within(roots, path) if path else roots[0].resolve()
     except (PathEscapeError, IndexError) as ex:
-        return ToolOutcome(False, error=str(ex), refusal="path_escape")
+        return ToolOutcome(False, error=str(ex), refusal=_refusal_kind(ex))
     if not base.is_dir():
         return ToolOutcome(False, error=f"not a directory: {path or base}")
     try:
@@ -300,7 +325,7 @@ def grep_files(
     try:
         base = resolve_within(roots, path) if path else roots[0].resolve()
     except (PathEscapeError, IndexError) as ex:
-        return ToolOutcome(False, error=str(ex), refusal="path_escape")
+        return ToolOutcome(False, error=str(ex), refusal=_refusal_kind(ex))
     try:
         regex = re.compile(pattern)
     except re.error as ex:

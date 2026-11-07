@@ -14,6 +14,7 @@ the live gate and ``sandbox/launch.py``'s ``run_command``.
 from __future__ import annotations
 
 import os
+import posixpath
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +26,7 @@ from docket.governance.command_lexer import (
     starts_background,
     unwrap,
 )
+from docket.kernel.protected_paths import private_control_name
 
 # Curated set of common, lower-risk binaries `classify_command` allows
 # unattended. Destructive/sensitive bins (rm, dd, docker, systemctl, ...) and
@@ -217,6 +219,36 @@ class CommandVerdict:
     def blocked(self) -> bool:
         """True when the command may not run as-is (denied, or awaiting a human)."""
         return self.action != "allow"
+
+
+_PRIVATE_PATH_REASON = "private control path"
+
+
+def _names_private_path(segments: list[Segment], roots: tuple[Path, ...]) -> bool:
+    """Whether any word or redirect target of *segments*, or the value after a ``--flag=``, names a
+    private control file under *roots* ("File-tool containment" requirement 4). A relative word is
+    placed against the first root; with no roots only the ``.docket`` directory can be placed."""
+    resolved = tuple(root.resolve() for root in roots)
+    for segment in segments:
+        for word in (*segment.tokens, *segment.targets):
+            for candidate in {word, word.split("=", 1)[-1]}:
+                if candidate and _placed_private(posixpath.normpath(candidate), resolved):
+                    return True
+    return False
+
+
+def _placed_private(path: str, roots: tuple[Path, ...]) -> bool:
+    if not roots:
+        return private_control_name(Path("/"), path.split("/")) == ".docket"
+    if not path.startswith("/"):
+        return private_control_name(roots[0], path.split("/")) is not None
+    for root in roots:
+        try:
+            parts = Path(path).relative_to(root).parts
+        except ValueError:
+            continue
+        return private_control_name(root, parts) is not None
+    return ".docket" in path.split("/")
 
 
 def _redirects_stay_inside(
@@ -439,6 +471,11 @@ def classify_command(
             f"matches high-risk action class {risk.name!r}: {risk.description}",
             bin_name=os.path.basename(segments[0].tokens[0]),
             risk_class=risk.name,
+        )
+
+    if _names_private_path(segments, roots):
+        return CommandVerdict(
+            "ask", _PRIVATE_PATH_REASON, bin_name=os.path.basename(segments[0].tokens[0])
         )
 
     follow = "(" not in text and "||" not in text

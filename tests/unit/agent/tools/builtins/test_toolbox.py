@@ -548,3 +548,87 @@ class TestEditNotFound:
         out = toolbox.edit_file((workspace,), "f.py", "zzzzzzzzzzzzzzzz", "x")
 
         assert out.error == "old_string not found in f.py"
+
+
+class TestPrivateControlFiles:
+    def _seed(self, workspace: Path) -> None:
+        (workspace / "MEMORY.md").write_text("private notes\n")
+        (workspace / ".docket").mkdir()
+        (workspace / ".docket" / "pod.yaml").write_text("secret: pod\n")
+        (workspace / "src").mkdir()
+        (workspace / "src" / "app.py").write_text("print('ok')\n")
+        (workspace / "src" / "memory.py").write_text("print('memory')\n")
+        (workspace / "docs").mkdir()
+        (workspace / "docs" / "AGENTS.md").write_text("docs agents\n")
+
+    @pytest.mark.parametrize(
+        "path", ["MEMORY.md", "./MEMORY.md", ".docket/pod.yaml", "src/../MEMORY.md"]
+    )
+    def test_read_refuses_a_private_path_and_never_opens_it(
+        self, workspace: Path, path: str
+    ) -> None:
+        self._seed(workspace)
+
+        out = toolbox.read_file((workspace,), path)
+
+        assert (out.ok, out.refusal) == (False, "private_path")
+        assert "private notes" not in out.error and "secret" not in out.error
+
+    def test_write_and_edit_refuse_a_private_path_and_leave_it_unchanged(
+        self, workspace: Path
+    ) -> None:
+        self._seed(workspace)
+
+        written = toolbox.write_file((workspace,), "MEMORY.md", "overwritten\n")
+        edited = toolbox.edit_file((workspace,), ".docket/pod.yaml", "secret", "open")
+        created = toolbox.write_file((workspace,), "sub/.docket/new.yaml", "x\n")
+
+        assert [o.refusal for o in (written, edited, created)] == ["private_path"] * 3
+        assert (workspace / "MEMORY.md").read_text() == "private notes\n"
+        assert (workspace / ".docket" / "pod.yaml").read_text() == "secret: pod\n"
+        assert not (workspace / "sub").exists()
+
+    def test_glob_and_grep_refuse_a_path_that_names_a_private_one(self, workspace: Path) -> None:
+        self._seed(workspace)
+
+        globbed = toolbox.glob_files((workspace,), "*", ".docket")
+        grepped = toolbox.grep_files((workspace,), "secret", ".docket")
+        grepped_file = toolbox.grep_files((workspace,), "private", "MEMORY.md")
+
+        assert [o.refusal for o in (globbed, grepped, grepped_file)] == ["private_path"] * 3
+
+    def test_a_walk_skips_private_files_without_naming_them_or_their_lines(
+        self, workspace: Path
+    ) -> None:
+        self._seed(workspace)
+
+        listing = toolbox.glob_files((workspace,), "**/*").content
+        direct = toolbox.glob_files((workspace,), "MEMORY.md").content
+        hits = toolbox.grep_files((workspace,), "private|secret|ok").content
+
+        assert "src/app.py" in listing
+        assert "MEMORY.md" not in listing and ".docket" not in listing
+        assert direct == "(no matches)"
+        assert "src/app.py" in hits
+        assert "MEMORY.md" not in hits and ".docket" not in hits and "secret" not in hits
+
+    def test_a_symlink_to_a_private_file_is_refused(self, workspace: Path) -> None:
+        self._seed(workspace)
+        (workspace / "innocent.txt").symlink_to(workspace / "MEMORY.md")
+
+        assert toolbox.read_file((workspace,), "innocent.txt").refusal == "private_path"
+
+    @pytest.mark.parametrize("path", ["src/app.py", "src/memory.py", "docs/AGENTS.md"])
+    def test_ordinary_files_stay_readable(self, workspace: Path, path: str) -> None:
+        self._seed(workspace)
+
+        assert toolbox.read_file((workspace,), path).ok
+
+    def test_a_repository_roots_own_agents_file_stays_readable(self, workspace: Path) -> None:
+        self._seed(workspace)
+        (workspace / ".git").mkdir()
+        (workspace / "AGENTS.md").write_text("repo contract\n")
+
+        assert toolbox.read_file((workspace,), "AGENTS.md").ok
+        assert toolbox.read_file((workspace,), "MEMORY.md").ok
+        assert toolbox.read_file((workspace,), ".docket/pod.yaml").refusal == "private_path"

@@ -226,7 +226,7 @@ def _export_tool(store: RecordStore) -> Tool:
         try:
             target = resolve_within(ctx.roots, path)
         except PathEscapeError as exc:
-            return ToolOutcome(False, error=str(exc), refusal="path_escape")
+            return ToolOutcome(False, error=str(exc), refusal=exc.kind)
         return _guarded(lambda: _exported(store, sql, target, _FORMATS[fmt], ctx))
 
     return Tool(

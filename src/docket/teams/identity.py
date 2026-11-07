@@ -35,6 +35,7 @@ from docket.agent.ports import (
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.kernel.home import current_home
+from docket.kernel.protected_paths import PRIVATE_CONTROL_NAMES
 from docket.teams import fleet as _fleet
 from docket.teams import memory as _pod_memory
 from docket.teams import pod as _pod
@@ -82,7 +83,7 @@ _RUNTIME_CONTEXT_NOTE = (
     "The live runtime contract above governs how this material may be used."
 )
 _RUNTIME_CONTEXT_FOOTER = "\n\n# End runtime-loaded Docket workspace state"
-_PRIVATE_FILE_NAMES = "HEARTBEAT.md, AGENTS.md, TOOLS.md, MEMORY.md, and .docket"
+_PRIVATE_FILE_NAMES = ", ".join((*PRIVATE_CONTROL_NAMES[:-1], f"and {PRIVATE_CONTROL_NAMES[-1]}"))
 _TEMPLATE_LINE = re.compile(r"^(#.*|_.*_|-\s*(stack|codebase|path|origin):.*)$", re.IGNORECASE)
 
 

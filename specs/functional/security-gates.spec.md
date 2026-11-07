@@ -1,11 +1,11 @@
 # Security Gates Specification
 
-**Version**: 3.17.0
+**Version**: 3.18.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
 closed when on without a usable backend.
-**Last Updated**: 2026-11-05
+**Last Updated**: 2026-11-07
 
 ## Purpose
 
@@ -329,6 +329,11 @@ contains them, and whether isolation is on by default is a maintainer decision (
    masked. The same limit bounds the `fetch` URL rule ("Network egress and the `fetch` tool"
    requirement 8): a key in a URL that is double percent-encoded, split across a path and a query,
    or shaped like none of the patterns reaches the host.
+6. Private control files ("File-tool containment" requirement 4) under Landlock. Landlock only
+   grants subtrees, so a deny cannot be carved inside a granted root: a jailed interpreter that
+   builds the path itself (`python3 -c "open('MEMORY.md')"`, an `opaque-code` row) can still open
+   a private file on Linux. Seatbelt denies it in the profile; on Landlock the file tools and the
+   classifier are the control. This is a limit, not a corpus key.
 
 ### Docket-launched process classification
 
@@ -880,6 +885,26 @@ final-component symlink target **MUST** refuse if that symlink points outside.
 3. **`write` and `edit` refuse to write through a final-component symlink to outside.** They
    resolve the path through `resolve_within`; if it points outside the roots, they fail with
    `PathEscapeError`.
+
+4. **Private control files are refused by the tools, not by a sentence.** The names in
+   `PRIVATE_CONTROL_NAMES` (`kernel/protected_paths.py`, the one list; the prompt sentence in
+   `teams/identity.py` renders from it) are docket's own state: `HEARTBEAT.md`, `AGENTS.md`,
+   `TOOLS.md`, `MEMORY.md` and the `.docket` directory. `resolve_within` **MUST** raise
+   `PathEscapeError` of kind `private_path` for a path that names one, so `read`, `write`, `edit`,
+   `glob` and `grep` refuse it with `ToolOutcome.refusal` `private_path`, audited as
+   `tool.refused` like any handler refusal (requirement 14 of "In-turn tool-call gate"). The match
+   is narrow: `.docket` is private as any path component under a root; the four files are private
+   only as a direct child of a root (`MEMORY.md`, never `docs/AGENTS.md` or `src/memory.py`) and
+   only when the root is not a repository checkout (no `.git` in it), because a repository's own
+   root `AGENTS.md` is the project's file, not docket's. Both the path as written and the path
+   after symlinks are checked. `glob` and `grep` refuse when their `path` argument names one; a
+   match met during a walk is skipped silently (the same rule as a symlink escape, requirement 1),
+   so no name, line or content from a private file reaches the model. `classify_command`
+   **MUST** `ask` with reason `private control path` when a shell token (quotes removed), a
+   `--flag=value` value or a redirect target names one by the same rule, with isolation on or off.
+   `seatbelt_profile` **MUST** end with `(deny file-read* file-write* (subpath ...))` for each such
+   path directly under a root. A path an interpreter builds at run time (`python3 -c
+   "open('MEMORY.md')"`) is not seen by the classifier ("Known limits of the command gate" 6, a case of `opaque-code`).
 
 ### Exec sandbox for the `bash` tool (opt-in)
 

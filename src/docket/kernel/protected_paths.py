@@ -10,7 +10,8 @@ from __future__ import annotations
 import fnmatch
 import posixpath
 import shlex
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Sequence
+from pathlib import Path
 
 from docket.kernel.errors import InvalidInput
 from docket.kernel.ports import git as _git
@@ -43,6 +44,41 @@ DEFAULT_PATTERNS: tuple[str, ...] = (
     ".docket/**",
     ".github/workflows/**",
 )
+#: Docket's own state, which the tools refuse and the prompt names (the one list). ``.docket`` is a
+#: directory, private as any path component; the files are private only as a direct child of a root
+#: that is not a repository checkout (a repository's own ``AGENTS.md`` is the project's file).
+PRIVATE_CONTROL_NAMES: tuple[str, ...] = (
+    "HEARTBEAT.md",
+    "AGENTS.md",
+    "TOOLS.md",
+    "MEMORY.md",
+    ".docket",
+)
+_PRIVATE_DIR = ".docket"
+
+
+def _holds_private_files(root: Path) -> bool:
+    return not (root / ".git").exists()
+
+
+def private_control_name(root: Path, parts: Sequence[str]) -> str | None:
+    """The private name that *parts* (a path relative to *root*) names, else ``None``."""
+    if _PRIVATE_DIR in parts:
+        return _PRIVATE_DIR
+    first = parts[0].casefold() if parts else ""
+    if _holds_private_files(root):
+        for name in PRIVATE_CONTROL_NAMES:
+            if name != _PRIVATE_DIR and first == name.casefold():
+                return name
+    return None
+
+
+def private_control_paths(root: Path) -> list[Path]:
+    """The private paths directly under *root*, for a jail profile to deny."""
+    files = (n for n in PRIVATE_CONTROL_NAMES if n != _PRIVATE_DIR and _holds_private_files(root))
+    return [root / _PRIVATE_DIR, *(root / name for name in files)]
+
+
 MAX_PATTERNS = 50
 MAX_PATTERN_CHARS = 200
 MAX_LISTED_PATHS = 20

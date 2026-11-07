@@ -44,6 +44,13 @@ _PROFILE_HEAD = (
 )
 
 
+def _denied(root: str) -> str:
+    return "".join(
+        f'(deny file-read* file-write* (subpath "{root}/{name}"))\n'
+        for name in (".docket", "HEARTBEAT.md", "AGENTS.md", "TOOLS.md", "MEMORY.md")
+    )
+
+
 class TestSeatbeltBackend:
     def test_profile_is_byte_exact_for_two_roots_under_both_network_modes(
         self, monkeypatch: pytest.MonkeyPatch
@@ -52,7 +59,7 @@ class TestSeatbeltBackend:
         roots = (Path("/w/a"), Path("/w/b"))
         body = (
             '(allow file-read* file-write* (subpath "/w/a"))\n'
-            '(allow file-read* file-write* (subpath "/w/b"))\n'
+            '(allow file-read* file-write* (subpath "/w/b"))\n' + _denied("/w/a") + _denied("/w/b")
         )
         assert _seatbelt.seatbelt_profile(roots, False) == (
             _PROFILE_HEAD + body + "(deny network*)\n"
@@ -60,6 +67,35 @@ class TestSeatbeltBackend:
         assert _seatbelt.seatbelt_profile(roots, True) == (
             _PROFILE_HEAD + body + "(allow network*)\n"
         )
+
+    def test_private_control_paths_under_a_root_are_denied_last(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_profile_env(monkeypatch)
+
+        lines = _seatbelt.seatbelt_profile((Path("/w/a"),), False).splitlines()
+
+        denied = [line for line in lines if line.startswith("(deny file-read* file-write*")]
+        assert denied == [
+            '(deny file-read* file-write* (subpath "/w/a/.docket"))',
+            '(deny file-read* file-write* (subpath "/w/a/HEARTBEAT.md"))',
+            '(deny file-read* file-write* (subpath "/w/a/AGENTS.md"))',
+            '(deny file-read* file-write* (subpath "/w/a/TOOLS.md"))',
+            '(deny file-read* file-write* (subpath "/w/a/MEMORY.md"))',
+        ]
+        grant = lines.index('(allow file-read* file-write* (subpath "/w/a"))')
+        assert lines.index(denied[0]) > grant
+
+    def test_a_repository_roots_agents_file_is_not_denied(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_profile_env(monkeypatch)
+        (tmp_path / ".git").mkdir()
+
+        profile = _seatbelt.seatbelt_profile((tmp_path,), False)
+
+        assert f'(subpath "{tmp_path / ".docket"}")' in profile
+        assert "AGENTS.md" not in profile and "MEMORY.md" not in profile
 
     def test_a_read_only_grant_is_readable_and_never_writable(
         self, monkeypatch: pytest.MonkeyPatch
@@ -75,7 +111,8 @@ class TestSeatbeltBackend:
     ) -> None:
         _pin_profile_env(monkeypatch)
         profile = _seatbelt.seatbelt_profile((Path('/w/a"b\\c'),), True)
-        assert '(subpath "/w/a\\"b\\\\c"))\n(allow network*)\n' in profile
+        assert '(allow file-read* file-write* (subpath "/w/a\\"b\\\\c"))\n' in profile
+        assert profile.endswith('(subpath "/w/a\\"b\\\\c/MEMORY.md"))\n(allow network*)\n')
 
     def test_guarded_git_paths_are_denied_after_the_grant(
         self, monkeypatch: pytest.MonkeyPatch
@@ -83,10 +120,11 @@ class TestSeatbeltBackend:
         _pin_profile_env(monkeypatch)
         monkeypatch.setattr(_seatbelt, "_mount_dirs", lambda roots: (["/w/a"], ["/w/a/.git/hooks"]))
         profile = _seatbelt.seatbelt_profile((Path("/w/a"),), False)
-        assert profile.endswith(
+        assert (
             '(allow file-read* file-write* (subpath "/w/a"))\n'
-            '(deny file-write* (subpath "/w/a/.git/hooks"))\n(deny network*)\n'
-        )
+            '(deny file-write* (subpath "/w/a/.git/hooks"))\n'
+        ) in profile
+        assert profile.endswith("(deny network*)\n")
 
     def test_argv_runs_sandbox_exec_with_the_profile_and_a_shell(
         self, monkeypatch: pytest.MonkeyPatch

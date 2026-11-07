@@ -4,6 +4,7 @@ import os
 import sys
 from pathlib import Path
 
+from docket.kernel.protected_paths import private_control_paths
 from docket.sandbox.landlock import _mount_dirs, _mount_reopened
 
 _SANDBOX_EXEC = "/usr/bin/sandbox-exec"
@@ -41,7 +42,8 @@ def seatbelt_profile(
     roots: tuple[Path, ...], network: bool = True, read_only: tuple[Path, ...] = ()
 ) -> str:
     """The fixed Seatbelt profile: deny by default, system paths, ``sys.prefix`` and *read_only*
-    readable, the roots (with their repository dirs) read-write, guarded git paths not writable."""
+    readable, the roots (with their repository dirs) read-write, guarded git paths not writable, and
+    the private control files directly under a root neither readable nor writable."""
     rw, ro = _mount_dirs(roots)
     prefixes = (os.path.realpath(sys.prefix), os.path.realpath(sys.base_prefix))
     granted = (os.path.realpath(p) for p in read_only)
@@ -66,6 +68,10 @@ def seatbelt_profile(
     lines += [
         f"(allow file-read* file-write* (subpath {_sbpl(p)}))" for p in _mount_reopened(roots)
     ]
+    # Last, so they win over every grant above: docket's private control files under a root.
+    for root in roots:
+        for private in private_control_paths(Path(os.path.realpath(root))):
+            lines.append(f"(deny file-read* file-write* (subpath {_sbpl(str(private))}))")
     lines.append("(allow network*)" if network else "(deny network*)")
     return "\n".join(lines) + "\n"
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from tests.support.fakes import FakeGit
 
@@ -95,3 +97,36 @@ def test_changed_protected_sees_a_file_inside_a_new_untracked_directory(
     fake_git.git_changed_files = lambda _cwd, *, all_untracked=False: listed[all_untracked]
     fake_git.git_tracked_files = lambda _cwd: []
     assert _pp.changed_protected("/wt", "base", "branch", (), ()) == ["config/tsconfig.json"]
+
+
+class TestPrivateControlNames:
+    def test_the_list_names_docket_state_once(self) -> None:
+        assert _pp.PRIVATE_CONTROL_NAMES == (
+            "HEARTBEAT.md",
+            "AGENTS.md",
+            "TOOLS.md",
+            "MEMORY.md",
+            ".docket",
+        )
+
+    @pytest.mark.parametrize(
+        ("parts", "expected"),
+        [
+            (("MEMORY.md",), "MEMORY.md"),
+            ((".docket", "pod.yaml"), ".docket"),
+            (("a", ".docket"), ".docket"),
+            (("docs", "AGENTS.md"), None),
+            (("src", "memory.py"), None),
+            (("AGENTS.md.bak",), None),
+        ],
+    )
+    def test_files_count_at_the_root_and_the_directory_anywhere(
+        self, tmp_path: Path, parts: tuple[str, ...], expected: str | None
+    ) -> None:
+        assert _pp.private_control_name(tmp_path, parts) == expected
+
+    def test_a_repository_checkout_keeps_its_own_instruction_files(self, tmp_path: Path) -> None:
+        (tmp_path / ".git").write_text("gitdir: elsewhere\n")
+
+        assert _pp.private_control_name(tmp_path, ("AGENTS.md",)) is None
+        assert _pp.private_control_name(tmp_path, (".docket",)) == ".docket"

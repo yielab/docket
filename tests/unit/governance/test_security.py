@@ -350,3 +350,56 @@ def test_an_unclosed_quote_before_an_ampersand_is_refused_as_syntax() -> None:
     verdict = classify_command('echo "unclosed &')
     assert verdict.action == "deny"
     assert verdict.reason == "syntax: No closing quotation; fix the quoting and call again"
+
+
+class TestPrivateControlPaths:
+    @pytest.mark.parametrize("jailed", [False, True])
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "cat MEMORY.md",
+            "cat 'MEMORY.md'",
+            "cat ./MEMORY.md",
+            "cat <MEMORY.md",
+            "ls .docket",
+            "sed -i s/a/b/ .docket/pod.yaml",
+            'head -1 "sub/.docket/pod.yaml"',
+            "grep -r x --file=MEMORY.md",
+            "echo x > HEARTBEAT.md",
+            "ls && cat TOOLS.md",
+        ],
+    )
+    def test_a_token_naming_a_private_path_asks(
+        self, tmp_path: Path, command: str, jailed: bool
+    ) -> None:
+        verdict = classify_command(command, roots=(tmp_path,), jailed=jailed)
+
+        assert (verdict.action, verdict.reason) == ("ask", "private control path")
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "cat src/app.py",
+            "cat src/memory.py",
+            "cat docs/AGENTS.md",
+            "cat notes-MEMORY.md.txt",
+            "python3 -c \"open('MEMORY.md')\"",
+        ],
+    )
+    def test_other_paths_and_code_the_gate_cannot_read_are_not_asked_for(
+        self, tmp_path: Path, command: str
+    ) -> None:
+        assert classify_command(command, roots=(tmp_path,)).reason != "private control path"
+
+    def test_an_absolute_path_is_placed_against_the_roots(self, tmp_path: Path) -> None:
+        inside = classify_command(f"cat {tmp_path / 'MEMORY.md'}", roots=(tmp_path,))
+        elsewhere = classify_command("cat /srv/other/MEMORY.md", roots=(tmp_path,))
+
+        assert inside.reason == "private control path"
+        assert elsewhere.reason != "private control path"
+
+    def test_a_repository_roots_own_agents_file_is_not_asked_for(self, tmp_path: Path) -> None:
+        (tmp_path / ".git").mkdir()
+
+        assert classify_command("cat AGENTS.md", roots=(tmp_path,)).action == "allow"
+        assert classify_command("cat .docket/pod.yaml", roots=(tmp_path,)).action == "ask"
