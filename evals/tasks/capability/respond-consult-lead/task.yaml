@@ -1,5 +1,5 @@
 id: respond-consult-lead
-version: 1
+version: 2
 suite: capability
 shape: respond
 origin: "D-72 / ADR 0032: one Escalation record; a consult answered by the operator must reach the work"

@@ -1,5 +1,5 @@
 id: respond-triage-ticket
-version: 1
+version: 2
 suite: capability
 shape: respond
 origin: "D-77 / Phase 55: the respond shape for outward pods"
