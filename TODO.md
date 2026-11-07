@@ -16,7 +16,7 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> ## ▶ ACTIVE BOARD — WAVE 69 · Phase 69 (D-90, started 2026-11-07; P69-1 to P69-7 and P69-15 merged, P69-8, P69-9 and P69-13 in progress); Phase 70 (D-91) planned, starts after P69-14; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
+> ## ▶ ACTIVE BOARD — WAVE 69 · Phase 69 (D-90, started 2026-11-07; P69-1 to P69-8, P69-13 and P69-15 merged; P69-9 waits on its real runs); Phase 70 (D-91) planned, starts after P69-14; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
 >
 > **Phase 69 started 2026-11-07** on the maintainer's go, workers on Sonnet and Haiku only: P69-1 to P69-6 merged on
 > `develop` (not pushed), P69-7 and P69-8 in progress. **Phases 69 and 70** (D-90, D-91 proposed 2026-11-06): an agent eval
@@ -333,7 +333,7 @@ from `main`.
 
 ### P69-8 — pass@k, pass^k, the interval, the paired difference, the failure class, and the two commands that use them
 
-**Status:** IN-PROGRESS (@sonnet worker): part A DONE `3d12db93` (metrics, summary, `compare`); part B `run` and `nightly` · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-5
+**Status:** DONE 2026-11-07, `3d12db93` (metrics, summary, `compare`), `45878bdc` (`run`, `nightly`); `9b37a699` keeps mypy off the task files · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-5
 
 - **Goal:** `evals/harness/metrics.py` (pure): `pass_at_k(n, c, k)`, `pass_pow_k(n, c, k)`, `wilson(p, n)`, `clustered_se`
   (by task, Miller 2024), `paired_difference(a, b)` (mean, SE, 95 % CI, correlation; tasks matched by `task@version`,
@@ -352,7 +352,7 @@ from `main`.
 
 ### P69-9 — The regression suite: the canary's two scenarios as tasks, plus one task per real-run defect
 
-**Status:** IN-PROGRESS (@sonnet worker: the seven tasks; the local k=3 and Haiku runs are the integrator's) · **Size:** M · **Model:** Sonnet · **Kind:** data + real run · **After:** P69-7, P69-8
+**Status:** PARKED (left: the real runs, local k=3 and Haiku 5.5 on the maintainer's go, and the canary comparison on the same commit). Tasks `f139e457`; the four harness gaps they exposed (member memory seed, task pipeline, task budget, `governance.no_tool`) closed in `af4bcea1` · **Size:** M · **Model:** Sonnet · **Kind:** data + real run · **After:** P69-7, P69-8
 
 - **Goal:** `evals/tasks/regression/`: `basic` (16 bytes exact, from `smoke_workflow.py:55-62`) and
   `memory-maintenance` (the invoice module and its red `unittest` suite from `smoke_workflow.py:981-1105`, the Lead's
@@ -427,7 +427,7 @@ from `main`.
 
 ### P69-13 — Recall per model replaces the single-model recall test
 
-**Status:** IN-PROGRESS (@sonnet worker) · **Size:** S · **Model:** Sonnet · **Kind:** data + deletion · **After:** P69-7
+**Status:** DONE 2026-11-07, `276e7c4d` (gap: a task cannot force a compaction, so recall only means something on a model whose window the reads overflow, such as the local 32k) · **Size:** S · **Model:** Sonnet · **Kind:** data + deletion · **After:** P69-7
 
 - **Trigger:** `tests/agent/context/test_compaction_recall.py:22-25` `RETIRE_WHEN`: "a recall figure is published per
   model and tracked by the bench".
