@@ -147,6 +147,7 @@ def run_trial(
     if not spec.instruction or len(spec.instruction) > 500:
         raise ValueError("the instruction must be 1 to 500 characters")
     secrets = tuple(v for v in (spec.credential, *spec.credential_env.values()) if v)
+    out_dir = out_dir.resolve()  # docket runs from the world, never from this cwd
     out_dir.mkdir(parents=True, exist_ok=True)
     scratch = Path(tempfile.mkdtemp(prefix="trial-", dir=out_dir))
     started = time.monotonic()

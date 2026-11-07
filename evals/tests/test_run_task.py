@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from evals.harness.task import load_task
 from evals.harness.trial import run_task, spec_for
 from evals.tests.conftest import FIXED, TaskBuilder
@@ -37,7 +39,7 @@ def test_spec_for_carries_the_tasks_own_keys(make_task: TaskBuilder) -> None:
 
 
 def test_a_task_runs_graded_and_the_record_says_it_passed(
-    make_task: TaskBuilder, tmp_path: Path
+    make_task: TaskBuilder, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     task = load_task(make_task(graders=GRADERS))
     script = {
@@ -45,7 +47,8 @@ def test_a_task_runs_graded_and_the_record_says_it_passed(
         "implementer": [write_file("calc.py", FIXED), say("add() adds.")],
         "reviewer": [say("APPROVE")],
     }
-    out = tmp_path / "out"
+    monkeypatch.chdir(tmp_path)
+    out = Path("out")  # relative, as `run --out` passes it
 
     with FakeModel(script=script) as model:
         (record,) = run_task(
