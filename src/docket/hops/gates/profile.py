@@ -19,6 +19,7 @@ from docket.teams import autonomy as _autonomy
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod_settings as _pod_settings
+from docket.teams import posture as _posture
 
 LIGHTS_OUT = "lights-out"
 
@@ -43,6 +44,7 @@ class Facts:
     ungated_implementers: tuple[str, ...]
     injected_secrets: tuple[str, ...]
     consult_mode: str
+    powers: _posture.Powers | None = None
 
 
 def lights_out_violations(facts: Facts) -> list[Violation]:
@@ -90,6 +92,8 @@ def lights_out_violations(facts: Facts) -> list[Violation]:
                 "docket pod set consultMode decide",
             )
         )
+    if facts.powers is not None and facts.powers.holds_all:
+        out.append(Violation("rule-of-two", facts.powers.detail(), facts.powers.fix()))
     return out
 
 
@@ -163,6 +167,7 @@ def gather_facts(project: str, nodes: tuple[Any, ...]) -> Facts:
         ungated_implementers=ungated,
         injected_secrets=tuple(sorted(_injected_names(project, nodes) & stored)),
         consult_mode=_consult_mode(project),
+        powers=_posture.powers(project),
     )
 
 

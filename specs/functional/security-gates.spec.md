@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.21.0
+**Version**: 3.22.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -1583,7 +1583,11 @@ of that exact call needs a way to reach a later, re-entered turn without asking 
    - `consult`: a consultation at the pod's default level (`L4`, "Autonomy levels" below) is
      answered in the turn with the model's own recommendation and never waits for a person
      (operator-loop.spec.md "Consult" item 7). It holds unless the pod sets `consultMode park`
-     explicitly, which wins over the table; the fix is `docket pod set consultMode decide`.
+     explicitly, which wins over the table; the fix is `docket pod set consultMode decide`;
+   - `rule-of-two`: the pod does not hold untrusted input, private data and an outward action all at
+     once (`teams/posture.py::powers`, defined in pod-blueprints.spec.md "CLI surface" item 6; the
+     same reader prints them for `docket pod check --posture`). Any two are allowed; the third is
+     the person's. The fix names what to drop: the `send` server, the web read, or the secret.
    There is no HTTP MCP server check: MCP servers are stdio only and run in the jail.
 4. **Refuse, do not degrade.** `dispatch_task` evaluates the profile once, after the pipeline is
    planned and before any hop runs. A violation audits `profile.refused` (pod, task and the
@@ -1724,6 +1728,9 @@ docket pod policies [POLICY_ID] [--json] [--plugins] [--pod <p>]
                                     # list the policies in force (id, hook, action, description),
                                     #   or show one; the pod's own directory is folded in;
                                     #   --plugins adds the predicate plugins section
+docket pod check --posture [--pod <p>]
+                                    # print the pod's three powers (untrusted input, private
+                                    #   data, outward action) and warn when it holds all three
 docket pod check "<text>" --role <role> [--hook <hook>] [--tool <name>] [--arg key=value] [--pod <p>]
                                     # dry-run the evaluator (no trace written); --tool picks the
                                     #   built-in tool whose kind decides whether the command

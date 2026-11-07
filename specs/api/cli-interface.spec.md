@@ -1,9 +1,9 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.16.0
+**Version**: 5.17.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
-**Last Updated**: 2026-11-05
+**Last Updated**: 2026-11-07
 
 ## Purpose
 
@@ -588,8 +588,10 @@ tokens are spent
 **`pod check`**
 **Purpose**: Would the pod's rules allow this? A dry run of the evaluator (no traces emitted)
 **Syntax**: `docket pod check TEXT --role R [--hook pre_input|pre_tool_call|pre_output] [--tool
-NAME] [--arg key=value]... [--pod <p>]`
-**Options**: `--hook` defaults to `pre_tool_call`; `--tool` (default `bash`) names the built-in
+NAME] [--arg key=value]... [--pod <p>]`, or `docket pod check --posture [--pod <p>]`
+**Options**: `--posture` takes no `TEXT` and no `--role`: it prints the pod's untrusted input,
+private data and outward action, each with what grants it, and one warning line when it holds all
+three (pod-blueprints.spec.md "CLI surface" item 6); `--hook` defaults to `pre_tool_call`; `--tool` (default `bash`) names the built-in
 tool simulated — an `exec`-kind tool is judged by the command classifier plus the policy hook,
 exactly like the live gate, any other kind by the policy hook alone; `--arg` (repeatable) supplies
 the call arguments a rule's `when:` can test

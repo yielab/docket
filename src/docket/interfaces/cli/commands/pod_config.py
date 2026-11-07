@@ -27,6 +27,7 @@ from docket.interfaces.cli.render.apply import (
     render_apply_plan,
     render_recipe_needs,
 )
+from docket.interfaces.cli.render.posture import render_posture
 from docket.kernel.errors import CanonicalFormRefused, DispatchError
 from docket.kernel.home import current_home
 from docket.pipeline.domain import plan as _orch
@@ -37,6 +38,7 @@ from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod as _pod_core
 from docket.teams import pod_provisioning as _pp
 from docket.teams import pod_settings as _pod_settings
+from docket.teams import posture as _posture
 from docket.teams import records as _records
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _arch
@@ -472,19 +474,31 @@ def _call_args(pairs: list[str] | None) -> dict[str, str]:
 
 
 def cmd_check(
-    text: str = typer.Argument(..., help="The command, input or output text to judge"),
-    role: str = typer.Option(..., "--role", help="Role the call would run as"),
+    text: str | None = typer.Argument(None, help="The command, input or output text to judge"),
+    role: str | None = typer.Option(None, "--role", help="Role the call would run as"),
     hook: str = typer.Option("pre_tool_call", "--hook", help=" | ".join(_HOOKS)),
     tool: str = typer.Option("bash", "--tool", help="Built-in tool simulated at pre_tool_call"),
     arg: list[str] | None = typer.Option(None, "--arg", help="key=value for a rule's when:"),
+    posture: bool = typer.Option(
+        False,
+        "--posture",
+        help="Print the untrusted input, private data and outward action the pod holds",
+    ),
     pod: str | None = pod_option(),
 ) -> None:
     """Would the pod's rules allow this? A dry run; no traces are written.
 
     An exec tool is judged by the command classifier plus the policy hook, as the
-    live gate does; any other tool by the policy hook alone.
+    live gate does; any other tool by the policy hook alone. With --posture, no text
+    or role: it prints the three powers the pod holds and warns when it holds all three.
 
     Example: docket pod check "git push origin production" --role implementer"""
+    if posture:
+        project = _scope_pod(pod)
+        render_posture(project, _posture.powers(project))
+        return
+    if text is None or role is None:
+        _fail("Give TEXT and --role, or --posture", "Example: docket pod check --posture", 2)
     if hook not in _HOOKS:
         _fail(f"Unknown hook '{hook}'", f"Valid: {' '.join(_HOOKS)}", 2)
     project = _scope_pod(pod)

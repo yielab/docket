@@ -221,6 +221,43 @@ class TestRefusals:
         assert sorted(r.task_id for r in results) == sorted([first, second])
 
 
+class TestTheRuleOfTwo:
+    def _research(self, *, send: bool) -> None:
+        _fleet.meta_set("demo-lead", "fetchDomains", "docs.python.org")
+        kind = "send" if send else "write"
+        _mcp_servers.write_pod_mcp_servers(
+            "demo",
+            [
+                _kernel_mcp.McpServerConfig(
+                    name="mail", command="true", kind=kind, env={"TOKEN": "secret:mail"}
+                )
+            ],
+        )
+
+    def test_untrusted_input_private_data_and_a_send_tool_refuse_before_hop_zero(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
+    ) -> None:
+        _meet_everything(home, monkeypatch, fake_jail)
+        self._research(send=True)
+
+        res, driver = _dispatch_one(_GATED)
+
+        _refused(res, driver, "rule-of-two")
+        assert "holds untrusted input, private data and an outward action" in (res.reason or "")
+        assert "MCP server mail (send)" in (res.reason or "")
+
+    def test_dropping_the_send_tool_runs(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
+    ) -> None:
+        _meet_everything(home, monkeypatch, fake_jail)
+        self._research(send=False)
+
+        res, driver = _dispatch_one(_GATED)
+
+        assert res.failure_kind != "dispatch_refused"
+        assert driver.calls
+
+
 class TestAConsultThatWouldWait:
     def test_an_explicit_park_refuses_and_names_the_setting(
         self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail

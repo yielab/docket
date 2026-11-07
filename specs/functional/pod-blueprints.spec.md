@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 4.13.0
+**Version**: 4.14.0
 **Status**: Implemented
 **Last Updated**: 2026-11-07
 
@@ -184,6 +184,19 @@ This specification does NOT cover:
 5. A pod-shaped spec entry whose pod already exists **MUST** be skipped (warned, not recreated,
    not aborting the rest of the spec file): the same idempotence the single-agent declarative
    path has.
+6. **A pod names the three powers it holds (the Rule of Two).** `docket pod check --posture
+   [--pod <p>]` takes no `TEXT` and no `--role`, runs no dry-run verdict, and prints one line for
+   each of three powers with what grants it (`teams/posture.py::powers`):
+   - `untrusted input`: the pod's `fetch` reaches a host (`fetchDomains`, the machine list, or the
+     folder pod under the jail) or one of its selected MCP servers is declared `read`;
+   - `private data`: the pod works in a codebase, or a selected MCP server's `env` injects a secret
+     (a `secret:<name>` reference, or a variable named in the secret store);
+   - `outward action`: a selected MCP server is declared `send`, the pod's effective network is not
+     `none`, or the pod works in a folder (`workspaceKind workdir`, a `workDir` outside the repo).
+   When all three hold, a final warning line names them and what to drop (the `send` server, the
+   web read, or the secret); the exit code stays `0`, for the command reports and does not decide.
+   The lights-out profile (security-gates.spec.md "Profiles") refuses a task on such a pod with the
+   same message. With fewer than three, no warning line is printed.
 
 ### User-authored blueprints
 
@@ -712,6 +725,7 @@ docket pod add <role> [--count N] [--verify "<cmd>"]
 docket pod update [<name|dir|file>] [--dry-run] [--json] [--accept <code>]
 docket pod export [<dir>] [--force]
 docket pod recipes [<name|dir>] [--json]
+docket pod check --posture [--pod <name>]
 ```
 
 Every pod-scoped verb also takes `--pod <name>`; without it the pod is inferred from the current
@@ -864,7 +878,8 @@ Where the names above live today. This is the only section that names paths.
 - `src/docket/interfaces/cli/commands/agents.py`: `cmd_init`, `run_init`, `review_repo_source`, the `--from` path
 - `src/docket/interfaces/cli/commands/pod.py`: `build_pod_from_blueprint`, `set_setting`, `unset_setting`,
   `add_members`
-- `src/docket/interfaces/cli/commands/pod_config.py`: `cmd_update`, `cmd_export`, `cmd_validate`, `cmd_recipes`
+- `src/docket/interfaces/cli/commands/pod_config.py`: `cmd_update`, `cmd_export`, `cmd_validate`, `cmd_recipes`,
+  `cmd_check` (`--posture`); `src/docket/teams/posture.py`: `powers`, `Powers`
 - `src/docket/interfaces/cli/commands/run.py`: the change pickup before a dispatch;
   `src/docket/interfaces/cli/commands/setup_check.py`: the workspace-file check
 - `src/docket/interfaces/http/routes/pod_create.py`: `POST /pods`

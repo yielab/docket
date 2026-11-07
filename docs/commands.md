@@ -316,7 +316,8 @@ Example: docket pod plan --pipeline review.yaml
 Would the pod's rules allow this? A dry run; no traces are written.
 
 An exec tool is judged by the command classifier plus the policy hook, as the
-live gate does; any other tool by the policy hook alone.
+live gate does; any other tool by the policy hook alone. With --posture, no text
+or role: it prints the three powers the pod holds and warns when it holds all three.
 
 Example: docket pod check "git push origin production" --role implementer
 

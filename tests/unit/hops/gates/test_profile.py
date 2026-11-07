@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 
 from docket.hops.gates.profile import Facts, as_json, lights_out_violations
+from docket.teams.posture import Powers
 
 SUBJECT = "docket.hops.gates.profile"
 
@@ -67,3 +68,13 @@ def test_json_carries_requirement_and_fix_only() -> None:
     block = as_json(lights_out_violations(dataclasses.replace(_MET, isolation_on=False)))
     assert block["name"] == "lights-out"
     assert set(block["violations"][0]) == {"requirement", "fix"}
+
+
+def test_all_three_powers_refuse_and_two_do_not() -> None:
+    held = Powers(("web read of a.org",), ("the codebase",), ("MCP server mail (send)",))
+    (found,) = lights_out_violations(dataclasses.replace(_MET, powers=held))
+    assert found.requirement == "rule-of-two"
+    assert "MCP server mail (send)" in found.fix
+
+    two = dataclasses.replace(held, outward=())
+    assert _requirements(dataclasses.replace(_MET, powers=two)) == []
