@@ -169,12 +169,11 @@ Run the full aggregator before submitting:
 # Deterministic whole-workflow journeys against the fake model (no credentials)
 uv run pytest tests/e2e -n auto -q
 
-# Opt-in realistic memory-backed repair with genuine inference on port 8081
-uv run python scripts/smoke_workflow.py --live-model
-DOCKET_RUN_LIVE_SMOKE=1 uv run pytest -q tests/integration/product/smoke
-
-# Smaller live infrastructure-only scenario retained for diagnosis
-uv run python scripts/smoke_workflow.py --live-model --scenario basic
+# Agent evals: a real model, so never in CI (evals/README.md)
+uv run python -m evals.evaluator.run check-solutions   # no model: every reference solution passes
+# Regression suite on the local endpoint (port 8081), three trials per task, against a base commit
+uv run python -m evals.evaluator.run nightly --base <run dir or sha>
+uv run python -m evals.evaluator.run compare --base <run dir or sha> --head <run dir>
 
 # All tests (pytest + golden parity)
 ./tests/run-all-tests.sh
@@ -289,6 +288,12 @@ Seven rules, each written down because breaking it cost real work here.
 6. **Scrub every diff before committing.** Real client names, home-directory paths and usernames do
    not belong in a public repository. Commit subjects follow `Type: description` with a detailed
    body, ASCII only.
+7. **A change to what the agent sees or may do is measured before it ships (EDD).** A prompt, a
+   context rule, a role, a pipeline, a guardrail or the default model names its eval suite, its
+   threshold and its base commit before it starts, and writes the task first when no task captures
+   the defect (`AGENTS.md` change contract step 5; `specs/test-framework.md` "Agent evals"). A prompt
+   change once shipped with every check green while the work it produced got worse: nothing in CI
+   sees a model's output, so a green build says nothing about the model's work.
 
 ### Comments and docstrings
 

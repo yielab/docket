@@ -245,7 +245,7 @@ that docket's parts compose; they cannot say whether a real model does the work 
 lane answers that question. It lives in `evals/`, a development tool at the repository root,
 outside the wheel and outside `testpaths`. A real model never gates CI.
 
-The live smoke canary and its scripts are deleted by P69-10, once its two scenarios run here; this lane replaces them.
+The live smoke canary and its scripts were deleted by P69-10, once its two scenarios ran here; this lane replaced them.
 
 **Status.** The lane is built by Phase 69 (D-90); a requirement below that has no code yet is the
 contract the owning card implements. The vocabulary (task, trial, epoch, grader, reducer, reward) is

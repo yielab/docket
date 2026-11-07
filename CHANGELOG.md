@@ -238,6 +238,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The live smoke canary: `scripts/smoke_workflow.py`, `scripts/maint/live_eval.py`, `scripts/live_credentials.py`,
+  `tests/support/smoke_script.py` and `tests/integration/product/smoke/`** (4,368 lines). Its two scenarios,
+  `basic` and `memory-maintenance`, run as regression tasks of the agent eval lane (`evals/`), which
+  measures repeated trials against a base commit; the `DOCKET_RUN_LIVE_SMOKE` opt-in is gone. Development
+  tooling only; the wheel never shipped it.
+
 - **The optional OpenHands SDK and PydanticAI adapters of `docket-runtime`** (`docket_runtime.adapters`),
   their example, fixtures and release tests, and the claims about them in the runtime-library spec
   (now 3.0.0), `COMPATIBILITY.md` and `SECURITY.md`. The facade and the governed-execution envelope

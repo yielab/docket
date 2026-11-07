@@ -2,7 +2,7 @@ id: memory-maintenance
 version: 1
 suite: regression
 shape: build
-origin: "scripts/smoke_workflow.py:981-1105 (the checkout fixture), :1380-1395 (the Lead's MEMORY.md seed, kept in lead-memory/MEMORY.md) and :1396-1423 (the hidden acceptance), the live canary's scenario `memory-maintenance`, retired by P69-10"
+origin: "the retired live canary at commit 3550cc23, lines 981-1105 (the checkout fixture), 1380-1395 (the Lead's MEMORY.md seed, kept in lead-memory/MEMORY.md) and 1396-1423 (the hidden acceptance), its scenario `memory-maintenance`; retired by P69-10"
 instruction: >-
   Repair checkout calculation and receipt metadata per the Lead's current durable
   decisions. Each downstream role must use only the Lead's typed handoff. Never search or

@@ -53,8 +53,9 @@ Effectiveness is the card shipped per token and per minute, not the number of ch
   `references/validation.md`). The integrator owns every whole-suite run.
 - **Live model runs:** the local endpoint is the free oracle but small (32k window; set
   `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`). The replay bench (`scripts/maint/context_replay.py`) costs
-  nothing and runs per card when the card changes what the model sees; the live eval
-  (`scripts/maint/live_eval.py -n 3`) runs once per wave by the integrator; a hosted provider runs
+  nothing and runs per card when the card changes what the model sees; the eval lane's
+  regression suite (`uv run python -m evals.evaluator.run nightly`, three trials per task) runs once
+  per wave by the integrator; a hosted provider runs
   once at the phase close, after the maintainer's go.
 
 ## Start packet

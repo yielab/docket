@@ -71,9 +71,12 @@ Missing, all verified on 2026-10-25:
    that is not built until a measurement shows Implementers still exploring with locators.
 5. **Measure before and after.** Every card names its oracle: the replay bench
    (`scripts/maint/context_replay.py`) for bytes and counted tokens, the live eval
-   (`scripts/maint/live_eval.py`) for success on the local endpoint, and two new figures the
+   (deleted 2026-11-07 by P69-10; the eval lane's regression suite, `evals/`, replaces it) for success
+   on the local endpoint, and two new figures the
    phase adds first: cache-hit ratio per `llm_call` and tokens per accepted task. Dollars stay
-   estimates.
+   estimates. **Amended 2026-11-07** (D-90): the live eval named above is deleted with the canary;
+   success on the local endpoint is measured by the eval lane (`uv run python -m evals.evaluator.run
+   nightly`, the `regression` suite). The replay bench is unchanged.
 
 ## Not doing
 

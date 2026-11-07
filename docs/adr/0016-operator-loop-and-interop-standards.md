@@ -291,8 +291,8 @@ acted on.**
   a test or a throwaway scenario world, never a real operator's own pod. Sample size 0 < 10: the
   trigger cannot fire yet, and the deferral stands unchanged.
 - **One worker per pod in the sweep: not fired under the scripted backend, but the underlying
-  cost is real and worth naming.** The operator-loop scenario (`scripts/smoke_workflow.py
-  --scenario operator-loop`), re-run after `park` shipped: deterministically, `sweepBlockedSeconds`
+  cost is real and worth naming.** The operator-loop scenario (the canary's operator-loop run, deleted by P69-10; last at `3550cc23`), re-run after `park`
+  shipped: deterministically, `sweepBlockedSeconds`
   dropped from the pre-Wave-65 baseline of roughly 12-13s to under a second (0.0-1.0s across two
   runs) — `park` genuinely removes the blocking wait the trigger's premise describes. Against the
   real local model (`--live-model`), the same scenario measured `sweepBlockedSeconds = 138.0`:
@@ -331,9 +331,11 @@ acted on.**
   - an unanswered question never fails a task.
 - Every HTTP target in a test is a local `http.server` on port 0. No test calls a real model or
   a real vendor.
-- The phase oracle is `scripts/smoke_workflow.py --scenario operator-loop`: deterministic by
-  default, `--live-model` against the local endpoint. It is measured at P34-1 and again at the
-  close.
+- The phase oracle was the canary's operator-loop scenario: deterministic by default,
+  `--live-model` against the local endpoint. It is measured at P34-1 and again at the close.
+  **Amended 2026-11-07** (D-90, P69-10): the canary is deleted (last at `3550cc23`). No eval task
+  replaces this scenario; the deterministic operator-loop check in the default lanes is the e2e
+  journey `tests/e2e/test_operator_in_the_loop.py`.
 
 **P34-1 baseline vs. the 2026-09-29 close (same four-task, two-pod scenario, unmodified).**
 
@@ -358,5 +360,5 @@ real `channels-health.json` shape never had, so the counter silently read `0` si
 was written — fixed to sum each channel's own `delivered` counter. `--live-model` registered its
 provider *after* `docket init`, the reverse of the working order `_run`'s other scenarios use, so
 `init`'s own readiness check failed on a missing `ANTHROPIC_API_KEY` before the live provider was
-ever registered — `--scenario operator-loop --live-model` had never actually completed `init`
+ever registered - the canary's operator-loop run with `--live-model` had never actually completed `init`
 until this fix reordered the two calls.

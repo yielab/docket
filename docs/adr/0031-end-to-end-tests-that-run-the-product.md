@@ -10,9 +10,14 @@ and where do those tests live?
 
 ## What was measured
 
+**Amended 2026-11-07** (D-90, P69-10): the canary named in the measurements below is deleted; its
+real-endpoint scenarios are regression tasks of the eval lane (`evals/tasks/regression/`). The
+measurements are the 2026-10-25 state and stay as the record; the files they cite existed at
+commit `3550cc23`.
+
 - **One real end-to-end test runs in the default suite:**
-  `tests/integration/product/smoke/test_oracle_and_approval.py::test_full_workflow_smoke_is_observable_and_preserves_state`.
-  - It runs `scripts/smoke_workflow.py`: `docket` subprocesses and a scripted model over HTTP,
+  the canary's `test_full_workflow_smoke_is_observable_and_preserves_state` (deleted by P69-10; at `3550cc23`).
+  - It runs the canary (deleted by P69-10; at `3550cc23`): `docket` subprocesses and a scripted model over HTTP,
     across four roles, a verify gate, verdicts, a step approval and resume, and `log verify`.
   - It runs with no git repository (the basic scenario writes only a README), so no worktree or
     diff is exercised.
@@ -34,7 +39,7 @@ and where do those tests live?
 - **Scripted models exist four times, plus the transport test's patched `urlopen`:**
   - `tests/support/llm.py::_ScriptedLLMServer`: an ordered list, always 200, repeats its last
     reply.
-  - `scripts/smoke_workflow.py::_ScriptedModel`: by ordinal, validates each request.
+  - the canary's `_ScriptedModel` (deleted by P69-10; at `3550cc23`): by ordinal, validates each request.
   - The recorders in `scripts/release_journey.py` and `examples/starter/starter.py`.
 
   None of them routes by role, injects a failure through a real turn, or enforces a context
@@ -80,7 +85,10 @@ and where do those tests live?
    An expected skeleton is reviewed like a golden and is never regenerated to hide a change.
 5. **The deterministic smoke moves into the lane.** Its basic scenario and its scripted
    operator-loop scenario become e2e tests, and `_ScriptedModel` and `_OperatorLoopModel` are
-   deleted. `scripts/smoke_workflow.py` keeps only what needs a real endpoint.
+   deleted. The canary keeps only what needs a real endpoint.
+   **Amended 2026-11-07** (D-90, P69-10): the canary is deleted, so the sentence above is superseded.
+   Its real-endpoint scenarios (`basic`, `memory-maintenance`) run as regression tasks of the eval
+   lane (`evals/`), with a real model and never in CI.
 6. **A real model never gates CI.** Repeated real-model runs, compared by skeleton, are a manual
    evaluation against the operator's endpoint. Tokens are reported as measured; no dollar figure
    is reported as spent.

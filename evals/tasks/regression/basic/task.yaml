@@ -2,7 +2,7 @@ id: basic
 version: 1
 suite: regression
 shape: build
-origin: "scripts/smoke_workflow.py:55-62 (_basic_task_description), the live canary's scenario `basic`, retired by P69-10"
+origin: "the retired live canary at commit 3550cc23, lines 55-62 (_basic_task_description), its scenario `basic`; retired by P69-10"
 instruction: >-
   Create smoke-artifact.txt in the workspace containing exactly the UTF-8 bytes
   "docket smoke ok" followed by one terminal LF, with no other bytes or lines. The
