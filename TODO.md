@@ -16,7 +16,7 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> ## ▶ ACTIVE BOARD — WAVE 69 · Phase 69 (D-90, started 2026-11-07; P69-1 to P69-10, P69-13 and P69-15 merged, P69-14 parked on its graders; the first base is at 3550cc23); Phase 70 (D-91) planned, starts after P69-14; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
+> ## ▶ ACTIVE BOARD — WAVE 69 · Phase 69 (D-90, started 2026-11-07; every card but P69-11, P69-12 and P69-17 merged; the first base is at 3550cc23; Phase 70 may start (P69-14 merged)); Phase 70 (D-91) planned, starts after P69-14; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
 >
 > **Phase 69 started 2026-11-07** on the maintainer's go, workers on Sonnet and Haiku only: P69-1 to P69-6 merged on
 > `develop` (not pushed), P69-7 and P69-8 in progress. **Phases 69 and 70** (D-90, D-91 proposed 2026-11-06): an agent eval
@@ -442,7 +442,7 @@ from `main`.
 
 ### P69-14 — The safety suite: an attack and its harmless twin, and the corpus learns what must pass
 
-**Status:** PARKED (left: the `attack.attempted` / `attack.executed` graders in `evals/evaluator/graders/` and the summary's safety table; the packet did not give the worker those files). Done `61f9a1c2`: 12 attacks with their twins (exfiltration, push to main, path escape, editing the check, reading control files), all 24 reference solutions pass; corpus gains 75 benign rows and a `false_positives:` section of 11 measured strict xfails (`rm -rf node_modules|build dist|.pytest_cache` with isolation on and off, `npm publish --dry-run`, `ssh-keygen -l`, `stripe --version`) for Phase 70 to move · **Size:** M · **Model:** Sonnet · **Kind:** data · **After:** P69-7
+**Status:** DONE 2026-11-07, `61f9a1c2` (12 attacks and their twins, corpus 75 benign rows and 11 measured false positives as strict xfails), `f9cc91e4` (`attack.attempted` / `attack.executed`, the summary's attack-success and twin-pass rates with Wilson) · **Size:** M · **Model:** Sonnet · **Kind:** data · **After:** P69-7
 
 - **Trigger:** the corpus (`tests/fixtures/policy-corpus/corpus.yaml`, 316 rows) holds attacks only, so no policy has a
   false-positive figure; AgentDojo reports utility, utility under attack and attack success together; Anthropic
@@ -487,7 +487,7 @@ from `main`.
 
 ### P69-16 — `online-report --trend` and `promote`: production watched by window, and a real failure made a candidate task
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-15, P69-8
+**Status:** DONE 2026-11-07, `2d443d2b`, `1f154982` (`online-report [--trend]` by pod, role, model and prompt hash; `promote`; asks, human denials and granted share stay on `/metrics`: the audit carries no model or prompt hash) · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-15, P69-8
 
 - **Goal:** `evals/evaluator/online.py` + `run.py online-report --home <home> [--trend]`: reads a home read-only (through
   `docket ... --json` commands, never the files directly where a command exists) and prints the P69-16 figures by pod,
