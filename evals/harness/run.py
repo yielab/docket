@@ -15,6 +15,7 @@ from typing import Annotated, Literal
 import typer
 
 from evals.harness.compare import ComparisonError, compare_runs, render, resolve_run
+from evals.harness.graders import GradeContext, grade_one
 from evals.harness.task import Grader, Task, TaskError, discover
 from evals.harness.verify import run_hidden
 
@@ -61,31 +62,22 @@ def _apply_solution(task: Task, repo: Path) -> str | None:
     return None
 
 
-def _file_exact(repo: Path, grader: Grader) -> Outcome:
-    name = grader.name
-    target = (repo / grader.params["path"]).resolve()
-    if not target.is_relative_to(repo.resolve()):
-        return Outcome(name, "fail", f"{grader.params['path']} leaves the repository")
-    if not target.is_file():
-        return Outcome(name, "fail", f"{grader.params['path']} was not produced")
-    if target.read_bytes() != grader.params["content"].encode("utf-8"):
-        return Outcome(name, "fail", f"{grader.params['path']} differs from the bytes asked for")
-    return Outcome(name, "pass", f"{grader.params['path']} matches")
+_OUTCOME = frozenset({"outcome.hidden_tests", "outcome.file_exact"})
 
 
 def _grade(task: Task, grader: Grader, repo: Path, work: Path) -> Outcome:
+    """Grade one required grader through the trial's own graders; only outcome graders that need
+    no trial run here, the rest are skipped."""
     name = grader.name
-    if name == "outcome.hidden_tests":
-        result = run_hidden(repo, task.hidden, work / "verify")
-        tail = result.output_tail.strip().splitlines()[-1:] or [""]
-        return Outcome(
-            name, "pass" if result.status == "pass" else "fail", f"{result.status}: {tail[0]}"
-        )
-    if name == "outcome.file_exact":
-        return _file_exact(repo, grader)
     if name == "outcome.task_status":
         return Outcome(name, "skipped", "skipped: a task status needs a trial")
-    return Outcome(name, "skipped", "skipped: not an outcome grader")
+    if name not in _OUTCOME:
+        return Outcome(name, "skipped", "skipped: not an outcome grader")
+    verifier = (
+        run_hidden(repo, task.hidden, work / "verify") if name == "outcome.hidden_tests" else None
+    )
+    result = grade_one(grader, GradeContext(repo=repo, verifier=verifier))
+    return Outcome(name, "pass" if result.status == "pass" else "fail", result.reason)
 
 
 def check_task(task: Task) -> list[Outcome]:

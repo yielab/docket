@@ -34,7 +34,8 @@ class Ask:
 @dataclass
 class OperatorOutcome:
     """How the operator's loop ended. `unscripted` names a pause the script has no answer for;
-    `timed_out` and `stalled` say the task did not settle; `reason` is one line for the record."""
+    `timed_out` and `stalled` say the task did not settle; `reason` is one line for the record;
+    `statuses` is every status the operator saw, in order."""
 
     status: str
     asks: list[Ask] = field(default_factory=list)
@@ -42,6 +43,7 @@ class OperatorOutcome:
     timed_out: bool = False
     stalled: bool = False
     reason: str = ""
+    statuses: list[str] = field(default_factory=list)
 
 
 def run_operator(
@@ -56,6 +58,7 @@ def run_operator(
     """Run the pod's queue until the task settles, answering each pause from *script*."""
     deadline = time.monotonic() + wall_s
     outcome = OperatorOutcome(status=world.status(task_id))
+    outcome.statuses.append(outcome.status)
     while True:
         remaining = deadline - time.monotonic()
         if remaining < _MIN_SLICE_S:
@@ -68,6 +71,7 @@ def run_operator(
         except subprocess.TimeoutExpired:
             return _end(outcome, world, task_id, timed_out=True, reason="wall-clock limit reached")
         status = world.status(task_id)
+        outcome.statuses.append(status)
         if world.is_terminal(task_id):
             return _end(outcome, world, task_id)
         kind = _WAITING.get(status)

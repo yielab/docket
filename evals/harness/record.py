@@ -22,24 +22,15 @@ from typing import Any, cast
 
 from docket.governance.secrets import redact
 from docket.kernel.ports import process_port
-from evals.harness.operator import OperatorOutcome, run_operator
-from evals.harness.verify import HiddenResult, run_hidden
+from evals.harness.graders import GradeContext, grade, passed
+from evals.harness.operator import run_operator
+from evals.harness.task import Graders
+from evals.harness.taxonomy import classify
+from evals.harness.verify import run_hidden
 from evals.harness.world import TrialWorld, build_world
 
 SCHEMA = 1
 TRIALS_FILE = "trials.jsonl"
-FAILURE_CLASSES = ("product", "model", "harness", "infra")
-_PRODUCT_KINDS = frozenset(
-    {
-        "stale_claim",
-        "dispatch_refused",
-        "prepare",
-        "base_ref",
-        "pipeline",
-        "capability_missing",
-        "gate_error",
-    }
-)
 _DOCKET_ROOT = Path(__file__).resolve().parents[2]
 _PROMPT_LAYERS = ("identity", "hop")
 _SESSION_FILE = "session.json"
@@ -71,7 +62,8 @@ class TrialSpec:
 
 @dataclass
 class TrialRecord:
-    """The record of one trial; `schema` versions the line. `graders` is filled by the grader card."""
+    """The record of one trial; `schema` versions the line. `graders` maps a grader's name to its
+    status, reason and whether it is required; `passed` is true when every required one passed."""
 
     task: str
     suite: str
@@ -90,6 +82,7 @@ class TrialRecord:
     verifier: dict[str, Any]
     status: str
     reason: str = ""
+    passed: bool = False
     schema: int = SCHEMA
 
 
@@ -142,8 +135,11 @@ def docket_commit() -> str:
     return done.stdout.strip() if done.returncode == 0 else "unknown"
 
 
-def run_trial(spec: TrialSpec, out_dir: Path, *, keep_world: bool = False) -> TrialRecord:
-    """Run *spec* once, append its record to `out_dir/trials.jsonl` and return it."""
+def run_trial(
+    spec: TrialSpec, out_dir: Path, *, graders: Graders | None = None, keep_world: bool = False
+) -> TrialRecord:
+    """Run *spec* once, grade it with *graders*, append its record to `out_dir/trials.jsonl` and
+    return it. A trial with no graders is recorded as not passed."""
     if not spec.instruction or len(spec.instruction) > 500:
         raise ValueError("the instruction must be 1 to 500 characters")
     secrets = tuple(v for v in (spec.credential, *spec.credential_env.values()) if v)
@@ -151,7 +147,7 @@ def run_trial(spec: TrialSpec, out_dir: Path, *, keep_world: bool = False) -> Tr
     scratch = Path(tempfile.mkdtemp(prefix="trial-", dir=out_dir))
     started = time.monotonic()
     try:
-        record = _run(spec, scratch, out_dir, secrets, started)
+        record = _run(spec, scratch, out_dir, secrets, started, graders)
     finally:
         if not keep_world:
             shutil.rmtree(scratch, ignore_errors=True)
@@ -160,7 +156,12 @@ def run_trial(spec: TrialSpec, out_dir: Path, *, keep_world: bool = False) -> Tr
 
 
 def _run(
-    spec: TrialSpec, scratch: Path, out_dir: Path, secrets: tuple[str, ...], started: float
+    spec: TrialSpec,
+    scratch: Path,
+    out_dir: Path,
+    secrets: tuple[str, ...],
+    started: float,
+    graders: Graders | None,
 ) -> TrialRecord:
     world = build_world(
         scratch / "world",
@@ -175,6 +176,7 @@ def _run(
         pipeline=spec.pipeline,
         credential_env=spec.credential_env,
     )
+    head_before = world.head()
     task_id = world.add_task(spec.instruction)
     outcome = run_operator(
         world,
@@ -194,6 +196,27 @@ def _run(
         timeout_s=float(spec.limits.get("verify_s", 300)),
     )
     stored = world.stored_task(task_id)
+    tokens = _tokens(stored)
+    wall_s = round(time.monotonic() - started, 2)
+    graded: dict[str, Any] = {}
+    if graders is not None:
+        graded = grade(
+            graders,
+            GradeContext(
+                frozen=frozen,
+                pod=world.pod,
+                status=outcome.status,
+                statuses=outcome.statuses,
+                verifier=verifier,
+                repo=world.worktree(task_id),
+                tokens=tokens,
+                asks=[asdict(a) for a in outcome.asks],
+                wall_s=wall_s,
+                world=world,
+                head_before=head_before,
+                check_checkout=spec.blueprint == "build",
+            ),
+        )
     return TrialRecord(
         task=f"{spec.task}@{spec.version}",
         suite=spec.suite,
@@ -201,10 +224,10 @@ def _run(
         docket_commit=docket_commit(),
         epoch=spec.epoch,
         prompt_hashes=_prompt_hashes(stored),
-        graders={},
-        failure_class=_failure_class(outcome, stored, events, verifier),
-        tokens=_tokens(stored),
-        wall_s=round(time.monotonic() - started, 2),
+        graders=graded,
+        failure_class=classify(outcome, stored, events, verifier, graded),
+        tokens=tokens,
+        wall_s=wall_s,
         asks=[asdict(a) for a in outcome.asks],
         denials=_denials(events),
         trace_skeleton=world.skeleton(task_id),
@@ -212,6 +235,7 @@ def _run(
         verifier=asdict(verifier),
         status=outcome.status,
         reason=outcome.reason,
+        passed=passed(graded),
     )
 
 
@@ -277,26 +301,3 @@ def _denials(events: list[dict[str, Any]]) -> int:
         and e["payload"].get("decision") == "deny"
         and e["payload"].get("denialKind") != "approval_parked"
     )
-
-
-def _failure_class(
-    outcome: OperatorOutcome,
-    stored: Mapping[str, Any],
-    events: list[dict[str, Any]],
-    verifier: HiddenResult,
-) -> str | None:
-    """The mechanical class of a trial that did not go cleanly, or `None`."""
-    calls = [e["payload"] for e in events if e.get("event_type") == "llm_call"]
-    if any(c.get("finishReason") == "length" for c in calls):
-        return "harness"
-    if outcome.unscripted or (outcome.status == "done" and verifier.status == "error"):
-        return "harness"
-    answered = any(c.get("ok") for c in calls)
-    if outcome.stalled or outcome.timed_out:
-        return "model" if answered and outcome.timed_out else "infra"
-    if outcome.status == "done":
-        return None
-    if not answered:
-        return "infra"
-    kind = str(stored.get("failureKind") or "")
-    return "product" if kind in _PRODUCT_KINDS else "model"
