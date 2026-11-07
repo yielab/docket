@@ -112,13 +112,48 @@ def _load_mcp_tools(
     if selection is not None:
         servers = [s for s in servers if s.name in selection]
     loadable, unavailable = _resolve_server_secrets(servers)
+    pins = _mcp_servers.load_pins(project)
     if launch is None:
-        loaded = _mcp.load_mcp_tools(registry, servers=loadable, role=role, project=project)
+        loaded = _mcp.load_mcp_tools(
+            registry, servers=loadable, role=role, project=project, pins=pins
+        )
     else:
         loaded = _mcp.load_mcp_tools(
-            registry, servers=loadable, role=role, project=project, launch=launch
+            registry, servers=loadable, role=role, project=project, launch=launch, pins=pins
         )
+    _record_pins(loaded, pins, project)
     return [*unavailable, *loaded]
+
+
+def _record_pins(
+    reports: list[_mcp.McpServerLoadResult], pins: dict[str, dict[str, str]], project: str
+) -> None:
+    """Pin what an unpinned server registered, and keep the listing of a server that held a tool
+    back for ``setup mcp accept`` (mcp-client.spec.md requirements 53-54). A write that fails is
+    audited and never fails the turn."""
+    for report in reports:
+        if not report.ok:
+            continue
+        try:
+            if any(skip.fix for skip in report.skipped):
+                _mcp_servers.record_pending(report.server, report.observed, project)
+            elif report.server not in pins:
+                _mcp_servers.pin_server(report.server, report.registered_pins(), project)
+        except Exception as exc:  # a pin that cannot be written must not fail the turn
+            tool_gate.audit_event(
+                "mcp_client.pin_failed", f"server={report.server!r}: {type(exc).__name__}: {exc}"
+            )
+
+
+def held_back_tools(reports: list[Any]) -> dict[str, str]:
+    """The MCP tools a turn left out because their definition changed, each with the command that
+    restores it: the ``held_back`` of the turn's ``PodOffer`` (mcp-client.spec.md requirement 56)."""
+    return {
+        skip.tool_name: skip.fix
+        for report in reports
+        for skip in getattr(report, "skipped", ())
+        if skip.fix
+    }
 
 
 def _resolve_server_secrets(
@@ -169,7 +204,13 @@ def _load_records_tools(registry: ToolRegistry, project: str = "") -> list[str]:
     return _records_tools.load_records_tools(registry, store=_pod_records.open(project), sets=sets)
 
 
-def pod_offer(registry: ToolRegistry, project: str, role: str, surface: str) -> PodOffer:
+def pod_offer(
+    registry: ToolRegistry,
+    project: str,
+    role: str,
+    surface: str,
+    mcp_reports: list[Any] | None = None,
+) -> PodOffer:
     """What *project* offers *role* beyond the tools its registry holds: the names the role would
     hold if its `tools` listed them (the full *registry* narrowed by *surface* and the role's and the
     pod's denials only), the declared record sets, whether `fetch` is denied by neither, and the command that opens it."""
@@ -189,6 +230,7 @@ def pod_offer(registry: ToolRegistry, project: str, role: str, surface: str) -> 
         record_sets=frozenset(s.name for s in sets),
         fetch_declarable=FETCH not in denied,
         fetch_fix=_network_posture.fetch_reach(project).fix,
+        held_back=held_back_tools(mcp_reports or []),
     )
 
 

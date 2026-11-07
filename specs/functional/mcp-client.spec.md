@@ -1,13 +1,15 @@
 # MCP Client Specification
 
-**Version**: 3.2.0
+**Version**: 3.3.0
 **Status**: Implemented and on the live turn path: configured servers' tools load into the turn's
 registry before per-role narrowing, so a role that denies a capability loses them like a built-in.
 Stdio transport only; each turn re-spawns every configured server (no listing cache). A server
 declared `lifetime: hop` keeps one session open for the hop's calls (Requirements 41-46); every
 other server is one subprocess per exchange. An `env` value may be `secret:<name>`, resolved from
-docket's secret store when a turn loads its servers (Requirements 47-50).
-**Last Updated**: 2026-11-03
+docket's secret store when a turn loads its servers (Requirements 47-50). A tool's definition is
+pinned the first time a turn loads it; a server that later changes it, or adds a tool, is held back
+until the operator accepts (Requirements 51-57).
+**Last Updated**: 2026-11-07
 
 ## Purpose
 
@@ -42,6 +44,7 @@ This specification covers:
 - The pod's `mcpServers` selection as it applies to loading
 - The directory and jail a stdio server starts in during a turn
 - The model-visible output ceiling for a remote tool result
+- The pin on each tool's definition, and the `docket setup mcp accept` that renews it
 - A server's `lifetime`: one stdio session that answers all of a hop's calls, and where it ends
 
 This specification does NOT cover:
@@ -272,6 +275,49 @@ This specification does NOT cover:
     `_PASSWORD`), naming the server and the variable and the `--secret` fix, and **MUST NOT** print
     the value. The warning is advisory: it is not counted as a critical issue.
 
+### Pinned tool definitions
+
+51. A tool's **pin** is the lowercase hex `sha256` of the canonical JSON (sorted keys, no
+    insignificant whitespace) of `[name, description, input schema]` exactly as the server
+    advertised it (`kernel/mcp.py::tool_pin`). `McpServerRegistry` **MUST** carry `pins`, a map
+    `server name -> tool name -> {hash, description}`, beside `servers`, in the global file and in a
+    pod-scoped file alike, written only through the docket-owned JSON store. A server with no entry
+    in `pins` is *unpinned*; an entry, even an empty one, is *pinned*. Removing a server
+    (`remove_mcp_server`) **MUST** remove its `pins` and `pending` entries; rewriting a pod-scoped
+    file at `docket pod update` **MUST** keep the entries of every server that stays.
+52. `load_mcp_tools` **MUST**, for a pinned server and after Requirement 10's collision-skip and
+    Requirement 32's allow-list skip, register a tool only when its current pin equals the stored
+    one. A tool whose pin differs, or that the server advertises but the pins do not list (a new
+    tool on a known server), **MUST NOT** be registered. It **MUST** be recorded in
+    `McpServerLoadResult.skipped` with a reason naming both short hashes (`none` when new) and
+    carrying the fix `review and run \`docket setup mcp accept <server>\``, and **MUST** be audited
+    (`mcp_client.tool_changed`, detail naming server, tool, the pinned hash and the current hash,
+    never a description). The other tools of the server register as usual. An unchanged server
+    registers exactly as before, with no audit entry.
+53. A server that is unpinned **MUST** register its tools as before; the live turn **MUST** then
+    record the pin of every tool that registered (trust on first use, the one point where nothing
+    earlier is known to compare against), so the next turn is compared. The pin is written by the
+    caller of `load_mcp_tools` (`driver_support._load_mcp_tools`), never by `load_mcp_tools`, which
+    reads the pins it is handed and writes nothing. A write that fails **MUST** be audited
+    (`mcp_client.pin_failed`) and **MUST NOT** fail the turn (Requirement 28).
+54. When a pinned server has a held-back tool, the live turn **MUST** record that server's current
+    listing (every allow-listed tool's pin and description) as its `pending` entry, replacing an
+    earlier one. A turn that holds nothing back **MUST NOT** change `pending`.
+55. `docket setup mcp accept <server>` **MUST** replace the server's pins with its pending listing,
+    clear `pending`, print what differed (a tool added, removed, or changed, each with its old and
+    new description, or `input schema changed` where only the schema differs) and audit
+    `mcp_servers.accept` (server and count, no description text). It **MUST NOT** connect to the
+    server: it reads only what a turn already observed, inside the jail when isolation is on. A
+    server that does not exist, or has nothing pending, **MUST** exit 1 naming that.
+    `docket setup mcp list` is unchanged (Requirement 20).
+56. Where a hop serves a task, a held-back tool's name **MUST** be in the turn's `PodOffer` (the
+    `held_back` map, name to fix), so a call to it is answered with a `CapabilityGap` of kind `tool`
+    whose fix is the Requirement 52 fix, and the hop stops with `capability_missing`
+    (`agent-loop.spec.md` requirement 113).
+57. `docket setup mcp add` **MUST NOT** list the server and **MUST NOT** pin: a server is spawned only
+    by a turn, inside the jail when isolation is on. The pin is made by the first turn that loads it
+    (Requirement 53), which covers a server declared by `docket pod update` the same way.
+
 ### Model-visible output bound
 
 30. `call_remote_tool` **MUST** visibly truncate rendered remote output at
@@ -385,7 +431,9 @@ class McpServerConfig(BaseModel):              # name, command, args, env, timeo
 
     # env values: a literal, or `secret:<name>` resolved at turn load (Requirements 47-49)
 
-class McpServerRegistry(BaseModel):            # servers: list[McpServerConfig]
+class McpServerRegistry(BaseModel):            # servers: list[McpServerConfig]; pins, pending (Requirements 51-54)
+class McpToolPin(BaseModel): ...               # hash, description
+def tool_pin(name: str, description: str, parameters: dict) -> str: ...   # Requirement 51
 
 def load_mcp_servers(project: str = "") -> list[McpServerConfig]: ...  # global, then project's own
 def add_mcp_server(config: McpServerConfig) -> None: ...      # raises ValueError on bad/dup name
@@ -413,8 +461,8 @@ class StdioLaunch:                              # cwd, sandbox ("auto"|"off"), n
 class ListToolsFn(Protocol):                    # (config, timeout, launch=None) -> McpListResult
 class CallToolFn(Protocol):                     # (config, name, arguments, timeout, launch=None) -> ToolOutcome
 
-class McpToolSkip:                              # tool_name, reason
-class McpServerLoadResult:                      # server, ok, kind, registered, skipped, error
+class McpToolSkip:                              # tool_name, reason, fix (non-empty for a held-back tool)
+class McpServerLoadResult:                      # server, ok, kind, registered, skipped, error, observed
 
 def load_mcp_tools(
     registry: ToolRegistry,
@@ -425,6 +473,7 @@ def load_mcp_tools(
     role: str = "",                                       # feeds the pre_input policy check
     project: str = "",                                    # the calling pod, for its on: input policies
     launch: StdioLaunch | None = None,                    # how stdio servers start (Requirements 39-40)
+    pins: Mapping[str, Mapping[str, str]] | None = None,  # server -> tool -> pin; absent server = unpinned (52-53)
 ) -> list[McpServerLoadResult]: ...
 ```
 
@@ -486,13 +535,15 @@ Requirement 34's `mcpServers` filtering keys off.
       "tools": [],
       "lifetime": "call"
     }
-  ]
+  ],
+  "pins": {"weather": {"get_forecast": {"hash": "<sha256 hex>", "description": "..."}}},
+  "pending": {}
 }
 ```
 
 `timeout: 0.0` means "use `MCP_CLIENT_TIMEOUT_S`"; any other value is still clamped to
 `MCP_CLIENT_MAX_TIMEOUT_S`. `kind`, `tools` and `lifetime` are optional on read (Requirements 32, 41) and default to
-`"write"`, `[]` and `"call"`.
+`"write"`, `[]` and `"call"`. `pins` and `pending` are optional on read and default to `{}`.
 
 ### CLI syntax
 
@@ -501,6 +552,7 @@ docket setup mcp list [--json]
 docket setup mcp add <name> [--env KEY=VALUE ...] [--timeout SECONDS]
     [--kind read|write|send] [--tools NAME,NAME,...] [--lifetime call|hop] -- <command> [args...]
 docket setup mcp remove <name>
+docket setup mcp accept <name>
 ```
 
 `--kind`/`--tools`/`--lifetime`/`--secret` follow the same before-`--` convention as `--env`/`--timeout` (Requirement 21).
@@ -653,12 +705,14 @@ dispatch_tool(
   `driver_support.py` resolves `secret:` references before the load (Requirement 49)
 - `src/docket/interfaces/cli/commands/setup_check_services.py`: `check_mcp_literals` (Requirement 50)
 - `src/docket/kernel/mcp.py`: `secret_reference`, `is_credential_name`; `src/docket/teams/mcp_servers.py`:
-  `resolve_secret_env`, `McpSecretError`, `literal_credential_env` (Requirements 47-50)
+  `resolve_secret_env`, `McpSecretError`, `literal_credential_env` (Requirements 47-50);
+  `tool_pin`, `McpToolPin` and the `pins`/`pending` of `McpServerRegistry`; `load_pins`, `pin_server`,
+  `record_pending`, `accept_pending` (Requirements 51-55)
 - `src/docket/agent/tools/screening.py`: `screen_tool_result` (the untrusted-result screen used for MCP
   results); `src/docket/agent/tools/registry.py`: `dispatch_tool`, `ToolRegistry`
 - `src/docket/teams/pod.py`: `PodSettings` `mcpServers` validation (Requirement 38)
 - `src/docket/teams/apply/plan.py`: recipe `mcp-servers/` planning and the pod-scoped file write
-- `src/docket/interfaces/cli/commands/setup_mcp.py`: `docket setup mcp list/add/remove`
+- `src/docket/interfaces/cli/commands/setup_mcp.py`: `docket setup mcp list/add/remove/accept`
 - `src/docket/kernel/home.py`: the `Home` members `mcp_servers_file`, `mcp_client_timeout_s`,
   `mcp_client_max_timeout_s`, `tool_max_output_chars`, `pod_config_dir`
 - Tests: `tests/integration/agent/test_mcp_client.py` (`TestCollisionRule`, `TestGatedExactlyLikeABuiltin`,

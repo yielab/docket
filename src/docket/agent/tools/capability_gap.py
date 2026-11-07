@@ -8,8 +8,8 @@ module reads no pod, fleet or records module.
 
 from __future__ import annotations
 
-from collections.abc import Container
-from dataclasses import dataclass
+from collections.abc import Container, Mapping
+from dataclasses import dataclass, field
 
 from docket.agent.ports import CapabilityGap
 from docket.kernel.records import RECORDS_ALL_ENTRY, RECORDS_TOOL_PREFIX
@@ -20,14 +20,15 @@ FETCH = "fetch"
 @dataclass(frozen=True)
 class PodOffer:
     """What the turn's pod offers its role: the *holdable* tool names, the declared *record_sets*,
-    whether `fetch` is *fetch_declarable* (neither role nor pod denies it) and the *fetch_fix*
-    that opens it (empty: `pod set fetchDomains`)."""
+    whether `fetch` is *fetch_declarable*, the *fetch_fix* that opens it and the *held_back* MCP
+    tools (name to restoring command)."""
 
     pod: str
     holdable: frozenset[str]
     record_sets: frozenset[str]
     fetch_declarable: bool
     fetch_fix: str = ""
+    held_back: Mapping[str, str] = field(default_factory=dict)
 
 
 def _then_update(pod: str) -> str:
@@ -50,6 +51,8 @@ def gap_for(
         return None
     if name.startswith(RECORDS_TOOL_PREFIX):
         return _records_gap(name, role, offer)
+    if name in offer.held_back:
+        return CapabilityGap("tool", name, offer.held_back[name])
     if name in offer.holdable:
         return CapabilityGap("tool", name, _list_in_tools(name, role, offer.pod))
     if name == FETCH and offer.fetch_declarable:

@@ -298,13 +298,13 @@ class DocketDriver:
         registry = self.registry_factory(ctx.project)
         describe_tools(registry, ctx, profile.descriptions)
         register_closing_tool(registry, verdict_gate, offer)
-        self.mcp_loader(registry, meta.role, ctx.project, launch=_stdio_launch(ctx))
+        mcp = self.mcp_loader(registry, meta.role, ctx.project, launch=_stdio_launch(ctx))
         _load_service_tools(registry, ctx.project)
         _load_records_tools(registry, ctx.project)
         if verify_plan is not None:
             registry.register(_verify.verify_tool(verify_plan, ctx.project))
         if trace_task_id:
-            registry.offer = pod_offer(registry, ctx.project, meta.role, profile.tool_surface)
+            registry.offer = pod_offer(registry, ctx.project, meta.role, profile.tool_surface, mcp)
         backend = refresh_claim_each_round(backend, resolved_project, trace_task_id or "")
         loop_config = _loop_config(
             backend, timeout, token_budget, profile, HANDOFF_TOOL if verdict_gate else "", ctx

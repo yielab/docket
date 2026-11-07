@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -70,9 +72,27 @@ class McpServerConfig(BaseModel):
         return min(requested, current_home().mcp_client_max_timeout_s)
 
 
+def tool_pin(name: str, description: str, parameters: dict[str, Any]) -> str:
+    """The hex sha256 of a remote tool's name, description and input schema as the server
+    advertised them (specs/functional/mcp-client.spec.md Requirement 51)."""
+    canonical = json.dumps([name, description, parameters], sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+class McpToolPin(BaseModel):
+    """One pinned tool: its :func:`tool_pin` and the description it was pinned with, kept so
+    ``setup mcp accept`` can show what changed."""
+
+    hash: str
+    description: str = ""
+
+
 class McpServerRegistry(BaseModel):
-    """The on-disk shape of :data:`Home.mcp_servers_file`."""
+    """The on-disk shape of :data:`Home.mcp_servers_file` and of a pod-scoped server file; ``pins``
+    and ``pending`` map a server to its consented tools and to the listing awaiting ``accept``."""
 
     model_config = ConfigDict(populate_by_name=True)
 
     servers: list[McpServerConfig] = Field(default_factory=list)
+    pins: dict[str, dict[str, McpToolPin]] = Field(default_factory=dict)
+    pending: dict[str, dict[str, McpToolPin]] = Field(default_factory=dict)

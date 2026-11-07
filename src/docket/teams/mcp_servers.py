@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -12,10 +14,11 @@ from docket.kernel.home import current_home
 from docket.kernel.mcp import (
     McpServerConfig,
     McpServerRegistry,
+    McpToolPin,
     is_credential_name,
     secret_reference,
 )
-from docket.platform import mkdir_private, read_json, read_modify_write, write_json
+from docket.platform import mkdir_private, read_json, read_modify_write
 
 # A configured server's *local* name is docket-owned config, not remote input,
 # but it still ends up as a path-like fragment in a tool name shown to a
@@ -49,10 +52,20 @@ def load_mcp_servers(project: str = "") -> list[McpServerConfig]:
 
 
 def write_pod_mcp_servers(project: str, servers: list[McpServerConfig]) -> None:
-    """Replace *project*'s pod-scoped server file with *servers*, through ``platform/store.py``."""
+    """Replace *project*'s pod-scoped servers with *servers*, through ``platform/store.py``; the pins
+    of a server that stays are kept."""
     path = pod_mcp_servers_file(project)
     mkdir_private(path.parent)
-    write_json(path, McpServerRegistry(servers=servers))
+    names = {s.name for s in servers}
+
+    def _replace(current: dict[str, Any]) -> dict[str, Any]:
+        reg = McpServerRegistry.model_validate(current)
+        reg.servers = list(servers)
+        reg.pins = {n: p for n, p in reg.pins.items() if n in names}
+        reg.pending = {n: p for n, p in reg.pending.items() if n in names}
+        return reg.model_dump(by_alias=True)
+
+    read_modify_write(path, _replace)
 
 
 def pod_scoped_owner(name: str, *, exclude: str = "") -> str:
@@ -209,7 +222,121 @@ def remove_mcp_server(name: str) -> bool:
         if len(kept) == len(reg.servers):
             return None  # nothing changes -- read_modify_write leaves the file untouched
         removed = True
-        return McpServerRegistry(servers=kept).model_dump(by_alias=True)
+        reg.servers = kept
+        reg.pins.pop(name, None)
+        reg.pending.pop(name, None)
+        return reg.model_dump(by_alias=True)
 
     read_modify_write(current_home().mcp_servers_file, _remove)
     return removed
+
+
+# ── pins beside the declarations (specs/functional/mcp-client.spec.md Requirements 51-57) ──
+
+
+@dataclass(frozen=True)
+class PinChange:
+    """One difference between a server's pins and the listing a turn saw: the *tool*, whether it
+    was ``added``, ``removed`` or ``changed``, and its description before (*old*) and after (*new*)."""
+
+    tool: str
+    kind: Literal["added", "removed", "changed"]
+    old: str = ""
+    new: str = ""
+
+
+def load_pins(project: str = "") -> dict[str, dict[str, str]]:
+    """The pinned tool hashes per server a turn of *project* loads: its own pod-scoped servers'
+    from the pod's file, the rest from the operator's. A server absent here is unpinned."""
+    pins = McpServerRegistry.model_validate(read_json(current_home().mcp_servers_file)).pins
+    if project:
+        own = McpServerRegistry.model_validate(read_json(pod_mcp_servers_file(project)))
+        names = {s.name for s in own.servers}
+        pins = {**{n: p for n, p in pins.items() if n not in names}, **own.pins}
+    return {n: {t: p.hash for t, p in tools.items()} for n, tools in pins.items()}
+
+
+def _declaring_file(name: str, project: str) -> Path:
+    """The file declaring server *name*: *project*'s own, else the operator's, else (for a caller
+    that names no pod) the one pod that does. Raises ``InvalidInput`` for a name nobody declares."""
+    if project and any(s.name == name for s in load_pod_mcp_servers(project)):
+        return pod_mcp_servers_file(project)
+    if any(s.name == name for s in load_mcp_servers()):
+        return current_home().mcp_servers_file
+    owner = "" if project else pod_scoped_owner(name)
+    if owner:
+        return pod_mcp_servers_file(owner)
+    raise InvalidInput(f"No MCP server named {name!r} is configured")
+
+
+def _edit_registry(name: str, project: str, edit: Callable[[McpServerRegistry], bool]) -> None:
+    """Run *edit* on the registry file declaring *name*, locked; it returns False to leave the
+    file untouched."""
+
+    def _apply(current: dict[str, Any]) -> dict[str, Any] | None:
+        reg = McpServerRegistry.model_validate(current)
+        return reg.model_dump(by_alias=True) if edit(reg) else None
+
+    read_modify_write(_declaring_file(name, project), _apply)
+
+
+def pin_server(name: str, tools: Mapping[str, McpToolPin], project: str = "") -> None:
+    """Record *tools* as the pins of server *name*, replacing any earlier ones."""
+
+    def _edit(reg: McpServerRegistry) -> bool:
+        if reg.pins.get(name) == dict(tools):
+            return False
+        reg.pins[name] = dict(tools)
+        return True
+
+    _edit_registry(name, project, _edit)
+
+
+def record_pending(name: str, tools: Mapping[str, McpToolPin], project: str = "") -> None:
+    """Record *tools* as the listing a turn saw from server *name* while holding a tool back."""
+
+    def _edit(reg: McpServerRegistry) -> bool:
+        if reg.pending.get(name) == dict(tools):
+            return False
+        reg.pending[name] = dict(tools)
+        return True
+
+    _edit_registry(name, project, _edit)
+
+
+def _diff(pinned: Mapping[str, McpToolPin], seen: Mapping[str, McpToolPin]) -> list[PinChange]:
+    changes = [
+        PinChange(tool, "added", new=pin.description)
+        for tool, pin in seen.items()
+        if tool not in pinned
+    ]
+    changes += [
+        PinChange(tool, "changed", old=pinned[tool].description, new=pin.description)
+        for tool, pin in seen.items()
+        if tool in pinned and pinned[tool].hash != pin.hash
+    ]
+    changes += [
+        PinChange(tool, "removed", old=pin.description)
+        for tool, pin in pinned.items()
+        if tool not in seen
+    ]
+    return sorted(changes, key=lambda c: c.tool)
+
+
+def accept_pending(name: str) -> list[PinChange]:
+    """Make the listing a turn saw from server *name* its pins and return what changed. Raises
+    ``InvalidInput`` when the server is unknown or nothing is pending."""
+    changes: list[PinChange] = []
+
+    def _edit(reg: McpServerRegistry) -> bool:
+        seen = reg.pending.pop(name, None)
+        if seen is None:
+            raise InvalidInput(
+                f"MCP server {name!r} has nothing pending: no turn has held one of its tools back"
+            )
+        changes.extend(_diff(reg.pins.get(name, {}), seen))
+        reg.pins[name] = seen
+        return True
+
+    _edit_registry(name, "", _edit)
+    return changes

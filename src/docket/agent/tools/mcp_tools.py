@@ -8,14 +8,14 @@ server's declared ``kind`` (:func:`_build_tool`, ``McpServerConfig.kind``, defau
 ``"write"``), so a role denied ``write`` loses every MCP tool from a server left at the default.
 A server may also narrow *which* of its tools get registered via ``McpServerConfig.tools``. See
 specs/functional/mcp-client.spec.md for the namespacing rule, failure isolation
-(:func:`load_mcp_tools` never raises), and untrusted-description screening through
-``governance.policy.policy_eval_detail(role, "pre_input", ..., trusted=False)`` before registration."""
+(:func:`load_mcp_tools` never raises), untrusted-description screening through the `pre_input` hook
+before registration, and the pin that holds back a changed tool (Requirements 51-57)."""
 
 from __future__ import annotations
 
 import functools
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from docket.agent.ports import tool_gate
@@ -23,7 +23,7 @@ from docket.agent.tools import mcp_client as _client
 from docket.agent.tools.mcp_types import McpListResult, McpRemoteTool, StdioLaunch
 from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry
 from docket.agent.tools.screening import screen_tool_result
-from docket.kernel.mcp import McpServerConfig
+from docket.kernel.mcp import McpServerConfig, McpToolPin, tool_pin
 from docket.kernel.tool_outcome import ToolOutcome
 
 __all__ = [
@@ -115,6 +115,22 @@ def _screen_result(
     )
 
 
+def _held_back(
+    server: str, name: str, remote_name: str, pinned: Mapping[str, str], current: str
+) -> McpToolSkip:
+    """Audit and describe a tool whose pin is not the stored one (or that has none)."""
+    old = pinned.get(remote_name, "none")
+    tool_gate.audit_event(
+        "mcp_client.tool_changed",
+        f"server={server!r} tool={remote_name!r} pinned={old} now={current}",
+    )
+    return McpToolSkip(
+        name,
+        f"definition changed since it was pinned (pinned {old[:12]}, now {current[:12]})",
+        fix=f"review and run `docket setup mcp accept {server}`",
+    )
+
+
 def _build_tool(
     name: str,
     remote: McpRemoteTool,
@@ -162,10 +178,12 @@ def _build_tool(
 
 @dataclass(frozen=True)
 class McpToolSkip:
-    """One tool that was not registered, and why."""
+    """One tool that was not registered, and why. *fix* is set for a tool held back because its
+    definition changed: the command that lets the next turn register it."""
 
     tool_name: str
     reason: str
+    fix: str = ""
 
 
 @dataclass
@@ -179,6 +197,17 @@ class McpServerLoadResult:
     registered: tuple[str, ...] = ()
     skipped: tuple[McpToolSkip, ...] = ()
     error: str = ""
+    # Every tool the server advertised that the allow-list and name collisions left in play, by
+    # remote name, with the pin it has now.
+    observed: dict[str, McpToolPin] = field(default_factory=dict)
+
+    def registered_pins(self) -> dict[str, McpToolPin]:
+        """The :attr:`observed` pins of the tools that registered."""
+        return {
+            name: pin
+            for name, pin in self.observed.items()
+            if namespaced_tool_name(self.server, name) in self.registered
+        }
 
 
 def load_mcp_tools(
@@ -190,6 +219,7 @@ def load_mcp_tools(
     role: str = "",
     project: str = "",
     launch: StdioLaunch | None = None,
+    pins: Mapping[str, Mapping[str, str]] | None = None,
 ) -> list[McpServerLoadResult]:
     """Connect to every configured MCP server, enumerate its tools, and register each as a
     namespaced :class:`~docket.agent.tools.registry.Tool` into *registry* via its public
@@ -203,7 +233,10 @@ def load_mcp_tools(
     selected (``teams.mcp_servers.load_mcp_servers``); *list_tools*/*call_tool* default to the real
     ``agent/tools/mcp_client.py`` implementations, resolved lazily so importing this module
     never requires the optional ``mcp`` SDK to be installed; tests inject fakes here instead. *launch*, when given, is how every stdio server is
-    started for this load and for the calls it adapts; it is never stored."""
+    started for this load and for the calls it adapts; it is never stored. *pins* maps a server name to
+    its pinned tool hashes: a tool of a listed server whose :func:`~docket.kernel.mcp.tool_pin`
+    differs, or that the pins do not list, is held back and audited; a server absent from *pins* loads
+    as before. It writes no pin."""
     if list_tools is None:
         list_tools = _default_list_tools()
     if call_tool is None:
@@ -231,6 +264,8 @@ def load_mcp_tools(
 
         registered: list[str] = []
         skipped: list[McpToolSkip] = []
+        observed: dict[str, McpToolPin] = {}
+        pinned = None if pins is None else pins.get(config.name)
         for remote in listing.tools:
             name = namespaced_tool_name(config.name, remote.name)
 
@@ -240,6 +275,12 @@ def load_mcp_tools(
 
             if config.tools and remote.name not in config.tools:
                 skipped.append(McpToolSkip(name, "not in the server's `tools` list"))
+                continue
+
+            current = tool_pin(remote.name, remote.description, remote.parameters)
+            observed[remote.name] = McpToolPin(hash=current, description=remote.description)
+            if pinned is not None and pinned.get(remote.name) != current:
+                skipped.append(_held_back(config.name, name, remote.name, pinned, current))
                 continue
 
             skip_reason = _screen_description(role, config.name, remote, project=project)
@@ -257,6 +298,7 @@ def load_mcp_tools(
                 kind=config.kind,
                 registered=tuple(registered),
                 skipped=tuple(skipped),
+                observed=observed,
             )
         )
 

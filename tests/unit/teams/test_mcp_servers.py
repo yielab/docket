@@ -47,6 +47,7 @@ class TestPodScopedMcpServerSelection:
             call_tool: Any = None,
             role: str = "",
             project: str = "",
+            pins: Any = None,
         ) -> list[Any]:
             captured["names"] = tuple(s.name for s in (servers or []))
             return []

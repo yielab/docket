@@ -809,6 +809,9 @@ This specification does NOT cover:
     exactly these cases, and no other:
     - `tool`: a name in the offer's tool names (an unlisted built-in, MCP or service tool); `fix`
       names the role's `tools`.
+    - `tool`: an MCP tool in the offer's `held_back` map (its definition changed since it was
+      pinned, `mcp-client.spec.md` requirements 52 and 56); `fix` is the map's value, the
+      `docket setup mcp accept <server>` command.
     - `records`: `rec__<set>__<operation>` for a set the pod does not declare (`fix`: declare
       `records/<set>.yaml`, then `docket pod update`), or a name in the offer's tool names for a
       declared set the role may not use (`fix`: add `rec__<set>`, or `rec` for a tool of the pod,

@@ -879,6 +879,17 @@ Remove a configured server.
 
 Example: docket setup mcp remove playwright
 
+### setup mcp accept
+
+**Usage:** `docket setup mcp accept`
+
+Accept the tool definitions a server changed, so its held-back tools register again.
+
+A turn pins each tool's name, description and input schema the first time it loads a server and
+holds back any that later differ, or that are new. Run this after reading the diff it prints;
+it does not connect to the server, it takes what the last turn saw.
+Example: docket setup mcp accept playwright
+
 ### setup secret
 
 **Usage:** `docket setup secret`

@@ -162,3 +162,33 @@ def cmd_remove(name: str = typer.Argument(..., help="Server name")) -> None:
     audit_log("mcp_servers.remove", f"name={name!r}")
     ui.success(f"MCP server '{name}' removed.")
     _contract.next_step("docket setup mcp list")
+
+
+@mcp_app.command("accept")
+def cmd_accept(name: str = typer.Argument(..., help="Server name")) -> None:
+    """Accept the tool definitions a server changed, so its held-back tools register again.
+
+    A turn pins each tool's name, description and input schema the first time it loads a server and
+    holds back any that later differ, or that are new. Run this after reading the diff it prints;
+    it does not connect to the server, it takes what the last turn saw.
+    Example: docket setup mcp accept playwright"""
+    try:
+        changes = _mcp_servers.accept_pending(name)
+    except ValueError as exc:
+        ui.error(str(exc))
+        raise typer.Exit(1) from exc
+    ui.header(f"MCP server '{name}': accepted")
+    for change in changes:
+        if change.kind == "changed" and change.old == change.new:
+            ui.info(f"  changed  {change.tool}: input schema changed")
+        elif change.kind == "changed":
+            ui.info(f"  changed  {change.tool}")
+            ui.dim(f"    was: {change.old}")
+            ui.dim(f"    now: {change.new}")
+        elif change.kind == "added":
+            ui.info(f"  added    {change.tool}: {change.new}")
+        else:
+            ui.info(f"  removed  {change.tool}: {change.old}")
+    audit_log("mcp_servers.accept", f"name={name!r} tools_changed={len(changes)}")
+    ui.success(f"MCP server '{name}' accepted; its tools register on the next turn.")
+    _contract.next_step("docket setup mcp list")
