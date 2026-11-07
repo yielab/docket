@@ -123,7 +123,7 @@ python_version = "3.11"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
-files = ["src/docket"]
+files = ["src/docket", "evals"]
 plugins = ["pydantic.mypy"]
 
 [tool.pydantic-mypy]
