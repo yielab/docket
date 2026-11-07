@@ -13,6 +13,7 @@ from typing import Any
 from evals.evaluator.metrics import (
     Record,
     clustered_se,
+    counted,
     pass_at_k,
     pass_pow_k,
     scores_by_task,
@@ -22,6 +23,8 @@ from evals.evaluator.metrics import (
 
 TRIALS_FILE = "trials.jsonl"
 VIOLATION_GRADER = "governance.no_violation"
+ATTACK_GRADERS = ("attack.attempted", "attack.executed")
+TWIN_SUFFIX = "-twin"
 
 
 def read_trials(path: Path) -> list[dict[str, Any]]:
@@ -49,6 +52,54 @@ def _joined(records: Sequence[Record], key: str) -> str:
 def _violated(record: Record) -> bool:
     grader = (record.get("graders") or {}).get(VIOLATION_GRADER)
     return grader is not None and grader.get("status") == "fail"
+
+
+def _rate(hits: int, n: int) -> tuple[float, list[float]]:
+    """`hits / n` with its Wilson 95% interval; nan with the full interval for no trials."""
+    if n == 0:
+        return math.nan, [0.0, 1.0]
+    return hits / n, list(wilson(hits / n, n))
+
+
+def _is_twin(record: Record) -> bool:
+    return str(record["task"]).split("@")[0].endswith(TWIN_SUFFIX)
+
+
+def _answered(record: Record, name: str) -> bool | None:
+    """`True` when the attack grader said yes, `False` for no, `None` when absent or `error`."""
+    grader = (record.get("graders") or {}).get(name)
+    status = None if grader is None else grader.get("status")
+    return {"pass": True, "fail": False}.get(str(status))
+
+
+def safety_table(records: Sequence[Record]) -> dict[str, dict[str, Any]]:
+    """Per suite with attacks or twins: the attack success rate (executed over attacks) and the
+    false-positive count of the harmless twins, each rate with n and its Wilson 95% interval."""
+    table: dict[str, dict[str, Any]] = {}
+    for suite in sorted({str(r.get("suite")) for r in records}):
+        mine = counted(r for r in records if str(r.get("suite")) == suite)
+        attacks = [r for r in mine if all(_answered(r, g) is not None for g in ATTACK_GRADERS)]
+        twins = [r for r in mine if _is_twin(r)]
+        if not attacks and not twins:
+            continue
+        attempted = sum(1 for r in attacks if _answered(r, "attack.attempted"))
+        executed = sum(1 for r in attacks if _answered(r, "attack.executed"))
+        twins_passed = sum(1 for r in twins if r.get("passed"))
+        success, success_ci = _rate(executed, len(attacks))
+        twin_pass, twin_ci = _rate(twins_passed, len(twins))
+        table[suite] = {
+            "attacks": len(attacks),
+            "attempted": attempted,
+            "executed": executed,
+            "attack_success": success,
+            "attack_success_ci": success_ci,
+            "twins": len(twins),
+            "twins_passed": twins_passed,
+            "false_positives": len(twins) - twins_passed,
+            "twin_pass": twin_pass,
+            "twin_pass_ci": twin_ci,
+        }
+    return table
 
 
 def summarize(records: Sequence[Record], base: str | None = None) -> dict[str, Any]:
@@ -81,6 +132,7 @@ def summarize(records: Sequence[Record], base: str | None = None) -> dict[str, A
         "violations": sum(1 for r in records if _violated(r)),
         "failure_counts": dict(sorted(classes.items())),
         "tokens_per_passed_task": tokens_per_passed_by_role(records),
+        "safety": safety_table(records),
     }
     cleaned: dict[str, Any] = _clean(summary)
     return cleaned
@@ -103,6 +155,26 @@ def verdict_line(s: dict[str, Any]) -> str:
     )
 
 
+def _with_ci(rate: float | None, n: int, ci: list[float]) -> str:
+    return f"{_fmt(rate)} (n={n}, {ci[0]:.2f}-{ci[1]:.2f})"
+
+
+def _safety_lines(table: dict[str, dict[str, Any]]) -> list[str]:
+    head = (
+        "| suite | attacks | attempted | executed | attack success (95% CI)"
+        " | twins | twin pass (95% CI) | false positives |"
+    )
+    lines = [head, "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+    for suite, t in table.items():
+        success = _with_ci(t["attack_success"], t["attacks"], t["attack_success_ci"])
+        twin = _with_ci(t["twin_pass"], t["twins"], t["twin_pass_ci"])
+        lines.append(
+            f"| {suite} | {t['attacks']} | {t['attempted']} | {t['executed']} | {success}"
+            f" | {t['twins']} | {twin} | {t['false_positives']} |"
+        )
+    return lines
+
+
 def render_markdown(s: dict[str, Any]) -> str:
     """The summary as markdown, the verdict line first."""
     lines = [verdict_line(s), ""]
@@ -114,6 +186,8 @@ def render_markdown(s: dict[str, Any]) -> str:
         lines += ["", "| role | tokens p50 | tokens p90 |", "| --- | --- | --- |"]
         for role, q in s["tokens_per_passed_task"].items():
             lines.append(f"| {role} | {q['p50']:.0f} | {q['p90']:.0f} |")
+    if s["safety"]:
+        lines += ["", *_safety_lines(s["safety"])]
     return "\n".join(lines) + "\n"
 
 
