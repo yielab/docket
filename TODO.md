@@ -16,7 +16,7 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> ## ▶ ACTIVE BOARD — WAVE 69 · Phase 69 (D-90, started 2026-11-07; P69-1 to P69-8, P69-13 and P69-15 merged; P69-9 waits on its real runs); Phase 70 (D-91) planned, starts after P69-14; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
+> ## ▶ ACTIVE BOARD — WAVE 69 · Phase 69 (D-90, started 2026-11-07; P69-1 to P69-9, P69-13 and P69-15 merged; the first base is at 3550cc23); Phase 70 (D-91) planned, starts after P69-14; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
 >
 > **Phase 69 started 2026-11-07** on the maintainer's go, workers on Sonnet and Haiku only: P69-1 to P69-6 merged on
 > `develop` (not pushed), P69-7 and P69-8 in progress. **Phases 69 and 70** (D-90, D-91 proposed 2026-11-06): an agent eval
@@ -352,7 +352,7 @@ from `main`.
 
 ### P69-9 — The regression suite: the canary's two scenarios as tasks, plus one task per real-run defect
 
-**Status:** PARKED (left: the real runs, local k=3 and Haiku 5.5 on the maintainer's go, and the canary comparison on the same commit). Tasks `f139e457`; the four harness gaps they exposed (member memory seed, task pipeline, task budget, `governance.no_tool`) closed in `af4bcea1` · **Size:** M · **Model:** Sonnet · **Kind:** data + real run · **After:** P69-7, P69-8
+**Status:** DONE 2026-11-07 for the local model (left: the Haiku 5.5 run, on the maintainer's go). Tasks `f139e457`; harness gaps closed in `af4bcea1`; the first real run found four harness defects (`00faca43`, `1e69f12e`, `7b226c06`, `a9d9e646`) and one product defect (a payment policy asking on a `handoff`, carried by P70-1). Base at `3550cc23` (local, k=3, `internal-docs/baselines/evals-v2/3550cc23/`): pass@1 0.62 (95 % 0.41-0.79), pass^3 0.43, 0 violations, 1.38M tokens; basic 3/3, verify-step 3/3, writer 3/3, budget 2/3, memory-maintenance 2/3, compaction 0/3 (format and a glob loop; the compaction converged), report-mentions-payments 0/3 (the P70-1 defect). Canary on the same commit: basic 3/3 (agrees); memory-maintenance 0/3, every run 'approval pause occurred at the wrong step' (`smoke_workflow.py:1596` wants the pause at hop 3; the Implementer's gated command paused hop 2): the canary's own oracle, not the model · **Size:** M · **Model:** Sonnet · **Kind:** data + real run · **After:** P69-7, P69-8
 
 - **Goal:** `evals/tasks/regression/`: `basic` (16 bytes exact, from `smoke_workflow.py:55-62`) and
   `memory-maintenance` (the invoice module and its red `unittest` suite from `smoke_workflow.py:981-1105`, the Lead's
