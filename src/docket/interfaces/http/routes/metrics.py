@@ -15,7 +15,7 @@ from docket.observability import figures as _figures
 from docket.observability import trace as _trace
 from docket.operator import build_inbox
 from docket.platform import read_json
-from docket.tasks.application.accepted import accepted_counted_tokens
+from docket.tasks.application.accepted import accepted_counted_tokens, terminal_task_outcomes
 from docket.teams import fleet
 
 
@@ -264,6 +264,79 @@ def _figure_lines() -> list[str]:
     return lines
 
 
+# (metric name, WorkFigures field, per 100, help) of the six work figures; the sample size of each
+# is exported beside it as docket_figure_samples.
+_WORK_FIGURES: tuple[tuple[str, str, bool, str], ...] = (
+    (
+        "docket_task_success_ratio",
+        "success",
+        False,
+        "Tasks that ended done over tasks that reached a terminal status, by pod and the role of"
+        " the last hop",
+    ),
+    (
+        "docket_rework_cycles_per_task",
+        "rework_cycles",
+        False,
+        "Rework cycles per dispatched task the role took part in, by pod and the role that"
+        " triggered them",
+    ),
+    (
+        "docket_reviewer_rejection_ratio",
+        "reviewer_rejection",
+        False,
+        "Verdicts other than approve over hops that carry a verdict, by pod and role",
+    ),
+    (
+        "docket_human_denials_per_100_asks",
+        "human_denials",
+        True,
+        "Approval denials by a person (not a timeout) per 100 tool.ask audit entries",
+    ),
+    (
+        "docket_asks_per_100_calls",
+        "asks",
+        True,
+        "tool.ask audit entries per 100 dispatched tool calls",
+    ),
+    (
+        "docket_asks_granted_share",
+        "granted",
+        False,
+        "approval.grant audit entries over tool.ask audit entries",
+    ),
+)
+
+
+def _work_figure_lines() -> list[str]:
+    """Render the six work figures over the trailing window, and the sample size of each, as
+    Prometheus gauges by pod and role (specs/data/serve-read-api.spec.md, GET /metrics)."""
+    folded = _figures.recorded_work_figures(
+        terminal_task_outcomes(), _clock.epoch() - _figures.DEFAULT_WINDOW_S
+    )
+    lines: list[str] = []
+    samples: list[str] = []
+    for name, attr, per_100, text in _WORK_FIGURES:
+        lines += [
+            "# HELP " + name + " " + text + "; trailing 7-day window, derived on scrape",
+            "# TYPE " + name + " gauge",
+        ]
+        for (pod, role), ratio in sorted(getattr(folded, attr).items()):
+            value = ratio.per_100 if per_100 else ratio.value
+            lab = 'pod="' + _esc(pod) + '",role="' + _esc(role) + '"'
+            lines.append(name + "{" + lab + "} " + str(value))
+            figure = name.removeprefix("docket_")
+            samples.append(
+                'docket_figure_samples{figure="' + figure + '",' + lab + "} " + str(ratio.n)
+            )
+    return [
+        *lines,
+        "# HELP docket_figure_samples The sample size behind each work figure",
+        "# TYPE docket_figure_samples gauge",
+        *samples,
+    ]
+
+
 def render_metrics() -> str:
     """Render Prometheus-format metrics (no trailing newline; callers append it)."""
     d = _usage_json()
@@ -379,6 +452,7 @@ def render_metrics() -> str:
 
     lines += _escalation_metrics_lines(loop)
     lines += _figure_lines()
+    lines += _work_figure_lines()
 
     return "\n".join(lines)
 

@@ -1,10 +1,10 @@
 # Trace Store Specification
 
-**Version**: 6.0.0
+**Version**: 6.1.0
 **Status**: Implemented and live. Every component that traces writes through `trace_event` into
 one append-only JSONL file per session; the periodic sweep of `docket start` closes stale traces
 and expires old ones.
-**Last Updated**: 2026-11-03
+**Last Updated**: 2026-11-07
 
 ## Purpose
 
@@ -288,6 +288,27 @@ This store owns only the shape and firing rule of these events, not a consumer's
     one with no role counts toward its task only; a record that is not an `llm_call`, or whose
     payload is not an object, is skipped. It **MUST** only read.
 
+41. The work figures (`observability/figures.py`) **MUST** be folded on read, over a window
+    (`since`, an epoch; `DEFAULT_WINDOW_S` is 7 days), from the task records, the trace files and
+    both generations of `audit.log` (`audit.log.1` first), and **MUST NOT** read the metrics
+    counters or store anything. Each is a `Ratio` of a numerator over an `n` and is keyed by
+    `(pod, role)`; a key with `n` of 0 has no figure. They are:
+    - `success`: tasks that ended `done` over tasks in a terminal status (`done`, `failed`,
+      `cancelled`) whose `completedAt` falls in the window; the role is the last hop's.
+    - `rework_cycles`: `rework_started` and `verdict_rework_started` events, per role of the
+      event, over the pod's dispatched tasks (trace files whose first non-resumed dispatch
+      `session_start` falls in the window).
+    - `reviewer_rejection`: hops of those terminal tasks that carry a verdict and whose verdict
+      is not `approve`, over hops that carry one, by the hop's role.
+    - `asks`: `tool.ask` audit entries (pod and role from the entry) over `tool_result` trace
+      events whose decision is not `deferred`, in the window.
+    - `human_denials`: `approval.deny` entries whose channel is not `timeout` over `tool.ask`
+      entries; `granted`: `approval.grant` entries over `tool.ask` entries. The role of an
+      approval entry is the role of its approval record, `unknown` once the record is pruned.
+    A rotation of `audit.log` therefore does not change a figure over the same window; a second
+    rotation, which drops `audit.log.1`, does. `recorded_work_figures(since)` is the reader and
+    `tasks/application/accepted.py::terminal_task_outcomes()` supplies the task records.
+
 ### Lines that are not records
 
 38. `read_trace`, `export_lines`, `sweep_all`, `expire_old_traces` and `terminal_outcomes`
@@ -430,7 +451,8 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   `ExpiredTrace`, `TraceExpiryReport`, `read_trace`, `find_trace`, `project_trace_dir`,
   `export_lines`, `terminal_outcomes`, `TerminalOutcomes`
 - `src/docket/observability/figures.py`: `cache_hit`, `fold_cache_hits`, `CacheFigures`,
-  `CacheTotals`, `recorded_cache_figures`, `tokens_per_accepted_task` (requirements 39-40)
+  `CacheTotals`, `recorded_cache_figures`, `tokens_per_accepted_task` (requirements 39-40),
+  `Ratio`, `TaskOutcome`, `WorkFigures`, `recorded_work_figures` (requirement 41)
 - `src/docket/kernel/home.py`: the `Home` members `traces_dir`, `trace_retention_days`,
   `trace_retention_s`, `session_timeout`, `context_bytes_per_token`, `metrics_window`
 - `src/docket/platform/process.py`: `no_trace` (`DOCKET_NO_TRACE`, read live)

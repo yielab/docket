@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 6.6.0
+**Version**: 6.7.0
 **Status**: Stable
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-07
 
 ## Purpose
 
@@ -141,6 +141,15 @@ Prometheus text format (content-type `text/plain; version=0.0.4`).
 | `docket_escalation_wait_seconds{kind}` | summary (`_sum`/`_count`, no quantiles) | Seconds from an escalation's `askedAt` to the record of its settlement, for every settled escalation, by `kind`; a negative interval is skipped. Trace-derived. |
 | `docket_cache_hit_ratio{role}` | gauge | Summed `cachedTokens` over summed `inputTokens` of every `llm_call` trace event by the recording `agent_role` (`trace-store.spec.md` requirements 39-40); a role with no input tokens has no sample. `cachedTokens` of 0 also means "the endpoint reports no cache". Trace-derived; a gauge, not a counter, so the retention caveat below applies to it as to the counters. |
 | `docket_tokens_per_accepted_task` | gauge | Counted tokens (input minus cache reads, plus output; `cost-tracking.spec.md`) summed over the tasks whose status is `done` and that carry a `usage` block, divided by their number, across every dispatchable pod. No sample when no task is `done` with usage. Read from the task records; not an estimate, and never a dollar figure. |
+| `docket_task_success_ratio{pod,role}` | gauge | Tasks that ended `done` over tasks that reached a terminal status in the last 7 days, by pod and the role of the task's last hop (`trace-store.spec.md` requirement 41). Read from the task records. |
+| `docket_rework_cycles_per_task{pod,role}` | gauge | `rework_started`/`verdict_rework_started` trace events by pod and the role that triggered the rework, over the pod's tasks dispatched in the last 7 days. |
+| `docket_reviewer_rejection_ratio{pod,role}` | gauge | Hops carrying a verdict other than `approve` over hops carrying a verdict, from the terminal task records of the last 7 days. |
+| `docket_human_denials_per_100_asks{pod,role}` | gauge | `approval.deny` audit entries whose channel is not `timeout`, per 100 `tool.ask` entries of the last 7 days. Reads both generations of `audit.log`. |
+| `docket_asks_per_100_calls{pod,role}` | gauge | `tool.ask` audit entries per 100 non-deferred `tool_result` trace events of the last 7 days. |
+| `docket_asks_granted_share{pod,role}` | gauge | `approval.grant` audit entries over `tool.ask` entries of the last 7 days; below 1 also when an ask was pre-granted, refused, parked or timed out. |
+| `docket_figure_samples{figure,pod,role}` | gauge | The denominator `n` of each of the six figures above (`figure` is the metric name without the `docket_` prefix), so a ratio is never read without its sample size. |
+
+The six work figures are computed on every scrape from the task records, the trace files and both generations of `audit.log`, never from the counters above, so a rotation of `audit.log` does not change one over the same window. A pod and role with no denominator has no sample.
 
 Additional metrics may be added in minor versions. Every metric is computed fresh, on every
 scrape, from durable state already on disk (trace JSONL under `traces/`, `audit.log`, the task
