@@ -16,7 +16,7 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> ## ▶ ACTIVE BOARD — WAVE 69 · Phase 69 (D-90, started 2026-11-07; waves 0-2 merged, wave 3 in progress); Phase 70 (D-91) planned, starts after P69-14; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
+> ## ▶ ACTIVE BOARD — WAVE 69 · Phase 69 (D-90, started 2026-11-07; P69-1 to P69-7 and P69-15 merged, P69-8, P69-9 and P69-13 in progress); Phase 70 (D-91) planned, starts after P69-14; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
 >
 > **Phase 69 started 2026-11-07** on the maintainer's go, workers on Sonnet and Haiku only: P69-1 to P69-6 merged on
 > `develop` (not pushed), P69-7 and P69-8 in progress. **Phases 69 and 70** (D-90, D-91 proposed 2026-11-06): an agent eval
@@ -317,7 +317,7 @@ from `main`.
 
 ### P69-7 — The graders: did the work pass, and were the rules kept
 
-**Status:** IN-PROGRESS (@sonnet worker; also owns `taxonomy.py`, moved out of `record.py`, and `trial.py`, the task-to-trial wiring) · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-6
+**Status:** DONE 2026-11-07, `56769694` (also `taxonomy.py`, the one failure classifier, and `trial.py`, task to trial; the integrator saw the private-path guard fail under a mutation) · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-6
 
 - **Goal:** `evals/harness/graders/outcome.py`: `hidden_tests` (the verifier's exit status), `file_exact` (bytes),
   `task_status` (the status the spec names); `evals/harness/graders/governance.py`: `no_violation` through
@@ -333,7 +333,7 @@ from `main`.
 
 ### P69-8 — pass@k, pass^k, the interval, the paired difference, the failure class, and the two commands that use them
 
-**Status:** IN-PROGRESS (@sonnet worker; part A metrics/report/compare, then `nightly` after P69-7) · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-5
+**Status:** IN-PROGRESS (@sonnet worker): part A DONE `3d12db93` (metrics, summary, `compare`); part B `run` and `nightly` · **Size:** M · **Model:** Sonnet · **Kind:** harness · **After:** P69-5
 
 - **Goal:** `evals/harness/metrics.py` (pure): `pass_at_k(n, c, k)`, `pass_pow_k(n, c, k)`, `wilson(p, n)`, `clustered_se`
   (by task, Miller 2024), `paired_difference(a, b)` (mean, SE, 95 % CI, correlation; tasks matched by `task@version`,
@@ -352,7 +352,7 @@ from `main`.
 
 ### P69-9 — The regression suite: the canary's two scenarios as tasks, plus one task per real-run defect
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** data + real run · **After:** P69-7, P69-8
+**Status:** IN-PROGRESS (@sonnet worker: the seven tasks; the local k=3 and Haiku runs are the integrator's) · **Size:** M · **Model:** Sonnet · **Kind:** data + real run · **After:** P69-7, P69-8
 
 - **Goal:** `evals/tasks/regression/`: `basic` (16 bytes exact, from `smoke_workflow.py:55-62`) and
   `memory-maintenance` (the invoice module and its red `unittest` suite from `smoke_workflow.py:981-1105`, the Lead's
@@ -427,7 +427,7 @@ from `main`.
 
 ### P69-13 — Recall per model replaces the single-model recall test
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** data + deletion · **After:** P69-7
+**Status:** IN-PROGRESS (@sonnet worker) · **Size:** S · **Model:** Sonnet · **Kind:** data + deletion · **After:** P69-7
 
 - **Trigger:** `tests/agent/context/test_compaction_recall.py:22-25` `RETIRE_WHEN`: "a recall figure is published per
   model and tracked by the bench".
@@ -465,7 +465,7 @@ from `main`.
 
 ### P69-15 — Production figures that say whether the work goes well, not only how much it costs
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** DONE 2026-11-07, `2cd08a07` (left: the six figures read from the live home at the phase close, with P69-17's real run) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
 - **Trigger:** `observability/figures.py` folds cache hits and tokens per accepted task (`:52-90`); `/metrics`
   (`interfaces/http/routes/metrics.py`) counts approvals and policy hits from a store that resets on rotation
