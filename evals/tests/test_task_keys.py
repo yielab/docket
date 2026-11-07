@@ -49,7 +49,7 @@ def test_spec_for_fills_the_pipeline_memory_and_budget(make_task: TaskBuilder) -
     path = make_task(
         pipeline="pipeline.yaml",
         pod={**POD, "memory": {"lead": "lead/MEMORY.md"}},
-        limits={"wall_seconds": 60, "max_tokens": 9000},
+        limits={"wall_seconds": 60, "max_tokens": 9000, "turn_seconds": 600},
     )
     (path / "pipeline.yaml").write_text(PIPELINE, encoding="utf-8")
     (path / "lead").mkdir()
@@ -60,6 +60,7 @@ def test_spec_for_fills_the_pipeline_memory_and_budget(make_task: TaskBuilder) -
     assert spec.pipeline == PIPELINE
     assert dict(spec.memory) == {"lead": NOTES}
     assert spec.task_max_tokens == 9000
+    assert spec.limits["turn_s"] == 600
 
 
 def test_spec_for_leaves_the_new_keys_empty_when_the_task_sets_none(make_task: TaskBuilder) -> None:

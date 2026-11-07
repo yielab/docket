@@ -297,7 +297,7 @@ unknown grader or breaks a bound, and it names the key.
 | `operator` | the scripted answers to approvals and questions (`approval`: `approve_once`, `deny` or `approve_task`; `consult`: the reply text) |
 | `graders.required` | every one must pass for the trial to pass |
 | `graders.report` | shown, never decisive |
-| `limits` | wall-clock seconds (`wall_seconds`), and `max_tokens`: the task's token budget across its hops, passed to `docket task add --max-tokens` |
+| `limits` | wall-clock seconds (`wall_seconds`); `turn_seconds`, the pod's turn timeout (default the smaller of 120 and `wall_seconds`; a slow local endpoint needs more); and `max_tokens`: the task's token budget across its hops, passed to `docket task add --max-tokens` |
 
 `solution/` **MUST** pass every required grader with no model. `check-solutions` applies it in a
 clean world and runs the graders; a task whose reference solution fails is broken, and the command

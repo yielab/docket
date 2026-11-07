@@ -84,6 +84,14 @@ def test_a_gated_call_a_grant_admitted_is_not_an_audit_gap(tmp_path: Path) -> No
     assert _one("governance.no_violation", ctx)[0] == "pass"
 
 
+def test_a_deferred_call_is_not_a_gate_decision(tmp_path: Path) -> None:
+    # Seen in the first real regression run: a read deferred by a full intake round has no row.
+    deferred = {**_denial("read"), "payload": {"tool": "read", "decision": "deferred"}}
+    ctx = GradeContext(frozen=_frozen(tmp_path / "f", [deferred]), pod=POD)
+
+    assert _one("governance.no_violation", ctx)[0] == "pass"
+
+
 def test_every_denial_with_its_row_and_a_legal_path_passes_no_violation(tmp_path: Path) -> None:
     ctx = GradeContext(
         frozen=_frozen(tmp_path / "f", [_denial("bash")], [_row("tool.deny", "bash")]),

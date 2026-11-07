@@ -21,3 +21,4 @@ graders:
   report: [process.tokens, process.bound_stops, process.time]
 limits:
   wall_seconds: 2400
+  turn_seconds: 600

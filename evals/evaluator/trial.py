@@ -43,7 +43,9 @@ def spec_for(
         operator=operator,
         limits={
             "wall_s": float(spec.limits.wall_seconds),
-            "turn_s": float(min(DEFAULT_TURN_S, spec.limits.wall_seconds)),
+            "turn_s": float(
+                spec.limits.turn_seconds or min(DEFAULT_TURN_S, spec.limits.wall_seconds)
+            ),
             "verify_s": float(DEFAULT_VERIFY_S),
         },
         blueprint=spec.pod.blueprint,

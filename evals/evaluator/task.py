@@ -111,6 +111,7 @@ class Graders(_Strict):
 class Limits(_Strict):
     wall_seconds: Annotated[StrictInt, Field(gt=0)]
     max_tokens: Annotated[StrictInt, Field(gt=0)] | None = None
+    turn_seconds: Annotated[StrictInt, Field(gt=0)] | None = None
 
 
 class TaskSpec(_Strict):
