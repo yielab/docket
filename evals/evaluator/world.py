@@ -64,8 +64,10 @@ class TrialWorld(World):
         return [list(step) for step in skeleton_of(self.events(task_id))]
 
     def worktree(self, task_id: str) -> Path:
-        """The directory the agent worked in."""
-        return Path(self.task(task_id)["task"]["worktree"]["path"])
+        """The directory the agent worked in: the task's worktree, or the seed repository a folder
+        pod (any blueprint but `build`) works in as its `workDir`."""
+        worktree = self.task(task_id)["task"].get("worktree") or {}
+        return Path(worktree["path"]) if worktree.get("path") else self.repo
 
     def status(self, task_id: str) -> str:
         """The task's status as the queue holds it."""

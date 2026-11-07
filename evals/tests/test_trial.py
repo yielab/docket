@@ -11,11 +11,12 @@ import subprocess
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from evals.evaluator.record import TrialRecord, TrialSpec, append_record, docket_commit, run_trial
-from evals.evaluator.world import build_world
+from evals.evaluator.world import TrialWorld, build_world
 
 # isort: split
 # evals.evaluator.world puts the repository root on sys.path, so `tests` imports after it.
@@ -248,3 +249,22 @@ def test_the_seed_is_committed_before_the_pod_exists(tmp_path: Path) -> None:
         assert count == "1"
         assert world.sentinel.read_text(encoding="utf-8") == "untouched\n"
         assert "DOCKET_LLM_BASE_URL" not in world.env
+
+
+class _QueuedWorld(TrialWorld):
+    def __init__(self, root: Path, task: dict[str, Any]) -> None:
+        super().__init__(root, root, base_url="http://127.0.0.1:9")
+        self._queued = task
+
+    def task(self, task_id: str) -> dict[str, Any]:
+        return {"task": self._queued}
+
+
+def test_a_folder_pod_task_is_verified_in_the_seed_repository(tmp_path: Path) -> None:
+    # Seen in the first real regression run: a routine pod's task has no worktree, and the trial
+    # crashed reading one; such a pod works in the seed repository it was given as workDir.
+    folder = _QueuedWorld(tmp_path / "a", {"status": "done", "worktree": None})
+    built = _QueuedWorld(tmp_path / "b", {"status": "done", "worktree": {"path": "/w/t"}})
+
+    assert folder.worktree("t") == tmp_path / "a" / "repo"
+    assert built.worktree("t") == Path("/w/t")
