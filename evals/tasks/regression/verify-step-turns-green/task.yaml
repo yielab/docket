@@ -1,5 +1,5 @@
 id: verify-step-turns-green
-version: 1
+version: 2
 suite: regression
 shape: build
 origin: "tests/e2e/test_implementer_verifies.py: the Implementer is told its step's `verify:` command, can run it with the `verify` tool and must turn it from red to green; the task needs the step in pipeline.yaml beside this file (see the return notes of P69-9: the harness cannot set a pipeline yet)"

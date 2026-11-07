@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 
 from evals.evaluator.record import TrialRecord, TrialSpec, append_record, docket_commit, run_trial
-from evals.evaluator.world import TrialWorld, build_world, provider_command
+from evals.evaluator.world import TrialWorld, build_world, provider_command, without_virtualenvs
 
 # isort: split
 # evals.evaluator.world puts the repository root on sys.path, so `tests` imports after it.
@@ -281,3 +281,15 @@ def test_a_catalog_provider_is_registered_with_its_model() -> None:
     ]  # fmt: skip
     assert custom[:5] == ["setup", "provider", "add", "lab", "http://h/v1"]
     assert custom[custom.index("--model") + 1] == "m" and "--ctx" in custom
+
+
+def test_the_runners_virtualenv_does_not_reach_the_trial(tmp_path: Path) -> None:
+    # Seen in the first Haiku run: with isolation on, `python` resolved to the runner's venv,
+    # which the jail cannot read, so every test command failed at interpreter startup.
+    venv = tmp_path / "venv"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = /usr/bin\n", encoding="utf-8")
+    other = tmp_path / "tools"
+    other.mkdir()
+
+    assert without_virtualenvs(f"{venv / 'bin'}:{other}:/usr/bin") == f"{other}:/usr/bin"

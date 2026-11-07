@@ -9,6 +9,7 @@ person types; the world's environment carries no model setting of its own.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 from collections.abc import Mapping
@@ -100,8 +101,9 @@ def build_world(
     if max_tokens < MIN_MAX_TOKENS:
         raise ValueError(f"max_tokens must be at least {MIN_MAX_TOKENS}, got {max_tokens}")
     world = TrialWorld(root, seed, base_url=base_url, env=env)
-    for name in ("DOCKET_LLM_BASE_URL", "DOCKET_LLM_API_KEY"):
+    for name in ("DOCKET_LLM_BASE_URL", "DOCKET_LLM_API_KEY", "VIRTUAL_ENV"):
         world.env.pop(name, None)
+    world.env["PATH"] = without_virtualenvs(world.env.get("PATH", ""))
     world.pod = POD
     _provision(world, blueprint, pipeline, isolation)
     _register_model(
@@ -132,6 +134,15 @@ def _provision(world: World, blueprint: str, pipeline: str | None, isolation: bo
     status = world.docket("setup", "sandbox", "status", "--json").json()
     if status.get("isolationEnabled") is not True:
         raise RuntimeError(f"the task asks for isolation and this machine has none: {status}")
+
+
+def without_virtualenvs(path: str) -> str:
+    """*path* without the `bin` of any virtualenv: the runner's own venv lives outside the jail's
+    roots, so a `python` found there fails at startup inside the trial."""
+    kept = [
+        d for d in path.split(os.pathsep) if d and not (Path(d).parent / "pyvenv.cfg").is_file()
+    ]
+    return os.pathsep.join(kept)
 
 
 def provider_command(
