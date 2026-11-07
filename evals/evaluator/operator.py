@@ -3,7 +3,8 @@
 It runs the queue, reads the task's status and answers `waiting_approval` and `waiting_input`
 through `docket task answer`, as a person at a terminal would. A pause the script does not name
 is left unanswered and ends the trial: the harness has no answer, so the verdict is not the
-model's to carry.
+model's to carry. An approval scripted `park` is the opposite on purpose: the script holds the
+task there, recorded as an ask, for a task whose right ending is a person's decision.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from evals.evaluator.world import TrialWorld
 
 APPROVAL_OPTIONS = ("approve_once", "approve_task", "deny")
 DEFAULT_MAX_ANSWERS = 12
+PARK = "park"
 _WAITING = {"waiting_approval": "approval", "waiting_input": "consult"}
 _MIN_SLICE_S = 1.0
 
@@ -84,7 +86,17 @@ def run_operator(
         if not wanted:
             outcome.unscripted = kind
             return _end(outcome, world, task_id, reason=f"the operator script has no {kind}")
-        outcome.asks.append(_answer(world, task_id, kind, wanted))
+        if wanted == PARK:
+            prompt = str(_pending(world, task_id).get("prompt", ""))
+            outcome.asks.append(Ask(kind, prompt, PARK))
+            return _end(outcome, world, task_id, reason=f"left parked for a person: {prompt}"[:300])
+        ask = _answer(world, task_id, kind, wanted)
+        if ask is None:
+            outcome.unscripted = kind
+            return _end(
+                outcome, world, task_id, reason=f"no option of the {kind} matches {wanted!r}"
+            )
+        outcome.asks.append(ask)
 
 
 def _end(
@@ -103,8 +115,22 @@ def _end(
     return outcome
 
 
-def _answer(world: TrialWorld, task_id: str, kind: str, wanted: str) -> Ask:
-    """Answer the task's pause: an approval by its option, a question by option id or by text."""
+def _option_id(options: list[dict[str, Any]], wanted: str) -> str | None:
+    """The option *wanted* names: its id, or the one option whose label the text holds."""
+    if wanted in {str(o.get("id")) for o in options}:
+        return wanted
+    named = [
+        str(o["id"])
+        for o in options
+        if str(o.get("label", "")).strip().casefold() in wanted.casefold()
+        and str(o.get("label", "")).strip()
+    ]
+    return named[0] if len(named) == 1 else None
+
+
+def _answer(world: TrialWorld, task_id: str, kind: str, wanted: str) -> Ask | None:
+    """Answer the task's pause: an approval by its option, a question by the option it names or by
+    text; `None` when the question has options and *wanted* names none of them."""
     pending = _pending(world, task_id)
     prompt = str(pending.get("prompt", ""))
     base = ["task", "answer", task_id, "--pod", world.pod]
@@ -112,8 +138,11 @@ def _answer(world: TrialWorld, task_id: str, kind: str, wanted: str) -> Ask:
         if wanted not in APPROVAL_OPTIONS:
             raise ValueError(f"operator approval must be one of {APPROVAL_OPTIONS}, got {wanted!r}")
         world.docket(*base, "--option", wanted)
-    elif wanted in {str(o.get("id")) for o in pending.get("options", [])}:
-        world.docket(*base, "--option", wanted)
+    elif options := list(pending.get("options", [])):
+        chosen = _option_id(options, wanted)
+        if chosen is None:
+            return None
+        world.docket(*base, "--option", chosen)
     else:
         world.docket(*base, wanted)
     return Ask(kind, prompt, wanted)

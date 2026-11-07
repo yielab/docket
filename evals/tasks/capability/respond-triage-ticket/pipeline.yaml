@@ -1,0 +1,15 @@
+name: respond-triage
+steps:
+  - intake: lead
+  - research: researcher
+    instructions: >-
+      Read the ticket folder and the policy. Reply with the category and priority the policy
+      gives, the order's lines and the refund the policy allows, with the rule that gives it.
+      You cannot send anything.
+  - draft: writer
+    instructions: >-
+      Write reply.md in the working directory from the Researcher's findings, in the format the
+      task states. Do not send it.
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: draft, max: 1}}

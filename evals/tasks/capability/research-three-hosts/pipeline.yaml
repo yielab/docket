@@ -1,0 +1,16 @@
+name: research-report
+steps:
+  - scope: lead
+  - gather: researcher
+    instructions: >-
+      Open the sources the Lead named with fetch (docs.python.org, peps.python.org and
+      en.wikipedia.org are the hosts you can read). Reply with the facts you found and, for
+      each, the exact URL of the page you read it on.
+  - write: writer
+    instructions: >-
+      Write report.md in the working directory from the Researcher's handoff: a short answer,
+      then a Sources list with one full URL per page the Researcher read. Cite no URL the
+      Researcher did not report.
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: write, max: 1}}

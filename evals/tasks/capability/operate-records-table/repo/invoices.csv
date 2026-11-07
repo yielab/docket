@@ -1,0 +1,9 @@
+id,customer,amount_cents,due,paid
+INV-101,Harbor Bakery,12500,2026-09-15,yes
+INV-102,Harbor Bakery,8400,2026-10-20,no
+INV-103,Kestrel Print,45000,2026-10-31,no
+INV-104,Kestrel Print,1999,2026-11-01,no
+INV-105,Loom & Thread,23050,2026-11-15,no
+INV-106,Loom & Thread,7700,2026-10-02,yes
+INV-107,Nimbus Books,31000,2026-12-01,no
+INV-108,Nimbus Books,640,2026-08-30,no

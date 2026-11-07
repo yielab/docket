@@ -64,3 +64,8 @@ def test_the_mechanical_rules_that_come_first() -> None:
         == "product"
     )
     assert classify(OperatorOutcome("failed"), {"failureKind": "budget"}, [CALL], CLEAN) == "model"
+
+
+def test_a_trial_whose_required_graders_all_pass_has_no_class_even_when_it_ended_parked() -> None:
+    graded = _graded(outcome__task_status="pass", outcome__hidden_tests="pass")
+    assert classify(OperatorOutcome("waiting_approval"), {}, [CALL], CLEAN, graded) is None

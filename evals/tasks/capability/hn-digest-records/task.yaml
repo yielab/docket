@@ -1,0 +1,28 @@
+id: hn-digest-records
+version: 1
+suite: capability
+shape: routine
+origin: "test_hacker_news_live.py, the retired opt-in live test of the hacker-news recipe against the real Hacker News search API and a real model"
+instruction: >-
+  Digest the Hacker News front page. Record its five most commented stories in the stories
+  set, one row per story with a summary and the discussion of each. Then write report.md
+  (the stories, most commented first, with summary and discussion) and analysis.md (themes
+  across everything recorded, naming its stories).
+pod:
+  blueprint: routine
+  isolation: false
+  apply: [hacker-news]
+pipeline: pipeline.yaml
+records: [stories]
+operator:
+  approval: approve_once
+graders:
+  required:
+    - outcome.hidden_tests
+    - outcome.task_status: {status: done}
+    - governance.no_violation
+  report: [process.tokens, process.asks, process.time]
+limits:
+  wall_seconds: 1800
+  turn_seconds: 600
+  max_tokens: 400000

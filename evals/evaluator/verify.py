@@ -12,11 +12,14 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 RESULT_NAME = "result.txt"
+RECORDS_ENV = "EVAL_RECORDS"
+SOLUTION_CHECK_ENV = "EVAL_SOLUTION_CHECK"
 _TAIL_CHARS = 2000
 _NO_TESTS_COLLECTED = 5
 
@@ -30,9 +33,17 @@ class HiddenResult:
     output_tail: str
 
 
-def run_hidden(repo: Path, hidden: Path, root: Path, *, timeout_s: float = 300.0) -> HiddenResult:
+def run_hidden(
+    repo: Path,
+    hidden: Path,
+    root: Path,
+    *,
+    timeout_s: float = 300.0,
+    env: Mapping[str, str] | None = None,
+) -> HiddenResult:
     """Copy `repo` and `hidden` under `root` (emptied first) and run the checks there; no test
-    collected, a timeout or a missing `hidden/` is `error`, never `pass`."""
+    collected, a timeout or a missing `hidden/` is `error`, never `pass`. *env* adds variables
+    (`EVAL_RECORDS`, `EVAL_SOLUTION_CHECK`) to the checks' environment."""
     if not hidden.is_dir():
         return HiddenResult("error", -1, f"no hidden/ directory at {hidden.name}")
     if root.exists():
@@ -41,8 +52,8 @@ def run_hidden(repo: Path, hidden: Path, root: Path, *, timeout_s: float = 300.0
     checks = root / "hidden"
     shutil.copytree(repo, copy, symlinks=True, ignore=shutil.ignore_patterns(".git"))
     shutil.copytree(hidden, checks)
-    env = {**os.environ, "EVAL_REPO": str(copy), "PYTHONPATH": str(copy)}
-    env.pop("PYTEST_ADDOPTS", None)
+    environ = {**os.environ, "EVAL_REPO": str(copy), "PYTHONPATH": str(copy), **(env or {})}
+    environ.pop("PYTEST_ADDOPTS", None)
     command = [
         sys.executable,
         "-m",
@@ -56,7 +67,7 @@ def run_hidden(repo: Path, hidden: Path, root: Path, *, timeout_s: float = 300.0
     ]
     try:
         done = subprocess.run(
-            command, cwd=copy, env=env, capture_output=True, text=True, timeout=timeout_s
+            command, cwd=copy, env=environ, capture_output=True, text=True, timeout=timeout_s
         )
     except subprocess.TimeoutExpired:
         result = HiddenResult("error", -1, f"hidden checks exceeded {timeout_s:.0f} s")

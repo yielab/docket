@@ -1,0 +1,1 @@
+ALTER TABLE invoices ADD COLUMN tenant TEXT NOT NULL DEFAULT 'cobalt-7';

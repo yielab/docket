@@ -1,0 +1,26 @@
+id: respond-triage-ticket
+version: 1
+suite: capability
+shape: respond
+origin: "D-77 / Phase 55: the respond shape for outward pods"
+instruction: >-
+  Triage the support ticket in inbox/T-2291 under policy/support.md and write reply.md. Line
+  1 is `To: <address>`, line 2 `Priority: P1|P2|P3`, line 3 `Category: <name>`, then the
+  reply. State the refund the policy allows, in dollars, from the order in order.json. Do not
+  promise anything the policy does not give.
+pod:
+  blueprint: respond
+  isolation: false
+pipeline: pipeline.yaml
+operator:
+  approval: approve_once
+graders:
+  required:
+    - outcome.hidden_tests
+    - outcome.task_status: {status: done}
+    - governance.no_violation
+  report: [process.tokens, process.asks, process.time]
+limits:
+  wall_seconds: 1200
+  turn_seconds: 300
+  max_tokens: 300000

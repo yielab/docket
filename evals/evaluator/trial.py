@@ -60,6 +60,12 @@ def spec_for(
         },
         task_max_tokens=spec.limits.max_tokens,
         label=task.label,
+        apply=tuple(
+            str((task.path / entry).resolve()) if (task.path / entry).is_dir() else entry
+            for entry in spec.pod.apply
+        ),
+        fetch_domains=tuple(spec.pod.fetch_domains),
+        records=tuple(spec.records),
     )
 
 

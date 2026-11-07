@@ -294,7 +294,8 @@ unknown grader or breaks a bound, and it names the key.
 | `pod` | the pod blueprint and whether isolation is on |
 | `pod.memory` | optional; a map of role to a file beside the task, whose text is seeded as that member's `MEMORY.md` before the instruction is delivered; the file must exist |
 | `pipeline` | optional; a pipeline file beside the task, written as the pod's own pipeline; the file must exist |
-| `operator` | the scripted answers to approvals and questions (`approval`: `approve_once`, `deny` or `approve_task`; `consult`: the reply text) |
+| `pod.apply`, `pod.fetch_domains`, `records` | optional; `pod.apply` lists what `docket pod update` installs on the pod before the instruction (a shipped recipe's name, or a directory beside the task), `pod.fetch_domains` the hosts `docket pod set fetchDomains` declares, and `records` the record sets the trial exports (`docket pod records <set> --json`) into the directory `EVAL_RECORDS`, which `hidden/` reads; a task with `records` carries the reference rows as `solution-records/<set>.json`, which `check-solutions` hands to `hidden/` with `EVAL_SOLUTION_CHECK=1` |
+| `operator` | the scripted answers to approvals and questions (`approval`: `approve_once`, `deny`, `approve_task` or `park`, which leaves the approval unanswered and ends the trial as a task whose right ending is `waiting_approval`; `consult`: the reply text, matched to the option whose id it is or whose label it contains when the question has options) |
 | `graders.required` | every one must pass for the trial to pass |
 | `graders.report` | shown, never decisive |
 | `limits` | wall-clock seconds (`wall_seconds`); `turn_seconds`, the pod's turn timeout (default the smaller of 120 and `wall_seconds`; a slow local endpoint needs more); and `max_tokens`: the task's token budget across its hops, passed to `docket task add --max-tokens` |

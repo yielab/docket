@@ -1,0 +1,28 @@
+id: research-three-hosts
+version: 1
+suite: capability
+shape: research
+origin: "P68-6 acceptance: a research pod must end done with a report citing three distinct public hosts"
+instruction: >-
+  Research what PEP 557 added to Python and in which version it first shipped. Write
+  report.md: an answer under 200 words, then a Sources list of the URLs you opened with
+  fetch, from at least three distinct hosts among docs.python.org, peps.python.org and
+  en.wikipedia.org. Cite only pages you opened.
+pod:
+  blueprint: routine
+  isolation: false
+  apply: [research-review]
+  fetch_domains: [docs.python.org, peps.python.org, en.wikipedia.org]
+pipeline: pipeline.yaml
+operator:
+  approval: approve_once
+graders:
+  required:
+    - outcome.hidden_tests
+    - outcome.task_status: {status: done}
+    - governance.no_violation
+  report: [process.tokens, process.asks, process.time]
+limits:
+  wall_seconds: 1500
+  turn_seconds: 300
+  max_tokens: 500000

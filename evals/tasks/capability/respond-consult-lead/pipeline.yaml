@@ -1,0 +1,18 @@
+name: respond-consult
+steps:
+  - intake: lead
+    instructions: >-
+      Read tickets/ticket.txt and policy/discounts.md. The discount code to offer is not in the
+      repository: call consult to ask the operator, as an open question with no options, which code to offer; do not guess one.
+      Then give the Researcher the code exactly as the operator answered it.
+  - research: researcher
+    instructions: >-
+      Read the ticket and the policy. Reply with the customer's name, address, the problem and
+      the code the Lead gave you. You cannot send anything.
+  - draft: writer
+    instructions: >-
+      Write the reply into draft.md in the working directory. Its first line is `To: <address>`.
+      Offer the code exactly as the Lead gave it. Do not send it.
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: draft, max: 1}}

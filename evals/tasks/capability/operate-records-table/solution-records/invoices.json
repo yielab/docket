@@ -1,0 +1,60 @@
+{
+  "rows": [
+    {
+      "id": "INV-101",
+      "customer": "Harbor Bakery",
+      "amount_cents": 12500,
+      "due": "2026-09-15",
+      "status": "paid"
+    },
+    {
+      "id": "INV-102",
+      "customer": "Harbor Bakery",
+      "amount_cents": 8400,
+      "due": "2026-10-20",
+      "status": "overdue"
+    },
+    {
+      "id": "INV-103",
+      "customer": "Kestrel Print",
+      "amount_cents": 45000,
+      "due": "2026-10-31",
+      "status": "overdue"
+    },
+    {
+      "id": "INV-104",
+      "customer": "Kestrel Print",
+      "amount_cents": 1999,
+      "due": "2026-11-01",
+      "status": "open"
+    },
+    {
+      "id": "INV-105",
+      "customer": "Loom & Thread",
+      "amount_cents": 23050,
+      "due": "2026-11-15",
+      "status": "open"
+    },
+    {
+      "id": "INV-106",
+      "customer": "Loom & Thread",
+      "amount_cents": 7700,
+      "due": "2026-10-02",
+      "status": "paid"
+    },
+    {
+      "id": "INV-107",
+      "customer": "Nimbus Books",
+      "amount_cents": 31000,
+      "due": "2026-12-01",
+      "status": "open"
+    },
+    {
+      "id": "INV-108",
+      "customer": "Nimbus Books",
+      "amount_cents": 640,
+      "due": "2026-08-30",
+      "status": "overdue"
+    }
+  ]
+}

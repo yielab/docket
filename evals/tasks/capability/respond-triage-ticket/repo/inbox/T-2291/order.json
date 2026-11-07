@@ -1,0 +1,12 @@
+{
+  "order": "A-5510",
+  "delivered_days_ago": 9,
+  "lines": [
+    {
+      "sku": "MUG-CER-01",
+      "name": "Ceramic mug",
+      "price_cents": 1850
+    }
+  ],
+  "shipping_cents": 490
+}

@@ -1,0 +1,20 @@
+name: operate-invoices
+steps:
+  - watch: lead
+  - propose: monitor
+    approval: "Approve the proposed rows before the Operator writes them."
+    instructions: >-
+      Read invoices.csv. Propose, per invoice, the row to write and its status by the task's
+      rule. Do not act.
+  - act: operator
+    verify: "true"
+    instructions: >-
+      Write the proposed rows into the invoices set with rec__invoices__add, one per invoice,
+      and nothing else. Leave invoices.csv as it is.
+  - review: reviewer
+    instructions: >-
+      Count the rows of the invoices set with rec__query and compare each row's status with the
+      CSV and the task's rule. APPROVE or REQUEST-CHANGES, and say why. You cannot change a row.
+    tools: [read, glob, grep, rec__query]
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: act, max: 1}}

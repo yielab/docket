@@ -1,0 +1,23 @@
+id: invoice-rounding
+version: 1
+suite: capability
+shape: build
+origin: "app-dev invoice failures carried by the canary's memory-maintenance scenario (smoke_workflow.py:981-1105, deleted in 9ef43b77)"
+instruction: >-
+  invoice_total() in src/checkout.py rounds a half cent of tax to the even cent, so
+  tests/test_checkout.py fails on the half-up case. Fix it: tax rounds half up to whole
+  cents, computed with integers only (no floats). Keep both public signatures. Run exactly: PYTHONPATH=src python -m unittest discover -s tests -v.
+pod:
+  blueprint: build
+  isolation: true
+operator:
+  approval: approve_once
+graders:
+  required:
+    - outcome.hidden_tests
+    - outcome.task_status: {status: done}
+    - governance.no_violation
+  report: [process.tokens, process.asks, process.time]
+limits:
+  wall_seconds: 1500
+  max_tokens: 400000

@@ -244,6 +244,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   measures repeated trials against a base commit; the `DOCKET_RUN_LIVE_SMOKE` opt-in is gone. Development
   tooling only; the wheel never shipped it.
 
+- **The opt-in live Hacker News test (a `tests/` lane of its own).** The `hn-digest-records` task of the
+  capability suite in the eval lane runs the same recipe against the real site, reads the stories set the trial
+  exported and reports pass rates per model.
+
 - **The optional OpenHands SDK and PydanticAI adapters of `docket-runtime`** (`docket_runtime.adapters`),
   their example, fixtures and release tests, and the claims about them in the runtime-library spec
   (now 3.0.0), `COMPATIBILITY.md` and `SECURITY.md`. The facade and the governed-execution envelope
@@ -401,8 +405,6 @@ jail. Module paths moved with the context layout (ADR 0030).
   enabled exporters and, on exit, wrote its own counters to `exporters-health.json`, so a read-only command
   (`pod show`, `setup export show`) replaced the counts of the last run that sent spans with zeros. An
   all-zero result is no longer written, by the exit hook or by `run_turn` (observability export 3.2.0).
-- **The live Hacker News test can run on Anthropic** (`DOCKET_LIVE_HN_PROVIDER=anthropic` with `ANTHROPIC_API_KEY`).
-
 - **The MCP `queue` tool no longer says only a blocked task can be retried.** `retry_task_id`
   re-queues a `blocked` or a `failed` task, as `docket task retry` does; the refusal now reads
   "not a failed or blocked task" (mcp-server spec 1.9.6).
@@ -442,7 +444,7 @@ jail. Module paths moved with the context layout (ADR 0030).
   its step and hands on its evidence whatever the role. New recipes: `records` (a set, a capture pipeline and a
   weekly report for a routine pod) and `hacker-news` (a team that reads the Hacker News search API, keeps the most
   commented stories with a summary and the discussion of each, and writes a weekly report and an analysis;
-  `tests/live/test_hacker_news_live.py` runs it against the real site and the operator's model). The published
+  the `hn-digest-records` task of the eval lane runs it against the real site and a real model). The published
   adoption baseline was regenerated from a commit with the new home layout. A pod's records sit behind a
   `RecordStore` port (`kernel/records_port.py`, shared rules in `kernel/records_rules.py`); SQLite is the one
   adapter (`platform/records_sqlite.py`), chosen per pod by a factory `bootstrap` binds, and a conformance suite

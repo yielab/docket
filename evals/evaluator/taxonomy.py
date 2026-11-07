@@ -48,6 +48,8 @@ def classify(
         return "harness"
     if required.get(_GOVERNANCE, {}).get("status") == "fail":
         return "product"
+    if required and all(g["status"] == "pass" for g in required.values()):
+        return None
     answered = any(c.get("ok") for c in calls)
     if outcome.stalled or outcome.timed_out:
         return "model" if answered and outcome.timed_out else "infra"

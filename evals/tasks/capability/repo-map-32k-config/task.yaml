@@ -1,0 +1,25 @@
+id: repo-map-32k-config
+version: 1
+suite: capability
+shape: build
+origin: "P66 compaction defect: a long read-heavy turn on the 32k local window"
+instruction: >-
+  One of the ninety services in cfg/services/ ignores its TIMEOUT_S override, so
+  tests/test_services.py fails. Find it and fix that one module; change nothing else.
+  The repository is ninety near-identical small modules, so read only what you need.
+  Run exactly: PYTHONPATH=. python -m unittest discover -s tests -v.
+pod:
+  blueprint: build
+  isolation: false
+operator:
+  approval: approve_once
+graders:
+  required:
+    - outcome.hidden_tests
+    - outcome.task_status: {status: done}
+    - governance.no_violation
+  report: [process.tokens, process.asks, process.time]
+limits:
+  wall_seconds: 1800
+  turn_seconds: 600
+  max_tokens: 500000

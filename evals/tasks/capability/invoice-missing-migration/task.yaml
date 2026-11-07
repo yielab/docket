@@ -1,0 +1,24 @@
+id: invoice-missing-migration
+version: 1
+suite: capability
+shape: build
+origin: "app-dev invoice failures carried by the canary's memory-maintenance scenario (smoke_workflow.py:981-1105, deleted in 9ef43b77)"
+instruction: >-
+  save_invoice() in src/store.py writes a tenant column that no migration creates, so
+  tests/test_store.py fails with "no column named tenant". Add the missing migration in the
+  repository's own style: a database already at 0002 must upgrade in place and keep its rows
+  (existing invoices get tenant cobalt-7). Do not edit existing migrations. Run exactly: PYTHONPATH=src python -m unittest discover -s tests -v.
+pod:
+  blueprint: build
+  isolation: true
+operator:
+  approval: approve_once
+graders:
+  required:
+    - outcome.hidden_tests
+    - outcome.task_status: {status: done}
+    - governance.no_violation
+  report: [process.tokens, process.asks, process.time]
+limits:
+  wall_seconds: 1500
+  max_tokens: 400000

@@ -27,7 +27,7 @@ from evals.evaluator.graders import GradeContext, grade, passed
 from evals.evaluator.operator import run_operator
 from evals.evaluator.task import Graders
 from evals.evaluator.taxonomy import classify
-from evals.evaluator.verify import run_hidden
+from evals.evaluator.verify import RECORDS_ENV, run_hidden
 from evals.evaluator.world import TrialWorld, build_world
 
 SCHEMA = 1
@@ -63,6 +63,9 @@ class TrialSpec:
     memory: Mapping[str, str] = field(default_factory=dict)
     task_max_tokens: int | None = None
     label: str | None = None
+    apply: tuple[str, ...] = ()
+    fetch_domains: tuple[str, ...] = ()
+    records: tuple[str, ...] = ()
 
 
 @dataclass
@@ -182,6 +185,10 @@ def _run(
         pipeline=spec.pipeline,
         credential_env=spec.credential_env,
     )
+    for target in spec.apply:
+        world.docket("pod", "update", target, "--pod", world.pod)
+    if spec.fetch_domains:
+        world.docket("pod", "set", "fetchDomains", ",".join(spec.fetch_domains), "--pod", world.pod)
     head_before = world.head()
     for role, text in spec.memory.items():
         (_member_workspace(world, role) / MEMORY_FILE).write_text(text, encoding="utf-8")
@@ -203,6 +210,7 @@ def _run(
         spec.hidden,
         scratch / "verify",
         timeout_s=float(spec.limits.get("verify_s", 300)),
+        env=_export_records(world, spec.records, scratch / "records"),
     )
     stored = world.stored_task(task_id)
     tokens = _tokens(stored)
@@ -247,6 +255,18 @@ def _run(
         reason=outcome.reason,
         passed=passed(graded),
     )
+
+
+def _export_records(world: TrialWorld, sets: tuple[str, ...], dest: Path) -> dict[str, str]:
+    """Write each record set as `docket pod records <set> --json` prints it to `dest/<set>.json`
+    and name the directory in `EVAL_RECORDS`, which the hidden checks read; no sets, no variable."""
+    if not sets:
+        return {}
+    dest.mkdir(parents=True)
+    for name in sets:
+        shown = world.docket("pod", "records", name, "--pod", world.pod, "--json")
+        (dest / f"{name}.json").write_text(shown.out, encoding="utf-8")
+    return {RECORDS_ENV: str(dest)}
 
 
 def _member_workspace(world: TrialWorld, role: str) -> Path:

@@ -38,8 +38,8 @@ from evals.evaluator.nightly import (
 from evals.evaluator.online import HomeError, online_report
 from evals.evaluator.promote import DEFAULT_OUT, PromoteError, promote
 from evals.evaluator.report import read_trials
-from evals.evaluator.task import Grader, Task, TaskError, discover
-from evals.evaluator.verify import run_hidden
+from evals.evaluator.task import REFERENCE_RECORDS, Grader, Task, TaskError, discover
+from evals.evaluator.verify import RECORDS_ENV, SOLUTION_CHECK_ENV, run_hidden
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[1] / "tasks"
 DEFAULT_HEAD = Path("evals-out")
@@ -87,6 +87,15 @@ def _apply_solution(task: Task, repo: Path) -> str | None:
 _OUTCOME = frozenset({"outcome.hidden_tests", "outcome.file_exact"})
 
 
+def _reference_env(task: Task) -> dict[str, str]:
+    """What a hidden check reads beside the repository: the reference rows of the task's record
+    sets, and the flag that says a reference, not a model, is being checked."""
+    env = {SOLUTION_CHECK_ENV: "1"}
+    if task.spec.records:
+        env[RECORDS_ENV] = str(task.path / REFERENCE_RECORDS)
+    return env
+
+
 def _grade(task: Task, grader: Grader, repo: Path, work: Path) -> Outcome:
     """Grade one required grader through the trial's own graders; only outcome graders that need
     no trial run here, the rest are skipped."""
@@ -96,7 +105,9 @@ def _grade(task: Task, grader: Grader, repo: Path, work: Path) -> Outcome:
     if name not in _OUTCOME:
         return Outcome(name, "skipped", "skipped: not an outcome grader")
     verifier = (
-        run_hidden(repo, task.hidden, work / "verify") if name == "outcome.hidden_tests" else None
+        run_hidden(repo, task.hidden, work / "verify", env=_reference_env(task))
+        if name == "outcome.hidden_tests"
+        else None
     )
     result = grade_one(grader, GradeContext(repo=repo, verifier=verifier))
     return Outcome(name, "pass" if result.status == "pass" else "fail", result.reason)

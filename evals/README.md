@@ -28,6 +28,13 @@ graders:
   report: [process.tokens]
 ```
 
+A task that needs more than a repository says so in `task.yaml`: `pod.apply` (recipes or a directory
+beside the task, installed with `docket pod update`), `pod.fetch_domains`, `pipeline`, `pod.memory`,
+and `records`, the record sets exported after the run for `hidden/` to read through `EVAL_RECORDS`
+(the reference rows are `solution-records/<set>.json`; `EVAL_SOLUTION_CHECK=1` tells a hidden check
+it is judging a reference). An operator `approval: park` leaves the approval unanswered, for a task
+whose right ending is `waiting_approval`. The `capability` suite uses all of them.
+
 Any change to a task's content raises `version`; results of different versions are never mixed.
 The loader (`evals/evaluator/task.py`) refuses a task that lacks a key, names an unknown grader or
 breaks a bound, and it names the key.

@@ -1,0 +1,10 @@
+kind: records
+name: invoices
+description: One row per invoice in invoices.csv, found again by its id.
+key: id
+columns:
+  - {name: id, type: string, required: true, description: "The invoice id from the CSV"}
+  - {name: customer, type: string, required: true, description: "The customer's name"}
+  - {name: amount_cents, type: integer, required: true, description: "The amount in cents"}
+  - {name: due, type: date, required: true, description: "The due date, YYYY-MM-DD"}
+  - {name: status, type: string, required: true, description: "paid, overdue or open"}

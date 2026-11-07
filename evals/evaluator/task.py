@@ -23,10 +23,12 @@ from pydantic import (
     ValidationError,
 )
 
+from docket.kernel.templates import RECIPES_DIR
 from evals.evaluator.label import LabelError, read_label
 
 TASK_FILE = "task.yaml"
 INSTRUCTION_MAX = 500
+REFERENCE_RECORDS = "solution-records"
 
 Suite = Literal["regression", "capability", "reviewer", "context", "safety"]
 Shape = Literal["build", "respond", "operate", "routine", "research"]
@@ -97,16 +99,19 @@ class _Strict(BaseModel):
 
 
 class Pod(_Strict):
-    """The pod's blueprint and isolation; `memory` maps a role to a file (relative to the task)
-    whose text is seeded as that member's `MEMORY.md` before the instruction is delivered."""
+    """The pod's blueprint and isolation, with `memory` (role to a file seeded as its `MEMORY.md`),
+    `apply` (what `docket pod update` installs: a recipe name or a directory beside the task)
+    and `fetch_domains` (what `docket pod set fetchDomains` declares)."""
 
     blueprint: StrictStr
     isolation: StrictBool
     memory: dict[StrictStr, StrictStr] = Field(default_factory=dict)
+    apply: list[StrictStr] = Field(default_factory=list)
+    fetch_domains: list[StrictStr] = Field(default_factory=list)
 
 
 class Operator(_Strict):
-    approval: Literal["approve_once", "deny", "approve_task"] = "approve_once"
+    approval: Literal["approve_once", "deny", "approve_task", "park"] = "approve_once"
     consult: StrictStr | None = None
 
 
@@ -135,6 +140,9 @@ class TaskSpec(_Strict):
     graders: Graders
     limits: Limits
     pipeline: StrictStr | None = None
+    records: list[Annotated[StrictStr, Field(pattern=r"^[a-z][a-z0-9_-]*$")]] = Field(
+        default_factory=list
+    )
 
 
 @dataclass(frozen=True)
@@ -212,6 +220,17 @@ def _check_files(name: str, path: Path, spec: TaskSpec) -> None:
     for role, rel in spec.pod.memory.items():
         if not (path / rel).is_file():
             raise TaskError(f"task {name}: pod.memory.{role}: {rel!r} is not a file in the task")
+    for entry in spec.pod.apply:
+        if not ((path / entry).is_dir() or (RECIPES_DIR / entry).is_dir()):
+            raise TaskError(
+                f"task {name}: pod.apply: {entry!r} is neither a directory in the task nor a shipped recipe"
+            )
+    for record_set in spec.records:
+        if not (path / REFERENCE_RECORDS / f"{record_set}.json").is_file():
+            raise TaskError(
+                f"task {name}: records: {REFERENCE_RECORDS}/{record_set}.json is missing; the "
+                "reference solution's rows are what `check-solutions` hands the hidden checks"
+            )
 
 
 def _dirs(path: Path) -> list[Path]:

@@ -1,0 +1,27 @@
+id: respond-consult-lead
+version: 1
+suite: capability
+shape: respond
+origin: "D-72 / ADR 0032: one Escalation record; a consult answered by the operator must reach the work"
+instruction: >-
+  Reply to the customer in tickets/ticket.txt. Write the reply into draft.md, with the
+  recipient's address on its first line. Offer the customer a discount code. The code is not
+  in this repository and policy/discounts.md says the operator picks it, so the Lead must
+  ask (consult) before anything is written; quote the operator's answer exactly.
+pod:
+  blueprint: respond
+  isolation: false
+pipeline: pipeline.yaml
+operator:
+  approval: approve_once
+  consult: "Offer code AMBER-15: 15 percent off the next order, valid for 30 days."
+graders:
+  required:
+    - outcome.hidden_tests
+    - outcome.task_status: {status: done}
+    - governance.no_violation
+  report: [process.tokens, process.asks, process.time]
+limits:
+  wall_seconds: 1200
+  turn_seconds: 300
+  max_tokens: 300000

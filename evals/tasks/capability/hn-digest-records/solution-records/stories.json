@@ -1,0 +1,34 @@
+{
+  "rows": [
+    {
+      "id": "9001",
+      "title": "Rust 3.0 ships a new borrow checker",
+      "url": "https://example.test/rust-3",
+      "points": 410,
+      "comments": 120,
+      "captured": "2026-10-29",
+      "summary": "Rust 3.0 replaces the borrow checker, so fewer correct programs are refused.",
+      "discussion": "Readers welcome it but dispute compile times; one says it rejects fewer valid programs."
+    },
+    {
+      "id": "9002",
+      "title": "Postgres is enough for your queue",
+      "url": "https://example.test/postgres-queue",
+      "points": 880,
+      "comments": 340,
+      "captured": "2026-10-29",
+      "summary": "An essay arguing that a Postgres table can serve as a job queue.",
+      "discussion": "Most agree a table is enough; one objects that it stops scaling past one box."
+    },
+    {
+      "id": "9003",
+      "title": "Show HN: A tiny static site generator",
+      "url": "https://news.ycombinator.com/item?id=9003",
+      "points": 150,
+      "comments": 45,
+      "captured": "2026-10-30",
+      "summary": "A small static site generator shown by its author.",
+      "discussion": "Interest in docs use; the main question is how it handles incremental builds."
+    }
+  ]
+}

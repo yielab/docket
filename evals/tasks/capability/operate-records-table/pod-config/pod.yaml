@@ -1,0 +1,3 @@
+kind: pod
+name: invoices-ops
+description: A set holding one row per invoice, kept in step with invoices.csv.

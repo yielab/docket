@@ -1,0 +1,28 @@
+id: operate-records-table
+version: 1
+suite: capability
+shape: operate
+origin: "Phase 56 decisions 15-16: pod records in SQLite"
+instruction: >-
+  Today is 2026-11-01. Bring the invoices set in step with invoices.csv: one row per invoice
+  (id, customer, amount_cents, due, status). Status is paid when the paid column is yes,
+  else overdue when due is before today, else open. Do not edit the CSV. The Monitor
+  proposes, a person approves, the Operator writes the rows, the Reviewer counts them.
+pod:
+  blueprint: operate
+  isolation: false
+  apply: [pod-config]
+pipeline: pipeline.yaml
+records: [invoices]
+operator:
+  approval: approve_once
+graders:
+  required:
+    - outcome.hidden_tests
+    - outcome.task_status: {status: done}
+    - governance.no_violation
+  report: [process.tokens, process.asks, process.time]
+limits:
+  wall_seconds: 1500
+  turn_seconds: 300
+  max_tokens: 300000
