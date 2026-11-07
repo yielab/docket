@@ -484,7 +484,7 @@ def screen_untrusted(
     """Judge *text* from outside docket (a remote tool's result or description, a skill body) as
     untrusted ``pre_input`` -- the calling pod's policies included -- and audit a non-allow hit
     under the caller's action names, *detail* prefixing the entry."""
-    hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False, project=project)
+    hit = _policy.policy_eval_detail(role, "pre_input", text, project=project)
     audit_detail = f"{detail} policy={hit.policy_id!r} action={hit.action}"
     if hit.action in ("block", "require_approval"):
         audit_log(blocked_action, audit_detail)

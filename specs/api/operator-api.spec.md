@@ -1,8 +1,8 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.30.0
+**Version**: 7.31.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
-**Last Updated**: 2026-11-05
+**Last Updated**: 2026-11-07
 
 ## Purpose
 
@@ -87,8 +87,8 @@ over 1 MiB is `413`.
 
 The CLI keeps symmetry: `docket task add` takes `--external-ref`, `--idempotency-key`,
 `--base-ref`, `--pipeline`, `--gate`, `--max-tokens` and `--autonomy`; `docket task cancel|retry|diff` run the
-same functions as their routes; `docket start` takes `--bind`. `prepare`, `restrictions` and
-`trusted` are body fields with no `docket task add` flag.
+same functions as their routes; `docket start` takes `--bind`. `prepare` and `restrictions` are
+body fields with no `docket task add` flag.
 
 ## Arguments
 
@@ -98,7 +98,6 @@ same functions as their routes; `docket start` takes `--bind`. `prepare`, `restr
 |---|---|---|
 | `description` | string | required, non-empty |
 | `priority` | `high` / `normal` / `low` | default `normal` |
-| `trusted` | bool | overrides the `pre_input` trust flag for this enqueue only |
 | `brief` | object | a `TaskBrief`; an invalid one is `422` and nothing is enqueued |
 | `task` | object | optional structured fields beside `description`, additive to API 6 (no version change): `objective`, `doneWhen`, `risk`, `verify`, `kind` (strings), `acceptance`, `constraints`, `paths` (lists of strings) and `answers` (a list of objects), each optional. An unknown key or a field of the wrong type is `400` naming it, and nothing is enqueued. The record keeps it as `task`; with both present `description` is the title. The first non-Lead hop's `## Task` section renders it after the description in the fixed order objective, done when, acceptance, constraints, risk, answers, verify, kind, paths, and `paths` bound that hop's repository map to the entries beside them (`pod-dispatch.spec.md` "Bounded hop prompts"). The text is screened by `pre_input` with the description. Not exposed by the CLI, MCP or the operator view |
 | `externalRef` | string, 1-200 chars | a caller label, stored verbatim, never interpreted; filterable |

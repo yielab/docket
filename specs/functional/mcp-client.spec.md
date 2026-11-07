@@ -1,6 +1,6 @@
 # MCP Client Specification
 
-**Version**: 3.3.0
+**Version**: 3.3.1
 **Status**: Implemented and on the live turn path: configured servers' tools load into the turn's
 registry before per-role narrowing, so a role that denies a capability loses them like a built-in.
 Stdio transport only; each turn re-spawns every configured server (no listing cache). A server
@@ -130,7 +130,7 @@ This specification does NOT cover:
 ### Untrusted tool descriptions
 
 14. Before registration, every remote tool's `"<name>: <description>"` text **MUST** be evaluated
-    through `policy_eval_detail(role, "pre_input", text, trusted=False, project=<the calling pod>)`,
+    through `policy_eval_detail(role, "pre_input", text, project=<the calling pod>)`,
     the same evaluator that screens task text, the pod's own `on: input` policies included.
 15. A `block` or `require_approval` result **MUST** prevent that tool from being registered at all,
     and **MUST** be audited (`mcp_client.tool_description_blocked`). `require_approval` is
@@ -363,7 +363,7 @@ This specification does NOT cover:
 ### Untrusted tool results
 
 35. The text of a remote tool's result **MUST** be evaluated, inside the adapted tool's handler,
-    through the `pre_input` hook with `trusted=False` (`role=ctx.role`, `project=ctx.project`), the
+    through the `pre_input` hook (`role=ctx.role`, `project=ctx.project`), the
     pod's own `on: input` policies included; *text* is the outcome's `content` when it succeeded and
     its `error` when it did not. A result with no text **MUST** pass unchanged and unaudited.
 36. A `block` or `require_approval` result **MUST** replace the outcome with `ok=False` whose error

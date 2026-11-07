@@ -364,16 +364,14 @@ def _runtime_workspace_context(
 # Reuses agent.tools.mcp_tools._screen_description's exact verdict handling for an untrusted
 # remote tool description -- this is the second caller of that same shape, never a
 # second screen. block/require_approval excludes *text* (an audited marker instead);
-# warn/redact still composes it (audited); allow is silent. Always trusted=False:
-# unlike operator-authored INSTRUCTIONS.md, file content came from the codebase, not
-# the operator typing at docket directly.
+# warn/redact still composes it (audited); allow is silent.
 def _screen_project_instructions_file(
     role: str, name: str, text: str, *, project: str = ""
 ) -> tuple[str, PromptSectionStatus]:
     """Screen one project-instructions file's content through the `pre_input` policy
     hook, the calling pod's own policies included; returns the text to compose (or an
     audited marker) and its status."""
-    hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False, project=project)
+    hit = _policy.policy_eval_detail(role, "pre_input", text, project=project)
     if hit.action in ("block", "require_approval"):
         audit_log(
             "identity.project_instructions_blocked",
@@ -451,16 +449,14 @@ def _project_instructions_raw(agent_id: str, project_roots: tuple[Path, ...]) ->
     return "\n\n".join(parts)
 
 
-# Sibling of `_screen_project_instructions_file`, same reasoning (a skill's description came
-# from the codebase or the operator's own ~/.docket/skills/, not the operator typing at docket
-# directly -- always trusted=False), kept as its own function so an audited skill-description
-# hit is never confused with a project-instructions one in the audit log.
+# Sibling of `_screen_project_instructions_file`, kept as its own function so an audited
+# skill-description hit is never confused with a project-instructions one in the audit log.
 def _screen_skill_description(
     role: str, name: str, description: str, *, project: str = ""
 ) -> tuple[str, PromptSectionStatus]:
     """Screen one skill's description through the `pre_input` policy hook, the calling pod's
     own policies included; returns the text to compose (or an audited marker) and its status."""
-    hit = _policy.policy_eval_detail(role, "pre_input", description, trusted=False, project=project)
+    hit = _policy.policy_eval_detail(role, "pre_input", description, project=project)
     if hit.action in ("block", "require_approval"):
         audit_log(
             "identity.skill_blocked",

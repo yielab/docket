@@ -47,7 +47,7 @@ false when re-verified (see Evidence), and this ADR corrects them.
    unmerged branch is reported, as before. In-place pods are unchanged. The per-member worktree is
    deleted outright, with no fallback (the no-shims rule).
 2. **MCP results pass `pre_input`.** The MCP adapter screens each result's text as untrusted
-   (`trusted=False`) with the calling role, before the result reaches the model:
+   with the calling role, before the result reaches the model:
    - `block`: the result is replaced by a refusal naming the policy, and an audit entry is
      written;
    - `redact`: the redacted text is returned;

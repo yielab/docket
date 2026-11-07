@@ -524,7 +524,6 @@ def policy_eval_detail(
     hook: str,
     text: str,
     *,
-    trusted: bool = False,
     project: str = "",
     call: ToolCallFacts | None = None,
 ) -> PolicyHit:
@@ -532,10 +531,8 @@ def policy_eval_detail(
 
     project: this call's pod, when it has one -- folds that pod's own policy files
     (``policy_files(project)``) into the same most-restrictive-wins evaluation as the global set;
-    empty for a non-pod caller, which sees the global set only. trusted: whether the text came from
-    the operator's own hand; no shipped policy reads it, so every policy fires either way. call: the
-    tool name, arguments and a lazy branch getter a policy's structured ``when`` predicate can
-    test, beside *text*; ``None`` for callers that only ever have text (``pre_input``,
+    empty for a non-pod caller, which sees the global set only. call: the tool name, arguments
+    and a lazy branch getter a policy's structured ``when`` predicate can test, beside *text*; ``None`` for callers that only ever have text (``pre_input``,
     ``pre_output``, and a non-``exec`` dry run). Trace side-effects are intentionally omitted
     here -- this is the pure evaluator; a live-path caller or the CLI's dry-run (``policy_test``)
     decides what to do with the result."""

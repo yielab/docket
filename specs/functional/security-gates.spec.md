@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.23.0
+**Version**: 3.24.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -421,11 +421,10 @@ where it applies to commands docket itself launches.
    (`enqueue_task_once`), against the task's raw description, with role `"lead"` (the pipeline's fixed
    entry point). It **MUST NOT** be re-evaluated before every hop: doing so would re-trip the same
    `"*"`-scoped policy at every role for one piece of incoming text. A task enqueued
-   by `docket task add` (channel `cli`) is trusted, and so is one from a routine or a Telegram
-   delegation; a task enqueued over HTTP or MCP is **not** trusted unless `POST /tasks` carries
-   `trusted: true`. The flag reaches `policy_eval_detail` and nothing else: no shipped policy reads
-   it, so every operator `pre_input` policy fires for a trusted and an untrusted task alike (there
-   is no phrase detector to skip; "Untrusted text is framed" below is the control).
+   by `docket task add`, a routine, a Telegram delegation, HTTP or MCP is screened alike: the
+   channel is recorded and changes no outcome, and no policy reads a trust flag, so every operator
+   `pre_input` policy fires for every task (there is no phrase detector to skip; "Untrusted text is
+   framed" below is the control).
    - `block` **MUST** reject the task before it is written to the pod's queue (`DispatchError`
      `task rejected by guardrail policy '<id>' at enqueue[: <message>]`; nothing persisted) and
      **MUST** close out a self-contained trace session (`session_start` → `guardrail_check` →
@@ -1384,7 +1383,7 @@ material, may be read as saying otherwise.
    `node` or `git` may do; those stay as requirement 1 describes.
 6. **`fetch` results pass `pre_input` like MCP results (ADR 0020).** The text of a successful
    `fetch` response and the error text of a failed one **MUST** be evaluated through
-   `policy_eval_detail(ctx.role, "pre_input", text, trusted=False, project=ctx.project)` inside the
+   `policy_eval_detail(ctx.role, "pre_input", text, project=ctx.project)` inside the
    `fetch` handler, so the pod's own policies apply; a result with no text (an empty response, or
    a fetch error before any text) passes unchanged and unaudited. A `block` or `require_approval`
    result **MUST** replace the outcome with `ok=False` naming the policy id, and **MUST** be audited
@@ -1549,7 +1548,7 @@ of that exact call needs a way to reach a later, re-entered turn without asking 
    carries a pack on its record, as additive fields: `rationale` and `options`.
    - `rationale` is the assistant text of the message that made the call (`ToolContext.rationale`,
      set by the agent loop per tool-call batch). It is screened with
-     `policy_eval_detail("lead", "pre_input", text, trusted=False, project=ctx.project)`,
+     `policy_eval_detail("lead", "pre_input", text, project=ctx.project)`,
      redacted, and cut to 500
      characters. A `block` hit makes it `""` and adds `rationaleBlocked: true` to the record. The key is always present for a gated call, `""` when there is no text. Approvals
      created outside a tool call carry neither key.
@@ -2182,7 +2181,7 @@ $ git clone https://anywhere.example/repo.git
 - `src/docket/agent/loop.py`: the `approval_parked` stop, `approval_parked_error`
 - `src/docket/interfaces/telegram/bot.py`: the `/answer` handler
 - `src/docket/interfaces/http/routes/escalations.py`: `GET /escalations`, `POST /escalations/<id>`
-- `src/docket/interfaces/http/routes/task_create.py`: `POST /tasks` (`trusted`)
+- `src/docket/interfaces/http/routes/task_create.py`: `POST /tasks`
 - `src/docket/interfaces/http/server.py`: the expiry sweep
 - `src/docket/interfaces/http/routes/metrics.py`: `/metrics` (`docket_policy_hits_total`)
 - `src/docket/interfaces/cli/commands/setup_sandbox.py`: `docket setup sandbox` and its verbs, `docket setup profile`,

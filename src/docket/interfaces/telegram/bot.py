@@ -275,13 +275,12 @@ def _handle_delegate(agent_id: str, text: str) -> TelegramActionResult:
 
     # The same precedent applied to inbound-channel text instead of a remote
     # MCP tool description: untrusted external text is screened through the
-    # real pre_input evaluator, trusted=False, before it is treated as agent
-    # input. block/require_approval refuse outright -- there is no per-message
+    # real pre_input evaluator before it is treated as agent input. block/require_approval refuse outright -- there is no per-message
     # human-approval channel for a chat message the way there is for a tool
     # call, so the safe default folds require_approval into the same
     # fail-closed outcome as block (identical reasoning to
     # agent/tools/mcp_tools.py's _screen_description).
-    hit = _policy.policy_eval_detail("lead", "pre_input", text, trusted=False, project=project)
+    hit = _policy.policy_eval_detail("lead", "pre_input", text, project=project)
     if hit.action in ("block", "require_approval"):
         audit_log(
             "telegram.delegate_blocked",

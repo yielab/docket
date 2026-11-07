@@ -279,12 +279,6 @@ class TestBrokenPolicyFailsClosed:
         assert _policy.policy_eval_detail("implementer", "pre_tool_call", "ls").action == "block"
         assert _policy.policy_eval_detail("lead", "pre_tool_call", "ls").action == "allow"
 
-    def test_trusted_skip_never_widens_over_a_broken_file(self, policies_dir: Path) -> None:
-        """trusted=True skips a readable injection id, not an arbitrary broken file."""
-        _write_policy(policies_dir, "zz-mangled.json", "{broken")
-        hit = _policy.policy_eval_detail("lead", "pre_input", "hello", trusted=True)
-        assert hit.action == "block"
-
 
 class TestValidateCompilesRegex:
     def test_uncompilable_pattern_is_invalid(self, policies_dir: Path) -> None:

@@ -63,20 +63,13 @@ def _redacted(model: _M | None) -> _M | None:
     return type(model).model_validate(_redact_strings(model.model_dump(by_alias=True)))
 
 
-# The channels whose task text comes from outside the operator's terminal: an enqueue over them is
-# not trusted unless the request says so.
-_UNTRUSTED_CHANNELS = frozenset({"http", "mcp"})
-
-
 def _enqueue_pre_input_gate(
-    project: str, session_id: str, task_id: str, description: str, *, trusted: bool
+    project: str, session_id: str, task_id: str, description: str
 ) -> _policy.PolicyHit:
     """Evaluate ``pre_input`` once, at enqueue time; never raises. Unlike ``block``,
     ``require_approval`` does not synthesize a session_end -- the task still runs for real
     once granted. See specs/functional/security-gates.spec.md."""
-    hit = _policy.policy_eval_detail(
-        "lead", "pre_input", description, trusted=trusted, project=project
-    )
+    hit = _policy.policy_eval_detail("lead", "pre_input", description, project=project)
     if hit.action == "allow":
         return hit
 
@@ -135,15 +128,13 @@ def enqueue_task_once(
     priority: str = "normal",
     *,
     channel: str,
-    trusted: bool | None = None,
     brief: dict[str, Any] | None = None,
     task: dict[str, Any] | None = None,
     **options: Any,
 ) -> tuple[TaskRecord, bool]:
     """Locked read-modify-write returning ``(task, created)``; DispatchError persists nothing.
     A queued ``idempotency_key`` returns that task with ``created`` False; *options* are the
-    addressable-task fields. *channel* (cli|http|telegram|mcp) is recorded; *trusted* defaults to
-    False over ``http`` and ``mcp`` and to True otherwise."""
+    addressable-task fields. *channel* (cli|http|telegram|mcp) is recorded."""
     path = pod_task_list_path(project)
     if not path.parent.is_dir():
         raise DispatchError(f"no pod for '{project}' (run from its directory: docket init)")
@@ -187,9 +178,8 @@ def enqueue_task_once(
 
     task_id = _ids.new_id("task")
     session_id = f"agent:{project}:{task_id}"
-    effective_trusted = channel not in _UNTRUSTED_CHANNELS if trusted is None else trusted
 
-    hit = _enqueue_pre_input_gate(project, session_id, task_id, screened, trusted=effective_trusted)
+    hit = _enqueue_pre_input_gate(project, session_id, task_id, screened)
     if hit.action == "block":
         raise DispatchError(
             f"task rejected by guardrail policy '{hit.policy_id}' at enqueue"

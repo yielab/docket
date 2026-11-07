@@ -62,11 +62,6 @@ def post_task(h: HttpExchange, project: str) -> None:
         return
     priority_raw = task_body.get("priority", "normal")
     priority = str(priority_raw) if priority_raw else "normal"
-    # `trusted` (optional) overrides the `pre_input` check's trust flag for this enqueue. Absent
-    # (None), a task from HTTP is not trusted: see tasks.application.queue.enqueue_task_once.
-    trusted_raw = task_body.get("trusted")
-    trusted = bool(trusted_raw) if trusted_raw is not None else None
-
     # `brief` (optional): a `TaskBrief` document, the HTTP counterpart of `docket pod
     # <p> delegate --brief`. Validated here regardless, so a malformed one is always
     # `422` before anything is enqueued.
@@ -110,7 +105,6 @@ def post_task(h: HttpExchange, project: str) -> None:
             description,
             priority,
             channel="http",
-            trusted=trusted,
             brief=brief,
             task=request,
             **options,

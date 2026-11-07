@@ -194,7 +194,7 @@ def _task_facts(project: str, hops: list[HopLike], root: str | None) -> _TaskFac
 def _screen(role: str, project: str, text: str) -> tuple[str, str]:
     """The ``pre_input`` verdict on *text* as ``(status, reason)``: ``refused`` for a block,
     approval or redaction, ``pending`` for a warning, else ``("", "")``."""
-    hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False, project=project)
+    hit = _policy.policy_eval_detail(role, "pre_input", text, project=project)
     if hit.action in ("block", "require_approval", "redact"):
         return "refused", f"policy {hit.policy_id or 'pre_input'}: {hit.action}"
     if hit.action == "warn":

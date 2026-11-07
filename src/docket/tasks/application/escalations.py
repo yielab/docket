@@ -428,7 +428,7 @@ def _screen(project: str, texts: Iterable[Any]) -> None:
     for text in texts:
         if not isinstance(text, str):
             continue
-        hit = _policy.policy_eval_detail("lead", "pre_input", text, trusted=False, project=project)
+        hit = _policy.policy_eval_detail("lead", "pre_input", text, project=project)
         if hit.action == "block":
             raise EscalationRefused(hit.policy_id)
 

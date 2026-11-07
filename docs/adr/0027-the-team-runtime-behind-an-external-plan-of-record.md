@@ -107,7 +107,7 @@ One harness, no modes. Tack designs it in its own repository; what it needs from
 - Submit: `POST /tasks/<pod>` with `externalRef` (board item and attempt), `idempotencyKey`,
   `baseRef` (the previous attempt's branch on a rework), `pipeline` per item kind, `gate`
   (its acceptance command), `maxTokens` from its profile, `restrictions` from its permission
-  policy, `trusted` as today.
+  policy.
 - Follow: `GET /traces/<pod>?since=<cursor>`; answer `approval_required` with
   `POST /approvals/<token>` and a parked question with `POST /tasks/<id>/answer`; read the
   terminal status from `GET /tasks/<pod>/<id>`.
@@ -146,7 +146,7 @@ Read on `develop` at `e5c8c784` on 2026-10-14; every live run used a throwaway h
 
 | Need | Found | Where |
 |---|---|---|
-| Addressable task | missing: `POST /tasks/<pod>` takes `description`, `priority`, `trusted`, `brief`; the id is always `uuid4` | `serve.py::_handle_post_tasks`, `core/dispatch.py::enqueue_task` |
+| Addressable task | missing: `POST /tasks/<pod>` takes `description`, `priority`, `brief`; the id is always `uuid4` | `serve.py::_handle_post_tasks`, `core/dispatch.py::enqueue_task` |
 | Base of the worktree | always the codebase's HEAD | `core/pod_provisioning.py::provision_task_worktree`, `edges/adapters/system.py::git_worktree_add` |
 | Pipeline per task | resolved once per pod, before the claim loop | `core/dispatch.py::effective_pipeline`, `dispatch_pod` |
 | Restrict per task | missing; `pregrants` is the opposite (it widens) | `serve.py::_handle_post_task_pregrant` |

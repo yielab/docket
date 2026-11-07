@@ -213,21 +213,21 @@ class TestDecide:
         assert pm.record_task_memory(_PROJECT, _TASK, _Result([hop]), root=str(root)) == []
         assert pm.list_entries(_PROJECT) == []
 
-    def test_the_pre_input_screen_runs_untrusted_and_a_block_refuses(
+    def test_the_pre_input_screen_runs_and_a_block_refuses(
         self, repo: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         root, commit = repo
         seen: list[dict[str, Any]] = []
 
         def _block(role: str, hook: str, text: str, **kw: Any) -> _policy.PolicyHit:
-            seen.append({"hook": hook, "trusted": kw.get("trusted"), "project": kw.get("project")})
+            seen.append({"hook": hook, "project": kw.get("project")})
             return _policy.PolicyHit(action="block", policy_id="p1", message="no")
 
         monkeypatch.setattr(_policy, "policy_eval_detail", _block)
 
         (entry,) = _record(root, commit, _section("- generated: dist/bundle.js -- Built output."))
 
-        assert seen == [{"hook": "pre_input", "trusted": False, "project": _PROJECT}]
+        assert seen == [{"hook": "pre_input", "project": _PROJECT}]
         assert entry.status == "refused"
         assert "p1" in entry.reason
 

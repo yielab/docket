@@ -76,7 +76,7 @@ def screen_rationale(text: str, project: str = "") -> tuple[str, bool]:
     if not text:
         return "", False
 
-    hit = _policy.policy_eval_detail("lead", "pre_input", text, trusted=False, project=project)
+    hit = _policy.policy_eval_detail("lead", "pre_input", text, project=project)
     if hit.action == "block":
         return "", True
     return _redact(text)[:APPROVAL_RATIONALE_MAX_CHARS], False
@@ -348,7 +348,7 @@ def approval_grant(
     # Screen the reason against pre_input policies if non-empty
     if reason:
         hit = _policy.policy_eval_detail(
-            "lead", "pre_input", reason, trusted=False, project=_record_project(token)
+            "lead", "pre_input", reason, project=_record_project(token)
         )
         if hit.action == "block":
             raise ApprovalError(f"Reason blocked by policy {hit.policy_id}")
@@ -387,7 +387,7 @@ def approval_deny(
     # Screen the reason against pre_input policies if non-empty
     if reason:
         hit = _policy.policy_eval_detail(
-            "lead", "pre_input", reason, trusted=False, project=_record_project(token)
+            "lead", "pre_input", reason, project=_record_project(token)
         )
         if hit.action == "block":
             raise ApprovalError(f"Reason blocked by policy {hit.policy_id}")

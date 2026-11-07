@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 12.11.0
+**Version**: 12.12.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -108,8 +108,7 @@ refuse, exiting 1 without enqueueing, an empty text or a text longer than 500 ch
 `enqueue_task_once` **MUST** take a required keyword `channel`, one of `cli`, `http`, `telegram`,
 `mcp` or `routine` (a task a routine created, "Routines"), persist it on the task as `channel` beside `source`, and append `task.enqueue` to the audit
 log naming the project, the task and the channel. `source` stays the origin class (`operator`,
-`reviewer` for a rework task) and alone drives the `pre_input` trust default; `channel` never
-changes trust. The detail names no description text. `POST /dispatch/<project>` **MUST** append
+`reviewer` for a rework task); `channel` is recorded and changes no policy outcome. The detail names no description text. `POST /dispatch/<project>` **MUST** append
 `run.dispatch` naming the run, the project and `channel=http` beside the run record it creates.
 
 #### Addressable task (ADR 0027)

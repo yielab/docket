@@ -1,10 +1,10 @@
 # Agent Loop Specification
 
-**Version**: 4.25.0
+**Version**: 4.25.1
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 reduces a request that does not fit, and gates every tool call through `dispatch_tool` until a typed stop fires.
-**Last Updated**: 2026-11-05
+**Last Updated**: 2026-11-07
 
 ## Purpose
 
@@ -234,9 +234,9 @@ This specification does NOT cover:
     **MUST** be the single function that resolves the effective files and their source
     (`"set"`/`"default"`/`""`), used by both this composition and the `docket pod show` report.
     Each path is resolved against the first of `project_roots` and, unlike `INSTRUCTIONS.md`, is
-    never trusted: it **MUST** be screened through the `pre_input` policy hook (`trusted=False`,
-    the calling pod's policies included) before it reaches the composed text, the same screen an
-    untrusted MCP tool description gets. A `block`/`require_approval` verdict replaces that file's
+    repository text: it **MUST** be screened through the `pre_input` policy hook (the calling
+    pod's policies included) before it reaches the composed text, the same screen an MCP tool
+    description gets. A `block`/`require_approval` verdict replaces that file's
     content with an audited one-line marker (`identity.project_instructions_blocked`) naming the
     file and the policy; `warn`/`redact` still compose it (audited,
     `identity.project_instructions_warn`); a path with no file composes to a visible
@@ -261,7 +261,7 @@ This specification does NOT cover:
     codebase's `.docket/skills/`, the pod's own `config/skills/`, and the operator's skills
     directory (`SKILLS_DIR`, default `~/.docket/skills/`) — as `- <name>: <description>` lines
     sorted by name, each description screened through the same `pre_input` hook
-    (`trusted=False`; audited `identity.skill_blocked`/`identity.skill_warn`). A skill whose
+    (audited `identity.skill_blocked`/`identity.skill_warn`). A skill whose
     `SKILL.md` frontmatter is invalid, or whose `name` disagrees with its directory, is skipped and
     audited (`skills.invalid`) rather than raised into a turn. The section ends with one line
     telling the model to call the `skill` tool, naming a skill, for its full instructions. No
