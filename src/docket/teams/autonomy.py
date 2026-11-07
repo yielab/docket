@@ -28,7 +28,6 @@ __all__ = [
     "AutonomyDocument",
     "AutonomyError",
     "LevelAboveCeiling",
-    "approval_policy_for",
     "check_level",
     "consult_mode_for",
     "default_level",
@@ -182,15 +181,6 @@ def consult_mode_for(project: str, level: str) -> Literal["park", "decide"]:
     if _pod_settings.is_explicit(project, "consultMode"):
         return _pod_settings.PodSettings.load_for(project).consult_mode
     return "decide" if policy_for("consult", level)[0] == "recommendation" else "park"
-
-
-def approval_policy_for(project: str, level: str) -> str:
-    """The policy of a tool ``ask`` at *level*: an explicit pod ``approvalMode`` (``refuse`` is
-    ``deny``, ``wait`` and ``park`` are ``person``) wins over the ``approval`` row."""
-    if _pod_settings.is_explicit(project, "approvalMode"):
-        mode = _pod_settings.PodSettings.load_for(project).approval_mode
-        return "deny" if mode == "refuse" else "person"
-    return policy_for("approval", level)[0]
 
 
 def table_denies_approval(project: str, level: str) -> bool:

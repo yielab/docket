@@ -148,19 +148,16 @@ class TestPodSettingsWinOverTheTable:
         assert autonomy.consult_mode_for(project, level) == expected
 
     @pytest.mark.parametrize(
-        ("meta", "level", "policy", "table_decided"),
+        ("meta", "level", "table_decided"),
         [
-            ({}, "L3", "person", False),
-            ({}, "L4", "person", False),
-            ({}, "L5", "deny", True),
-            ({"approvalMode": "refuse"}, "L3", "deny", False),
-            ({"approvalMode": "wait"}, "L5", "person", False),
-            ({"approvalMode": "park"}, "L5", "person", False),
+            ({}, "L3", False),
+            ({}, "L4", False),
+            ({}, "L5", True),
+            ({"approvalMode": "refuse"}, "L3", False),
+            ({"approvalMode": "wait"}, "L5", False),
+            ({"approvalMode": "park"}, "L5", False),
         ],
     )
-    def test_approval_policy(
-        self, meta: dict[str, str], level: str, policy: str, table_decided: bool
-    ) -> None:
+    def test_approval_policy(self, meta: dict[str, str], level: str, table_decided: bool) -> None:
         project = _pod("shop", **meta)
-        assert autonomy.approval_policy_for(project, level) == policy
         assert autonomy.table_denies_approval(project, level) is table_decided

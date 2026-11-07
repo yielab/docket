@@ -87,7 +87,7 @@ def tool_output_policy(messages: Messages) -> Messages:
     return out
 
 
-PHASE44_KEEP = 2
+LIVE_KEEP = 2
 
 
 def condense_policy(keep: int) -> Policy:
@@ -119,7 +119,7 @@ def condense_policy(keep: int) -> Policy:
 
 
 def p52_2_policy(messages: Messages) -> Messages:
-    """``phase44`` plus normalized ``bash`` output kept head and tail at the cap, and
+    """``live`` plus normalized ``bash`` output kept head and tail at the cap, and
     the monotone small-result rule of ``condense_history``. The artifact line is not counted."""
     out = []
     for message in tool_output_policy(messages):
@@ -128,7 +128,7 @@ def p52_2_policy(messages: Messages) -> Messages:
             out.append({**message, "content": bounded_text(normalized, VERDICT_TAIL)})
         else:
             out.append(message)
-    return condense_policy(PHASE44_KEEP)(out)
+    return condense_policy(LIVE_KEEP)(out)
 
 
 POLICIES: dict[str, Policy] = {
@@ -137,7 +137,7 @@ POLICIES: dict[str, Policy] = {
     "condense-k1": condense_policy(1),
     "condense-k2": condense_policy(2),
     "condense-k3": condense_policy(3),
-    "phase44": lambda messages: condense_policy(PHASE44_KEEP)(tool_output_policy(messages)),
+    "live": lambda messages: condense_policy(LIVE_KEEP)(tool_output_policy(messages)),
     "p52-2": p52_2_policy,
 }
 
