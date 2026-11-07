@@ -602,3 +602,42 @@ class TestTaskPipelineFiles:
 
         assert {"tdd", "secure-build"} <= recipes
         assert "records" not in recipes
+
+
+class TestGuardCommand:
+    """A ``run:`` step is classified with the arguments a turn's ``bash`` call gets."""
+
+    @staticmethod
+    def _guard(command: str) -> object:
+        _support_pods.seed_lean_pod()
+        node = _orch.PlannedUnit(
+            step_id="check",
+            role=None,
+            agent=None,
+            archetype=None,
+            member_id=None,
+            gate=None,
+            retries=None,
+            timeout=None,
+            run=command,
+        )
+        return _steps._guard_command(_support_pods.unit_context(), node, command, 0)
+
+    def test_isolation_on_stands_the_allowlist_down(self, pod_home: Path) -> None:
+        _fleet.set_sandbox_isolation("non-main")
+
+        assert self._guard("ruff check .") is None
+
+    def test_isolation_off_keeps_the_allowlist(self, pod_home: Path) -> None:
+        assert self._guard("ruff check .") is not None
+
+    def test_isolation_on_still_asks_for_a_high_risk_class(self, pod_home: Path) -> None:
+        _fleet.set_sandbox_isolation("non-main")
+
+        assert self._guard("git push origin production") is not None
+
+    def test_a_redirect_inside_the_steps_directory_is_allowed(self, pod_home: Path) -> None:
+        assert self._guard("echo done > out.txt") is None
+
+    def test_a_redirect_outside_the_steps_directory_asks(self, pod_home: Path) -> None:
+        assert self._guard("echo done > /etc/out.txt") is not None

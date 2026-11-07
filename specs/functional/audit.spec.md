@@ -1,10 +1,10 @@
 # Audit Log Specification
 
-**Version**: 3.4.0
+**Version**: 3.5.0
 **Status**: Implemented. Recording, the hash chain, rotation continuation, the head sidecar and
 `docket log` / `docket log verify` are live; the log is `$DOCKET_HOME/audit.log`. Requirement 1
 lists every action the code writes; Requirement 2 says what the log cannot see.
-**Last Updated**: 2026-11-03
+**Last Updated**: 2026-11-07
 
 ## Purpose
 
@@ -44,7 +44,9 @@ policy (see security-gates.spec.md), or token accounting (see cost-tracking.spec
      (the per-task cap was reached; the call was approved once only).
    - **Tool gate.** `tool.deny`, `tool.ask`, `tool.warn`, `tool.redact`, `tool.refused` and `tool.send`, one
      entry per gated call that is not a plain `allow` (`tool.refused` is a refusal a tool handler
-     made itself: its `detail` carries the kind and the attempted path or host only). `detail`
+     made itself: its `detail` carries the kind and the attempted path or host only; a call refused
+     before the gate runs, an `invalid_call` or a `capability_missing`, writes a `tool.deny` whose
+     `detail` carries `denial_kind=<kind>` and the reason). `detail`
      names the tool, agent, role and project, a fixed `policy_id='...' policy_action='...'` pair,
      and the redacted call. `tool.send` is the exception to "not a plain `allow`": every `send`
      call the gate settles writes one, `allow` or `deny`, with the same `detail` then

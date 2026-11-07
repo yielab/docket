@@ -42,6 +42,8 @@ from docket.kernel.ports import git as _git
 _FILE_TOOLS = frozenset({"write", "edit"})
 #: Kinds that act on nothing outside docket's own records: no high-risk class reads their calls.
 _INERT_KINDS = frozenset({"read", "record"})
+#: How much of a model-supplied tool name an audit row keeps.
+_AUDITED_NAME_CHARS = 64
 _SEND_REASON = "this tool acts outside the machine; a person approves exactly what leaves"
 
 
@@ -455,6 +457,14 @@ def audit_refusal(call: GateCall, ctx: GateContext, kind: str) -> None:
     else:
         target = f"path={str(call.args.get('path', ''))!r}"
     audit_tool_decision("tool.refused", call.tool.name, ctx, f"kind={kind} {target}")
+
+
+def audit_denial(tool_name: str, ctx: GateContext, kind: str, reason: str) -> None:
+    """Audit a call refused before the gate ran (an unknown tool, unreadable arguments, a capability
+    the role lacks) as ``tool.deny`` with its ``denial_kind``. *tool_name* is whatever the model
+    sent, so it is redacted and bounded like the reason."""
+    name = _redact(tool_name)[:_AUDITED_NAME_CHARS]
+    audit_tool_decision("tool.deny", name, ctx, f"denial_kind={kind} {reason}")
 
 
 def audit_event(action: str, detail: str) -> None:

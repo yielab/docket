@@ -470,6 +470,10 @@ class ToolGate(Protocol):
         """Audit a refusal a tool handler made itself (``kind`` names the rule)."""
         ...
 
+    def audit_denial(self, tool_name: str, ctx: GateContext, kind: str, reason: str) -> None:
+        """Audit a call refused before the gate ran (``kind`` is its denial kind) as ``tool.deny``."""
+        ...
+
     def audit_event(self, action: str, detail: str) -> None:
         """Append *detail* to the audit log under *action* (a tool adapter's own event)."""
         ...

@@ -271,7 +271,13 @@ def _guard_command(
     # is nothing to park.
     role = node.step_id
     settings = load_pod_settings(ctx.project)
-    verdict = _sec.classify_command(cmd, extra_bins=frozenset(settings.allow_commands))
+    cwd = when_cwd(ctx, [])
+    verdict = _sec.classify_command(
+        cmd,
+        extra_bins=frozenset(settings.allow_commands),
+        roots=(Path(cwd),) if cwd else (),
+        jailed=_fleet.get_isolation_enabled(),
+    )
     if verdict.action != "allow":
         level = _autonomy.effective_level(ctx.project, ctx.task.autonomy)
         by_level = _autonomy.table_denies_approval(ctx.project, level)

@@ -714,6 +714,64 @@ class TestRefusedCallsAreAudited:
         assert self._refused() == []
 
 
+class TestRefusalsBeforeTheGateAreAudited:
+    """A call refused before the gate runs leaves one `tool.deny` entry naming its denial kind."""
+
+    @staticmethod
+    def _denied() -> list[dict[str, object]]:
+        from docket.governance.audit import read_audit
+
+        return [e for e in read_audit() if e.get("action") == "tool.deny"]
+
+    def test_a_capability_gap_is_audited_once(self, ctx: ToolContext) -> None:
+        ctx.role = "lead"
+        ctx.project = "demo"
+        registry = builtin_registry()
+        registry.offer = _pod_offer()
+
+        res = dispatch_tool(_call("write"), ctx, registry.without("write"))
+
+        assert res.denial_kind == "capability_missing"
+        (entry,) = self._denied()
+        detail = str(entry["detail"])
+        assert "tool=write" in detail and "role=lead" in detail and "project=demo" in detail
+        assert "denial_kind=capability_missing" in detail
+        assert res.reason in detail
+
+    @pytest.mark.parametrize(
+        ("name", "arguments"),
+        [
+            ("teleport", "{}"),
+            ("read", "{not json"),
+            ("write", '{"path": "x.txt"}'),
+            ("write", '{"path": "x.txt", "content": 5}'),
+        ],
+    )
+    def test_an_invalid_call_is_audited_once(
+        self, ctx: ToolContext, name: str, arguments: str
+    ) -> None:
+        ctx.project = "demo"
+
+        res = dispatch_tool(_call(name, arguments), ctx, builtin_registry())
+
+        assert res.denial_kind == "invalid_call"
+        (entry,) = self._denied()
+        detail = str(entry["detail"])
+        assert f"tool={name}" in detail and "project=demo" in detail
+        assert "denial_kind=invalid_call" in detail
+
+    def test_a_secret_in_a_refused_call_is_redacted(self, ctx: ToolContext) -> None:
+        dispatch_tool(_call("sk-ant-FAKEFAKEFAKEFAKEFAKEFAKE"), ctx, builtin_registry())
+
+        (entry,) = self._denied()
+        assert "sk-ant-FAKEFAKEFAKEFAKEFAKEFAKE" not in str(entry["detail"])
+
+    def test_an_allowed_call_writes_no_denial(self, ctx: ToolContext) -> None:
+        dispatch_tool(_call("read", '{"path": "notes.md"}'), ctx, builtin_registry())
+
+        assert self._denied() == []
+
+
 class TestResultReportedBackToTheModel:
     def test_denial_is_spoken_not_silent(self) -> None:
         res = ToolResult(

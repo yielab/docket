@@ -265,21 +265,24 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
     if cancel_before_execution():
         return result
 
+    def refuse(kind: ToolDenialKind, reason: str) -> ToolResult:
+        """Deny before the gate ran: the result the model reads, and one ``tool.deny`` row."""
+        result.decision = "deny"
+        result.denial_kind = kind
+        result.reason = result.error = reason
+        tool_gate.audit_denial(call.name, ctx, kind, reason)
+        return result
+
     tool = registry.get(call.name)
     if tool is None:
-        result.decision = "deny"
         gap = gap_for(call.name, registry, ctx.role, registry.offer)
         if gap is not None:
-            result.denial_kind = "capability_missing"
             result.gap = gap
-            result.reason = result.error = gap.message(ctx.role)
-            return result
-        result.denial_kind = "invalid_call"
-        result.reason = f"unknown tool {call.name!r}; available: {', '.join(registry.names())}"
+            return refuse("capability_missing", gap.message(ctx.role))
+        reason = f"unknown tool {call.name!r}; available: {', '.join(registry.names())}"
         if call.name.startswith(RECORDS_TOOL_PREFIX):
-            result.reason += _records_hint(call.name)
-        result.error = result.reason
-        return result
+            reason += _records_hint(call.name)
+        return refuse("invalid_call", reason)
 
     try:
         args = call.parsed_arguments()
@@ -287,27 +290,15 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
         # Fail closed. Arguments are what the gate inspects, so a call whose
         # arguments cannot be read cannot be evaluated, and an unevaluated call
         # must not run.
-        result.decision = "deny"
-        result.denial_kind = "invalid_call"
-        result.reason = str(ex)
-        result.error = result.reason
-        return result
+        return refuse("invalid_call", str(ex))
 
     missing = [name for name in tool.required_args if name not in args]
     if missing:
-        result.decision = "deny"
-        result.denial_kind = "invalid_call"
-        result.reason = f"missing required argument(s): {', '.join(missing)}"
-        result.error = result.reason
-        return result
+        return refuse("invalid_call", f"missing required argument(s): {', '.join(missing)}")
 
     mistyped = tool.mistyped_strings(args)
     if mistyped:
-        result.decision = "deny"
-        result.denial_kind = "invalid_call"
-        result.reason = f"argument(s) must be text: {', '.join(mistyped)}"
-        result.error = result.reason
-        return result
+        return refuse("invalid_call", f"argument(s) must be text: {', '.join(mistyped)}")
 
     gate_call = GateCall(tool, call.id, args, tool.audit_detail)
     decision = tool_gate.govern(gate_call, ctx)

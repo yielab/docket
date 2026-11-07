@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.20.0
+**Version**: 3.21.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -146,9 +146,11 @@ and chain (audit.spec.md).
      allowed instead of asking. Unchanged in both modes: the not-statically-analysable `ask`
      (command substitution, `eval`, `exec`, a lone `&`), every high-risk class, the
      empty-command `deny` and the unparseable-text `deny`, and redirect containment (an output redirect whose targets do not all
-     resolve inside `roots` or name `/dev/null` still asks, for every binary when jailed). Every
-     host-side caller (dispatch's `run:` steps, `docket pod check`) leaves `jailed` false. Policies
-     apply in both modes.
+     resolve inside `roots` or name `/dev/null` still asks, for every binary when jailed). A `run:`
+     step (and a `wait` step's probe) classifies its command with the same arguments a turn's
+     `bash` call gets: `roots` is the directory the command runs in and `jailed` is true exactly
+     when the pod's isolation is on, so `run: ruff check .` is `allow` under isolation where it
+     asks without. `docket pod check` still leaves `jailed` false. Policies apply in both modes.
 2. Approvals in docket's store **MUST** be answerable over a headless channel, by the id of the
    escalation each approval backs and through `resolve` alone: the CLI (`docket task answer
    <esc-id> --option approve_once|approve_task|deny`), HTTP (`POST /escalations/<id>` under
@@ -373,8 +375,9 @@ where it applies to commands docket itself launches.
    Refusing outright is the only honest posture here: the command runs synchronously inside a
    dispatch hop with no interactive approver reachable, the same fail-closed rule
    `TOOL_APPROVAL_TIMEOUT` and `sweep_escalations` apply when nobody answers. A `run:` step
-   is also classified with `classify_command` (with the pod's `allowCommands`) before it runs; a
-   non-`allow` verdict gates it like an approval step (pod-dispatch.spec.md).
+   is also classified with `classify_command` (with the pod's `allowCommands`, the step's working
+   directory as `roots`, and `jailed` when isolation is on: the arguments a turn's `bash` call gets)
+   before it runs; a non-`allow` verdict gates it like an approval step (pod-dispatch.spec.md).
 3. **No prose scan.** The `pre_output` scan (Policy engine 3) **MUST NOT** classify a hop's output
    against `match_high_risk`: the output is what the model *says*, not an action, and a sentence
    such as "I did not push to main" would trip a check that can only warn. The in-turn gate
@@ -706,7 +709,13 @@ rewrite its own gate for the next turn.
    call's arguments can carry a secret (an API key in a `write`, a credential in a `bash`
    command). Approval resolution (grant, explicit deny, or timeout deny) is recorded by the
    store's own `approval.grant` and `approval.deny` entries, so a fully gated call leaves both the
-   gate's decision and its resolution in `docket log`.
+   gate's decision and its resolution in `docket log`. A denial `dispatch_tool` makes before the
+   gate runs, an `invalid_call` (unknown tool, undecodable, missing or mistyped arguments) or a
+   `capability_missing` (a tool, record set or `fetch` the pod offers and the role does not hold,
+   or an MCP tool held back), **MUST** be audited too: one `tool.deny` entry naming the tool, agent,
+   role and project, an empty `policy_id` and `policy_action`, and `denial_kind=<kind>` followed by
+   the redacted reason. Every denied `ToolResult` except a `run_cancelled` one therefore has exactly
+   one `tool.*` row.
 7. Every denied, non-executed `ToolResult` **MUST** carry exactly one closed, privacy-safe denial
    kind: `invalid_call` for an unknown tool, undecodable arguments or missing required arguments;
    `gate_denied` for a classifier or policy denial; `approval_denied` for an explicit operator
