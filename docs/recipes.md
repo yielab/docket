@@ -34,7 +34,6 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 | [`no-egress`](#no-egress) | 3 policies | Ask before a bash-run network client, package install, or fetch call leaves the workspace. |
 | [`outward`](#outward) | 2 policies | The policy pack of a respond pod - a send tool asks a person first, and the pod's sends are capped. |
 | [`parallel-explore`](#parallel-explore) | 2 members, pipeline `parallel-explore` | Two cheap-tier Researchers mapping disjoint parts of the code in parallel, then an Implementer gated on its verify command, with one retry back to the Lead. |
-| [`prod-approval`](#prod-approval) | 1 policy | Ask before an implementer or operator runs a deploy/production-shaped command. |
 | [`records`](#records) | 1 named pipeline, 1 record set, 1 routine | A set the pod keeps its entries in, a capture pipeline that adds rows from a task's input, and a weekly report routine, for a routine pod. |
 | [`reflexion`](#reflexion) | 1 member, pipeline `reflexion` | Bounded self-critique as a pipeline: the Implementer's own change is critiqued and reworked before the task is done. |
 | [`research-review`](#research-review) | 4 members, pipeline `research-review` | Lead, Researcher, Analyst, Writer and Reviewer as a pipeline, gated on the Reviewer's APPROVE/REQUEST-CHANGES with one rework cycle back to the Writer. |
@@ -879,59 +878,6 @@ second run plans every item `skip`). `--dry-run` prints the plan without writing
 docket pod unset pipeline
 docket pod remove <project>-researcher
 docket pod remove <project>-implementer
-```
-
-## prod-approval
-
-Ask before an implementer or operator runs a deploy/production-shaped command.
-
-**Brings:** 1 policy. **Summary line:** `roles 0 · policies 1 · members 0 · pipeline none · plugins 0 · skills 0 · settings 0`
-
-```bash
-docket init --recipe prod-approval
-docket pod update prod-approval
-```
-
-A policy pack: one guardrail policy, no roles, no pipeline, no members.
-
-**Threat model, in three sentences.** A pod's Implementer can run deploy commands through `bash`
-on the way to "done", and the Implementer has no approval gate of its own in most pipelines. A
-production-shaped command -- `kubectl apply`, `terraform apply`, `docker push`, a `git push` to
-`main` -- is expensive to undo and easy to run by habit under time pressure, from either role.
-This pack asks before either role runs one, independent of whatever pipeline step reached it.
-
-### Apply it
-
-```bash
-docket init --recipe prod-approval          # a new pod for the current directory
-docket pod update prod-approval    # onto an existing pod
-```
-
-`apply` validates the policy file and plans it (a `policy` item only), and is safe to run again
-(a second run plans it `skip`). `--dry-run` prints the plan without writing.
-
-### See it fire
-
-```bash
-docket pod update prod-approval
-docket pod check "terraform apply" --role implementer
-docket pod check "git push origin main" --role operator
-```
-
-Both name `prod-approval-high-risk` and ask.
-
-### Files
-
-- `pod.yaml` -- `kind: pod`, `name: prod-approval`, `description`; no `members`.
-- `policies/prod-approval-high-risk.yaml` -- `tool: bash` + `matches`; `appliesTo:
-  [implementer, operator]`; asks on `kubectl apply|delete|replace|rollout`, `helm upgrade|
-  install`, `terraform apply|destroy`, `docker push`, `npm publish`, `fly deploy`,
-  `vercel --prod`, `heroku promote`, or a `git push` to a production-shaped branch.
-
-### Undo
-
-```bash
-rm ~/.docket/config/pods/<project>/policies/prod-approval-high-risk.yaml
 ```
 
 ## records

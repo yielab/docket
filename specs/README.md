@@ -104,10 +104,10 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Model Profiles | 7.5.0 | Complete |
 | Observability Export | 3.3.0 | Implemented and live |
 | Pipeline Format | 4.8.0 | Implemented |
-| Pod Blueprints | 4.11.0 | Implemented |
-| Pod Dispatch | 12.9.0 | Implemented |
+| Pod Blueprints | 4.12.0 | Implemented |
+| Pod Dispatch | 12.10.0 | Implemented |
 | Role Archetypes | 5.13.0 | Implemented |
-| Security Gates | 3.18.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
+| Security Gates | 3.19.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Service Client | 1.5.0 | Implemented in part (the document, the tools, the call, the writes handling and the OpenAPI 3 or 2 import; not proven against a real service) |
 | Pod Records | 1.9.0 | Implemented in part (the store, the document, the CLI, the agent tools and the two HTTP read routes; not proven against a live model) |
 | Session History | 1.23.0 | Implemented and live |
@@ -116,7 +116,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Trace Store | 6.1.0 | Implemented and live |
 | Workspace Structure | 4.3.0 | Complete |
 | CLI Interface | 5.16.0 | Complete |
-| MCP Client | 3.2.0 | Implemented and wired to the live turn path |
+| MCP Client | 3.3.0 | Implemented and wired to the live turn path |
 | Runtime Library | 3.0.0 | Implemented (artifact-tested; **not published to any index**) |
 | MCP Server | 3.0.0 | Implemented |
 | CLI JSON Shapes | 5.8.0 | Complete |

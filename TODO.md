@@ -574,7 +574,7 @@ from `main`.
 
 ### P70-1 — One list of high-risk actions, applied to every tool that acts
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + deletion + spec + data · **After:** P69-14
+**Status:** DONE 2026-11-07, `7fee4fce` (the built-in classes ask on every acting tool, `read` and `record` kinds and `write`/`edit` excepted; `handoff`/`consult` are `read`, so the payments defect is closed in code, its eval oracle not yet run; the three templates and the `ops-approval` pack deleted; `prod-approval` deleted by the integrator in the same pass as a third copy; no corpus xfail moved: the five non-`rm` rows are now asked by the classifier, the six `rm -rf` rows are `block-destructive`'s; security-gates 3.19.0. Left: `docs/assets/governance.png` shows `high-risk-deploy` and needs a re-capture with a live model, P70-9) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + deletion + spec + data · **After:** P69-14
 
 - **Found by the eval lane (2026-11-07):** `evals/tasks/regression/report-mentions-payments` failed 0/3 on the local
   model at `014feff2`: `high-risk-payment` asked on the Lead's and the Reviewer's `handoff`, whose summary names Stripe
@@ -666,7 +666,7 @@ from `main`.
 
 ### P70-5 — A folder pod that edits its own check waits for a person too
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** DONE 2026-11-07, `9e6ef78b` (a folder pod's protected files are hashed before the first hop into `TaskRecord.protectedHashes` and compared when the pipeline ends `done`; a retry keeps the baseline; a file a check names counts only if it existed at the start; pod-dispatch 12.10.0. Open: a routine whose check names a file it rewrites every run parks every time, as the worktree path does) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
 - **Trigger:** `pre_hop.py:313-330` returns when the task has no worktree record; every `respond`/`operate`/`routine`
   pod works in a folder.
@@ -683,7 +683,7 @@ from `main`.
 
 ### P70-6 — An MCP tool's definition is pinned; a server that changes it is asked about again
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** DONE 2026-11-07, `030755d1` (pins are sha256 of name, description and schema, written on the first load (trust on first use: listing at `add` would spawn the server unjailed); a changed or new tool is held back, audited `mcp_client.tool_changed`, and its call gets a `capability_missing` naming `docket setup mcp accept <server>`, which promotes the listing a turn recorded without spawning the server; mcp-client 3.3.0. Open: the server's `access`/`command` are not pinned) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
 - **Trigger:** `mcp_tools.py:184-245` registers whatever the server lists each turn (each stdio server is re-spawned per
   turn); Invariant Labs' "rug pull" and the MCP spec's security best practices (2026-07-28) name re-consent on change.
@@ -720,7 +720,7 @@ from `main`.
 
 ### P70-8 — The export privacy table lives once
 
-**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** refactor · **After:** —
+**Status:** DONE 2026-11-07, `cefaacb2` (the card named the wrong module: the table was `observability/spans.py::ATTRIBUTE_CLASSES`, not `telemetry.py`; it now lives in `governance/privacy.py` with the per-part `gen_ai.input.messages` kept apart as `MIXED_ATTRIBUTES`, and `spans.py` imports it; `describe()` pinned byte for byte) · **Size:** S · **Model:** Haiku · **Kind:** refactor · **After:** —
 
 - **Trigger:** `governance/privacy.py:23-37` repeats `observability/telemetry.py::ATTRIBUTE_CLASSES` "by hand".
 - **Goal:** the table lives in `governance/privacy.py` (`ATTRIBUTE_CLASSES`) and `telemetry.py` imports it (observability

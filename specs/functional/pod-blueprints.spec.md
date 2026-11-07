@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 4.11.0
+**Version**: 4.12.0
 **Status**: Implemented
-**Last Updated**: 2026-11-05
+**Last Updated**: 2026-11-07
 
 ## Purpose
 
@@ -663,7 +663,6 @@ requirement 1). The shipped library groups by what a directory contains, not by 
 | Policy pack | `git-safety` | policies only |
 | Policy pack | `no-egress` | policies only |
 | Policy pack | `secrets-guard` | policies only |
-| Policy pack | `prod-approval` | policies only |
 | Tooling | `code-intel` | `mcp-servers` only: `ast-grep` and `language-intel`, both declared `access: read` with a tool allowlist |
 | Methodology | `tdd` | no added members; skills (`test-first`); a pipeline: `red` (Implementer writes one failing test) -> `check-red` (a `run` command step routed `on: {pass: fail, fail: green}`, so an unexpectedly passing test fails the task outright) -> `green` (Implementer, its own verify command) |
 | Methodology | `spec-first` | members (`writer`, `reviewer`); skills (`writing-a-spec`); a pipeline: `spec` (Writer) -> `approve-spec` (Reviewer, APPROVE/REQUEST-CHANGES, bounded rework to `spec`) -> `build` (Implementer, its own verify command) -> `review` (Reviewer, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
@@ -686,8 +685,8 @@ protected branch (`main`/`master`/`production`/`prod`); `no-egress` asks before 
 client, a package install, or a `fetch` call; `secrets-guard` blocks a write/edit whose path looks
 like a credential file (`.env`, `.pem`, `.key`, `id_rsa`, `.p12`) or whose rendered text carries a
 private-key header, an AWS access-key id shape, or a bearer-token shape, and redacts the same
-shapes from output; `prod-approval` asks before an implementer or operator runs a
-deploy/production-shaped command. `secure-build`'s own policy is stated the same way (an `anyOf`
+shapes from output. A deploy/production-shaped command asks from any role without a pack: the
+built-in high-risk classes apply to every tool that acts (security-gates). `secure-build`'s own policy is stated the same way (an `anyOf`
 of `{tool, path}` pairs plus a `matches` for text) rather than free-text matching.
 
 Each methodology recipe is expressed only with the dialect `pipeline-format.spec.md` defines
