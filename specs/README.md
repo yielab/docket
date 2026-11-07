@@ -98,16 +98,16 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Agent Lifecycle | 4.1.0 | Complete |
 | Agent Loop | 4.24.0 | Implemented and live |
 | API Keys | 2.3.0 | Complete |
-| Audit | 3.4.0 | Implemented |
+| Audit | 3.5.0 | Implemented |
 | Config Format | 2.12.0 | Implemented |
 | Cost Tracking | 2.2.0 | Implemented, recorded dollars unavailable |
 | Model Profiles | 7.5.0 | Complete |
 | Observability Export | 3.3.0 | Implemented and live |
 | Pipeline Format | 4.8.0 | Implemented |
-| Pod Blueprints | 4.12.0 | Implemented |
-| Pod Dispatch | 12.10.0 | Implemented |
+| Pod Blueprints | 4.14.0 | Implemented |
+| Pod Dispatch | 12.11.0 | Implemented |
 | Role Archetypes | 5.13.0 | Implemented |
-| Security Gates | 3.19.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
+| Security Gates | 3.22.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Service Client | 1.5.0 | Implemented in part (the document, the tools, the call, the writes handling and the OpenAPI 3 or 2 import; not proven against a real service) |
 | Pod Records | 1.9.0 | Implemented in part (the store, the document, the CLI, the agent tools and the two HTTP read routes; not proven against a live model) |
 | Session History | 1.23.0 | Implemented and live |
@@ -115,7 +115,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Telegram Integration | 5.0.0 | Implemented |
 | Trace Store | 6.1.0 | Implemented and live |
 | Workspace Structure | 4.3.0 | Complete |
-| CLI Interface | 5.16.0 | Complete |
+| CLI Interface | 5.17.0 | Complete |
 | MCP Client | 3.3.0 | Implemented and wired to the live turn path |
 | Runtime Library | 3.0.0 | Implemented (artifact-tested; **not published to any index**) |
 | MCP Server | 3.0.0 | Implemented |

@@ -604,7 +604,7 @@ from `main`.
 
 ### P70-2 — One redaction, always on; the dead output action and the prose scan deleted
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + deletion + spec · **After:** P70-1
+**Status:** DONE 2026-11-07, `49b08318` (`secrets.redact` runs on every hop's output after the `pre_output` policies; `secret-pii-redact` and `secrets-guard-redact-output` deleted, their 32 corpus rows now a table in `test_secrets.py`; `secrets.py` gained a bare `Bearer` and the `sk_`/`pk_` prefixes the YAML had; the prose high-risk scan and `OutputGuardrail.redact` gone; the validator refuses `then: ask` on `pre_output`. Three `high_risk=` hits remain: they wire `run_command`'s refusal, which the spec keeps) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + deletion + spec · **After:** P70-1
 
 - **Goal:** `post_hop.py:36-74` passes every hop output through `secrets.redact` unconditionally (the policy hook still
   runs for operator-authored `pre_output` rules); `governance/secrets.py:157-227` gains every shape of
@@ -651,7 +651,7 @@ from `main`.
 
 ### P70-4 — Every denial is audited, and a `run:` step is classified like a turn's call
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** DONE 2026-11-07, `1a2a86b8` (one `refuse()` in `dispatch_tool` audits every refusal before the gate as `tool.deny` with its `denial_kind`, through a new `ToolGate.audit_denial`; P70-6's held-back MCP tool is audited this way; a `run:` step and a wait probe are classified with the step's directory as `roots` and `jailed` when isolation is on; audit 3.5.0, pod-dispatch 12.11.0 by the integrator. Note: `docket_tool_calls_total{decision=deny}` now counts these refusals) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
 - **Goal:** `registry.py:268-282`: a `capability_missing` or `invalid_call` denial writes `tool.deny` through the gate's
   audit path with `denial_kind` in the detail (the e2e oracle `audit_gaps` then counts it: `tests/support/e2e_oracles.py:108-131`
@@ -700,7 +700,7 @@ from `main`.
 
 ### P70-7 — `pod check --posture` names the three powers a pod holds, and lights-out refuses all three at once
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P70-5
+**Status:** DONE 2026-11-07, `91335c04` (`teams/posture.py` names untrusted input, private data and outward action with what grants each; `docket pod check --posture` prints them and warns when all three hold; lights-out's new `rule-of-two` requirement refuses before hop 0 and audits `profile.refused`; the decision lives in `hops/gates/profile.py`, not `pre_hop.py`; cli-interface 5.17.0. Open: a default pod with `fetchDomains` and an open network warns, by the card's definition) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P70-5
 
 - **Trigger:** Meta's Agents Rule of Two (2025-10-31): untrusted input, private data and an outward action together
   need a person. docket composes pods with all three (`web-research`: `fetch` open, the home's secrets injected, a

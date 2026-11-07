@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 12.10.0
+**Version**: 12.11.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -1540,7 +1540,8 @@ parsing for any verdict-gated step (`parse_verdict`).
    turn, and no cost.
 2. A `run` step (pipeline-format.spec.md's Steps Requirement 9) **MUST** execute its command
    directly: no agent turn, no session, no cost. Its command **MUST** first be classified
-   (`classify_command`, extended by the pod's own `allowCommands`); an `allow` verdict **MUST** run
+   (`classify_command`, extended by the pod's own `allowCommands`, with the step's directory as its
+   `roots` and `jailed` when isolation is on, as a turn's `bash` call); an `allow` verdict **MUST** run
    it in the same directory this section's `changed` predicate reads, bounded by the step's own
    `timeout` else the pod's `verifyTimeoutS`. With isolation recorded on, the command **MUST** run in
    the same jail as the verify command ("Implementer verification gate" requirement 7) and a missing

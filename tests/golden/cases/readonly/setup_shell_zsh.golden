@@ -17,7 +17,7 @@ _docket_verbs() {
     "setup sandbox read") echo "add remove" ;;
     "setup notify") echo "list show enable disable add remove export privacy test bind unbind flush" ;;
     "setup export") echo "list show enable disable test add remove export privacy preview" ;;
-    "setup mcp") echo "list add remove" ;;
+    "setup mcp") echo "list add remove accept" ;;
     "setup secret") echo "set list remove" ;;
     "setup service") echo "list add remove" ;;
     "setup search") echo "searxng brave" ;;
@@ -125,6 +125,7 @@ _docket_options() {
     "setup mcp list") echo "--json --help" ;;
     "setup mcp add") echo "--env --secret --timeout --kind --tools --lifetime --help" ;;
     "setup mcp remove") echo "--help" ;;
+    "setup mcp accept") echo "--help" ;;
     "setup secret") echo "--help" ;;
     "setup secret set") echo "--stdin --help" ;;
     "setup secret list") echo "--json --help" ;;
