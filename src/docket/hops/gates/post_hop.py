@@ -10,7 +10,6 @@ from docket.agent import ports as _rd
 from docket.agent.tools import screening as _tools
 from docket.governance import policy as _policy
 from docket.governance import secrets as _secrets
-from docket.governance import security as _sec
 from docket.hops.domain import gate_decisions as _decide
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
@@ -36,41 +35,27 @@ from docket.teams.workspace import prepare as _prepare
 def _apply_output_guardrails(
     ctx: UnitContext, role: str, run_res: _rd.TurnResult
 ) -> tuple[str, bool, str]:
-    """``pre_output`` guardrail scan over the hop's real output, before it is embedded in
-    the carried-forward artifact or persisted record. See security-gates.spec.md
-    ("pre_output"): only ``redact``/``block`` change what is carried forward;
-    ``require_approval`` behaves like ``warn`` since the hop already ran -- there is no
-    "before" moment left to gate. Returns the (possibly redacted) output, hop-ok, error text."""
+    """The ``pre_output`` policies judge the raw output (a ``block`` fails the hop), then it always
+    passes ``secrets.redact``; returns ``(output, hop_ok, error)`` (security-gates.spec.md)."""
     hop_output = run_res.output
     hop_ok = run_res.ok
     hop_error = run_res.error
     if hop_output:
         hit = _policy.policy_eval_detail(role, "pre_output", hop_output, project=ctx.project)
-        # Also classify the hop's real output against the built-in high-risk action classes
-        # (governance/security.py's HIGH_RISK_PATTERNS), independently of the JSON policy
-        # engine: a second check over what the hop *reports* it did, catching a money-movement
-        # or secret-access command described in its own summary even when the call never
-        # reached `dispatch_tool`'s live gate. decide_output_guardrail only ever raises a plain
-        # "allow" to "warn".
-        risk_cls = _sec.match_high_risk(hop_output)
         decision = _decide.decide_output_guardrail(
-            action=hit.action,
-            policy_id=hit.policy_id,
-            high_risk=risk_cls.name if risk_cls is not None else None,
-            hop_ok=hop_ok,
+            action=hit.action, policy_id=hit.policy_id, hop_ok=hop_ok
         )
         payload = _json.dumps(
             {"hook": "pre_output", "policy": decision.policy_id, "action": decision.action}
         )
         if decision.trace_check:
             trace_locked(ctx.project, ctx.session_id, role, "guardrail_check", payload)
-        if decision.redact:
-            hop_output = _secrets.redact(hop_output)
-        elif decision.block:
+        if decision.block:
             trace_locked(ctx.project, ctx.session_id, role, "guardrail_block", payload)
             if decision.fail_hop:
                 hop_ok = False
                 hop_error = decision.error
+        hop_output = _secrets.redact(hop_output)
     return hop_output, hop_ok, hop_error
 
 

@@ -142,6 +142,12 @@ def _validate_doc(p: dict[str, Any], label: str) -> str:
         )
     if p.get("action") not in VALID_ACTIONS:
         return f"{label}: unknown action '{p.get('action')}'"
+    if p["hook"] == "pre_output" and p["action"] == "require_approval":
+        # The hop has already run: nothing is left to gate, so an `ask` here would only be a `warn`.
+        return (
+            f"{label}: then: ask is not valid on pre_output (the hop has already run; "
+            "use warn, block or redact, or an approval gate / pre_input policy)"
+        )
 
     if "limit" in p:  # a quota fires on a count, not on the call's text (governance/quota.py)
         return _quota.validate_limit(p, label)

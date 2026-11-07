@@ -241,41 +241,28 @@ def test_approval_gate_after_the_hop(check_approval: bool, kind: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("action", "high_risk", "hop_ok", "effective", "trace", "redact", "block", "fail_hop"),
+    ("action", "hop_ok", "trace", "block", "fail_hop"),
     [
-        ("allow", None, True, "allow", False, False, False, False),
-        ("allow", "money", True, "warn", True, False, False, False),
-        ("warn", "money", True, "warn", True, False, False, False),
-        ("redact", "money", True, "redact", True, True, False, False),
-        ("block", None, True, "block", True, False, True, True),
-        ("block", "money", False, "block", True, False, True, False),
-        ("require_approval", None, True, "require_approval", True, False, False, False),
+        ("allow", True, False, False, False),
+        ("warn", True, True, False, False),
+        ("redact", True, True, False, False),
+        ("block", True, True, True, True),
+        ("block", False, True, True, False),
     ],
 )
 def test_output_guardrail(
-    action: str,
-    high_risk: str | None,
-    hop_ok: bool,
-    effective: str,
-    trace: bool,
-    redact: bool,
-    block: bool,
-    fail_hop: bool,
+    action: str, hop_ok: bool, trace: bool, block: bool, fail_hop: bool
 ) -> None:
-    got = _d.decide_output_guardrail(
-        action=action, policy_id="p1", high_risk=high_risk, hop_ok=hop_ok
-    )
+    got = _d.decide_output_guardrail(action=action, policy_id="p1", hop_ok=hop_ok)
 
-    assert (got.action, got.trace_check, got.redact, got.block, got.fail_hop) == (
-        effective,
+    assert (got.action, got.trace_check, got.block, got.fail_hop) == (
+        action,
         trace,
-        redact,
         block,
         fail_hop,
     )
-    expected_id = "high-risk:money" if effective == "warn" and action == "allow" else "p1"
-    assert got.policy_id == expected_id
-    assert got.error == f"blocked by guardrail policy '{expected_id}'"
+    assert got.policy_id == "p1"
+    assert got.error == "blocked by guardrail policy 'p1'"
 
 
 @pytest.mark.parametrize(

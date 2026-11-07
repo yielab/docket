@@ -18,6 +18,7 @@ from typing import Any, ClassVar
 
 import pytest
 from tests.support.cli import pod_cli as _pod_cli
+from tests.support.pods import write_policy as _write_policy
 from typer.testing import CliRunner
 
 import docket.kernel.templates as _templates
@@ -358,11 +359,10 @@ class TestPolicies:
 class TestPolicyEngine:
     def test_most_restrictive_wins(self, oc_dir: Path) -> None:
         _seed_policies(oc_dir)
-        # pre_output matches the redact policy.
-        assert (
-            _policy.policy_eval_detail("programmer", "pre_output", "ANTHROPIC_API_KEY=").action
-            == "redact"
-        )
+        _write_policy("fyi-output", "pre_output", "zebra", "warn")
+        _write_policy("stop-output", "pre_output", "zebra", "block")
+        hit = _policy.policy_eval_detail("programmer", "pre_output", "a zebra")
+        assert (hit.action, hit.policy_id) == ("block", "stop-output")
 
     def test_no_match_allows(self, oc_dir: Path) -> None:
         _seed_policies(oc_dir)

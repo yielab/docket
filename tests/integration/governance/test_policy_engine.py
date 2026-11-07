@@ -45,6 +45,7 @@ class _RecordingRunner:
 
     def __init__(self, outputs: dict[str, str] | None = None, *, ok: bool = True) -> None:
         self.calls: list[str] = []
+        self.messages: dict[str, str] = {}
         self.outputs = outputs or {}
         self.ok = ok
 
@@ -58,6 +59,7 @@ class _RecordingRunner:
     ) -> _rd.TurnResult:
         role = agent_id.rsplit("-", 1)[-1]
         self.calls.append(role)
+        self.messages[role] = message
         output = self.outputs.get(role, f"done by {agent_id}")
         return _rd.TurnResult(self.ok, output, {"output": output})
 
@@ -302,6 +304,32 @@ class TestEnqueuePreInputGate:
 
 
 class TestPreOutputGate:
+    def test_a_token_is_redacted_with_no_policy_installed(self) -> None:
+        _seed_lean_pod()
+        token = "ghp_" + "a1B2c3D4e5" * 3 + "a1B2c3"
+        _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
+        runner = _RecordingRunner({"lead": f"pushed with {token} as the credential"})
+        results = _sweep.dispatch_pod("myapp", runner=runner)
+
+        assert results[0].status == "done"
+        lead_hop = next(h for h in results[0].hops if h.role == "lead")
+        assert token not in lead_hop.output
+        assert "[REDACTED]" in lead_hop.output
+        assert token not in runner.messages["implementer"]
+        assert token not in lead_hop.artifact.render()
+
+    def test_a_sentence_about_a_high_risk_action_leaves_no_guardrail_event(self) -> None:
+        _seed_lean_pod()
+        _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
+        runner = _RecordingRunner(
+            {"lead": "I did not push to main; ran ssh-keygen and stripe charge customer by hand"}
+        )
+        results = _sweep.dispatch_pod("myapp", runner=runner)
+
+        assert results[0].status == "done"
+        events = _trace_events("myapp")
+        assert not any(e["event_type"] in ("guardrail_check", "guardrail_block") for e in events)
+
     def test_redacts_hop_output_before_persisting(self) -> None:
         _seed_lean_pod()
         _write_policy(

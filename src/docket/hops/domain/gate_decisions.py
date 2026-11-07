@@ -218,35 +218,25 @@ def decide_approval_in_group(*, check_approval: bool, role: str) -> GateDecision
 @dataclass(frozen=True)
 class OutputGuardrail:
     """What the ``pre_output`` scan does to a hop's output: the effective policy hit, whether to
-    trace it, redact the output, block it, and the error that failed an ok hop."""
+    trace it, block it, and the error that failed an ok hop. The output's redaction is not a
+    decision: it always happens."""
 
     action: str
     policy_id: str
     trace_check: bool
-    redact: bool
     block: bool
     fail_hop: bool
     error: str
 
 
-def decide_output_guardrail(
-    *,
-    action: str,
-    policy_id: str,
-    high_risk: str | None,
-    hop_ok: bool,
-) -> OutputGuardrail:
-    """The policy engine's *action* for the hop's output, raised from ``allow`` to ``warn`` when a
-    built-in high-risk class (*high_risk*, its name) matched it -- never downgraded and never past
-    ``warn``, since no live approver exists after the hop ran."""
-    if high_risk is not None and action == "allow":
-        action, policy_id = "warn", f"high-risk:{high_risk}"
+def decide_output_guardrail(*, action: str, policy_id: str, hop_ok: bool) -> OutputGuardrail:
+    """The policy engine's *action* for the hop's output: a non-``allow`` is traced, a ``block``
+    fails an ok hop."""
     block = action == "block"
     return OutputGuardrail(
         action=action,
         policy_id=policy_id,
         trace_check=action != "allow",
-        redact=action == "redact",
         block=block,
         fail_hop=block and hop_ok,
         error=f"blocked by guardrail policy '{policy_id}'",

@@ -168,7 +168,7 @@ _CREDENTIAL_PATTERNS: tuple[re.Pattern[str], ...] = (
     # Bare vendor tokens with no `key=` prefix: OpenAI/Anthropic `sk-...`, GitHub `gh?_...`,
     # Slack `xox?-...`, and a Telegram bot token (`<digits>:<35 chars>`).
     re.compile(
-        r"(?<![A-Za-z0-9])(?:sk-ant-|sk-proj-|sk-|ghp_|gho_|ghs_|xox[abp]-)[A-Za-z0-9_\-]{20,}"
+        r"(?<![A-Za-z0-9])(?:sk-ant-|sk-proj-|sk-|sk_|pk_|ghp_|gho_|ghs_|xox[abp]-)[A-Za-z0-9_\-]{20,}"
     ),
     re.compile(r"(?<![A-Za-z0-9])\d{8,10}:[A-Za-z0-9_\-]{35}(?![A-Za-z0-9_\-])"),
     # More fixed secret shapes: GitHub fine-grained and OAuth/user/refresh tokens, AWS access key
@@ -183,6 +183,7 @@ _CREDENTIAL_PATTERNS: tuple[re.Pattern[str], ...] = (
         r"-----BEGIN [A-Z ]{0,30}PRIVATE KEY-----(?:[\s\S]{0,8192}?-----END [A-Z ]{0,30}PRIVATE KEY-----)?"
     ),
     re.compile(r"\bAuthorization\s*:\s*(?:Bearer|Basic|Token)\s+\S{8,512}", re.IGNORECASE),
+    re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=\-]{16,512}"),
 )
 
 # Personal data hidden by default and kept by ``redact(personal=False)``: an e-mail address.

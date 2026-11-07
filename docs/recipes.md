@@ -37,7 +37,7 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 | [`records`](#records) | 1 named pipeline, 1 record set, 1 routine | A set the pod keeps its entries in, a capture pipeline that adds rows from a task's input, and a weekly report routine, for a routine pod. |
 | [`reflexion`](#reflexion) | 1 member, pipeline `reflexion` | Bounded self-critique as a pipeline: the Implementer's own change is critiqued and reworked before the task is done. |
 | [`research-review`](#research-review) | 4 members, pipeline `research-review` | Lead, Researcher, Analyst, Writer and Reviewer as a pipeline, gated on the Reviewer's APPROVE/REQUEST-CHANGES with one rework cycle back to the Writer. |
-| [`secrets-guard`](#secrets-guard) | 3 policies | Block writes to credential-shaped paths and credential-shaped text, and redact the same shapes from output. |
+| [`secrets-guard`](#secrets-guard) | 2 policies | Block writes to credential-shaped paths and credential-shaped text. |
 | [`secure-build`](#secure-build) | 1 role, 1 policy, 1 member, 1 skill, pipeline `secure-build` | A read-only security vetter gates the Implementer's change behind an explicit APPROVE, with one bounded rework cycle. |
 | [`spec-first`](#spec-first) | 2 members, 1 skill, pipeline `spec-first` | Specification-first development as a pipeline: nothing is implemented until a written spec clears an explicit approval gate. |
 | [`spec-writer`](#spec-writer) | pipeline `spec-writer` | Tests from the brief as a two-step pipeline on two different models: one writes failing tests, the other makes them pass. Needs both providers' credentials (ANTHROPIC_API_KEY and OPENAI_API_KEY). |
@@ -1031,16 +1031,16 @@ docket pod unset pipeline
 
 ## secrets-guard
 
-Block writes to credential-shaped paths and credential-shaped text, and redact the same shapes from output.
+Block writes to credential-shaped paths and credential-shaped text.
 
-**Brings:** 3 policies. **Summary line:** `roles 0 · policies 3 · members 0 · pipeline none · plugins 0 · skills 0 · settings 0`
+**Brings:** 2 policies. **Summary line:** `roles 0 · policies 2 · members 0 · pipeline none · plugins 0 · skills 0 · settings 0`
 
 ```bash
 docket init --recipe secrets-guard
 docket pod update secrets-guard
 ```
 
-A policy pack: three guardrail policies, no roles, no pipeline, no members.
+A policy pack: two guardrail policies, no roles, no pipeline, no members.
 
 **Threat model, in three sentences.** An agent debugging a failing build, or one following an
 instruction smuggled into its context, can read a real credential and either write it somewhere
@@ -1049,8 +1049,9 @@ output, which the trace/audit log then holds in plain text. Path-shaped predicat
 first case regardless of the file's contents (an empty `.env` is just as sensitive a target as a
 populated one), and text-shaped predicates catch the second regardless of which file or tool
 carried the secret, because a credential can leak through a `bash` command's own arguments just
-as easily as through `write`/`edit`. This pack narrows both, and redacts the same shapes from
-output as a second, independent line of defense.
+as easily as through `write`/`edit`. This pack narrows both. Redacting a credential out of a hop's
+output is built in and always on (`docket.governance.secrets.redact`), so the pack carries no
+output rule.
 
 ### Apply it
 
@@ -1059,7 +1060,7 @@ docket init --recipe secrets-guard          # a new pod for the current director
 docket pod update secrets-guard    # onto an existing pod
 ```
 
-`apply` validates all three policy files and plans them (`policy` items only), and is safe to
+`apply` validates both policy files and plans them (`policy` items only), and is safe to
 run again (a second run plans every item `skip`). `--dry-run` prints the plan without writing.
 
 ### See it fire
@@ -1080,16 +1081,12 @@ The first names `secrets-guard-block-paths` and blocks; the second (an ordinary 
 - `policies/secrets-guard-block-credential-text.yaml` -- a `matches` over the rendered call for
   a private-key header, an AWS access-key id shape, or an `sk`-prefixed bearer-token shape, no
   tool restriction; blocks.
-- `policies/secrets-guard-redact-output.yaml` -- the same three text shapes, `on: output`;
-  redacts rather than blocks, since output has already been produced and the goal is keeping it
-  out of the trace/audit record, not stopping the hop.
 
 ### Undo
 
 ```bash
 rm ~/.docket/config/pods/<project>/policies/secrets-guard-block-paths.yaml
 rm ~/.docket/config/pods/<project>/policies/secrets-guard-block-credential-text.yaml
-rm ~/.docket/config/pods/<project>/policies/secrets-guard-redact-output.yaml
 ```
 
 ## secure-build

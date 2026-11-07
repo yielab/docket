@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.19.0
+**Version**: 3.20.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -341,7 +341,7 @@ contains them, and whether isolation is on by default is a maintainer decision (
 3. `script-name`: a package script whose body docket cannot see (`npm run release`).
 4. `phrase-tripwire`: `prompt-injection` matches a few known phrases and warns; a paraphrase, a
    translation or an encoded payload passes, and it never blocks.
-5. `unlisted-secret-shape`: `secret-pii-redact` masks fixed shapes (provider API keys, GitHub and
+5. `unlisted-secret-shape`: `secrets.redact` masks fixed shapes (provider API keys, GitHub and
    AWS tokens, `*_PASSWORD=`, JWTs, private key blocks, `Bearer` credentials, email addresses); a
    secret spelled out, reversed, base64-encoded or shaped like none of them (a card number) is not
    masked. The same limit bounds the `fetch` URL rule ("Network egress and the `fetch` tool"
@@ -375,23 +375,12 @@ where it applies to commands docket itself launches.
    `TOOL_APPROVAL_TIMEOUT` and `sweep_escalations` apply when nobody answers. A `run:` step
    is also classified with `classify_command` (with the pod's `allowCommands`) before it runs; a
    non-`allow` verdict gates it like an approval step (pod-dispatch.spec.md).
-3. The `pre_output` guardrail scan (Policy engine 3) **MUST** also classify each hop's real output
-   against `match_high_risk`, independently of the policy engine. It inspects what a hop *reports
-   having run*, which can name a command that never reached `dispatch_tool` as a distinct call
-   (one embedded in free text), so it is a second, independent signal beside the in-turn gate.
-4. A `HIGH_RISK_PATTERNS` match on a hop's output **MUST NOT** downgrade an already-stronger
-   `policy_eval_detail` verdict (`redact`, `block` and `require_approval` all outrank a bare
-   `allow`); it **MUST** only raise a plain `allow` to `warn`. It **MUST NOT** go further than
-   `warn`: there is no live approver to ask after the fact (the hop has already run, the reasoning
-   behind `pre_output`'s require_approval-behaves-like-warn rule), and `HIGH_RISK_PATTERNS` is a
-   built-in list, not an operator-authored policy, so a match here **MUST NOT** be described as
-   redacting or blocking anything by itself. It is a visibility signal (a `guardrail_check` trace
-   event whose policy is `high-risk:<class-name>`), not an enforcement action, and **MUST NOT** be
-   claimed as one in user-facing material.
-5. **Additive, not the gate.** The two classification points above (`run_command`'s refusal, the
-   `pre_output` scan) add to the in-turn gate; they are not where a hop's tool calls are gated.
-   `dispatch_tool`'s gate (the classifier for `exec`, requirement 6 of "High-risk action classes"
-   for every other acting tool) checks every call before it runs.
+3. **No prose scan.** The `pre_output` scan (Policy engine 3) **MUST NOT** classify a hop's output
+   against `match_high_risk`: the output is what the model *says*, not an action, and a sentence
+   such as "I did not push to main" would trip a check that can only warn. The in-turn gate
+   (`dispatch_tool`: the classifier for `exec`, requirement 6 of "High-risk action classes" for
+   every other acting tool) checks every call before it runs, and `run_command`'s refusal (2)
+   covers the one command docket launches itself.
 
 ### Policy engine on the live path
 
@@ -422,16 +411,23 @@ where it applies to commands docket itself launches.
 3. The `pre_output` hook **MUST** be evaluated on **every** hop's real output, after the agent
    turn returns and before that output is embedded in the carried-forward `HandoffArtifact` or the
    persisted hop result.
-   - `redact` **MUST** scrub the hop's output in place before it is stored or handed on.
+   - `redact` **MUST** scrub the hop's output in place before it is stored or handed on (a
+     `redact` rule adds its trace event; the scrub itself is the built-in one below).
    - `block` **MUST** fail the hop the way a failed agent turn does (the pipeline stops there;
      later hops **MUST NOT** run).
    - `warn` and `allow` **MUST** pass the output through unchanged.
    - `require_approval` is not a `pre_output` outcome: the hop has already run, so there is no
      "before" moment left to gate; an operator who wants a human before a role runs uses a pipeline
-     `approval` gate or the `pre_input` enqueue gate. A `pre_output` policy declaring
-     `require_approval` **MUST** behave exactly like `warn` (logged, not gated).
-   - The same evaluation **MUST** classify the hop's output against `match_high_risk`
-     (Docket-launched process classification 3-4).
+     `approval` gate or the `pre_input` enqueue gate. `validate_policy` **MUST** refuse a policy
+     whose hook is `pre_output` and whose `then` is `ask` (`require_approval`), with an error
+     naming `pre_output`; the same check runs when a policy is loaded, so such a file fails closed
+     like any invalid one (requirement 7).
+   - Whatever the policies answer, the hop's output **MUST** pass `secrets.redact` before it is
+     stored or handed on: redaction is built in and always on, not a policy a pod can lack. The
+     policies are evaluated on the raw output, so an operator's `pre_output` rule still sees what
+     it matches. The shapes `redact` masks are those of "Known limits" 5.
+   - The hook **MUST NOT** classify the output against `match_high_risk`
+     (Docket-launched process classification 3).
 4. Every non-`allow` verdict on either hook **MUST** emit a `guardrail_check` trace event
    (`payload: {hook, policy, action}`), visible through `docket task trace`. A `block` verdict
    **MUST** additionally emit `guardrail_block` with the same payload: `policy` is the tripped
@@ -583,10 +579,10 @@ policy is refused. A policy can test structured facts of a tool call beside its 
    and `policy_eval_detail` (screen rows): each row's `expected` outcome **MUST** hold under both
    isolation settings, **MUST NOT** be weaker than the outcome measured before `when.command`
    existed, and a row left `allowed` **MUST** carry a `limit` named in "Known limits of the
-   command gate". `secret-pii-redact` **MUST** fire on every shape named in limit 5 as masked
+   command gate". `docket.governance.secrets.redact` **MUST** mask every shape named in limit 5
    (provider API keys, GitHub and AWS tokens, `*_PASSWORD=`, JWTs, private key blocks, `Bearer`
-   credentials, email addresses), and `docket.governance.secrets.redact` masks the same shapes, so
-   a `redact` verdict leaves nothing of the secret in the carried-forward text.
+   credentials, email addresses), and a hop's output always passes it (Policy engine on the live
+   path 3); `tests/unit/governance/test_secrets.py` holds the table, not the policy corpus.
 9. A policy **MAY** carry `limit: {kind | tool | service, count, per}` instead of `when`/`match`: a
    quota (requirement 18 of the in-turn tool-call gate). The validator **MUST** reject, naming the
    field: a `limit` beside a `match` or `when`; a `limit` that is not a mapping or has a key other
@@ -1410,7 +1406,7 @@ material, may be read as saying otherwise.
    `fetch_url` runs (so before any socket, and whether or not the host is allowed), a URL that:
    - **carries userinfo** (`https://user:pw@host/`, or a bare `user@host`); or
    - **changes under `secrets.redact(text, personal=False)`**, applied to the URL as written and to
-     the URL percent-decoded once (`unquote`). The credential shapes of `secret-pii-redact` and the
+     the URL percent-decoded once (`unquote`). The credential shapes of `secrets.redact` and the
      exact values of the home's secret store and credential-shaped environment variables count; an
      e-mail address, a phone number or a name does not, so
      `https://example.org/?q=ana%40example.org` is fetched. The scan covers the whole URL text: path,
@@ -1778,13 +1774,8 @@ The task's trace records a `verification_failed` event whose output names the cl
 
 The subprocess is never started.
 
-A hop that reports having run a high-risk command is flagged, not blocked, on the `pre_output`
-path (no installed policy also matched, so the built-in `warn` floor fires):
-
-```text
-$ docket task trace <id>
-  ... guardrail_check  {"hook": "pre_output", "policy": "high-risk:secret-access", "action": "warn"}
-```
+A hop whose output holds a GitHub token reaches the next hop as `[REDACTED]` with no policy
+installed; a hop that only says it ran a high-risk command leaves no `guardrail_check`.
 
 ### In-turn tool-call gate: examples
 

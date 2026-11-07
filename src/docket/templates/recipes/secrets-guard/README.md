@@ -1,6 +1,6 @@
 # secrets-guard
 
-A policy pack: three guardrail policies, no roles, no pipeline, no members.
+A policy pack: two guardrail policies, no roles, no pipeline, no members.
 
 **Threat model, in three sentences.** An agent debugging a failing build, or one following an
 instruction smuggled into its context, can read a real credential and either write it somewhere
@@ -9,8 +9,9 @@ output, which the trace/audit log then holds in plain text. Path-shaped predicat
 first case regardless of the file's contents (an empty `.env` is just as sensitive a target as a
 populated one), and text-shaped predicates catch the second regardless of which file or tool
 carried the secret, because a credential can leak through a `bash` command's own arguments just
-as easily as through `write`/`edit`. This pack narrows both, and redacts the same shapes from
-output as a second, independent line of defense.
+as easily as through `write`/`edit`. This pack narrows both. Redacting a credential out of a hop's
+output is built in and always on (`docket.governance.secrets.redact`), so the pack carries no
+output rule.
 
 ## Apply it
 
@@ -19,7 +20,7 @@ docket init --recipe secrets-guard          # a new pod for the current director
 docket pod update secrets-guard    # onto an existing pod
 ```
 
-`apply` validates all three policy files and plans them (`policy` items only), and is safe to
+`apply` validates both policy files and plans them (`policy` items only), and is safe to
 run again (a second run plans every item `skip`). `--dry-run` prints the plan without writing.
 
 ## See it fire
@@ -40,14 +41,10 @@ The first names `secrets-guard-block-paths` and blocks; the second (an ordinary 
 - `policies/secrets-guard-block-credential-text.yaml` -- a `matches` over the rendered call for
   a private-key header, an AWS access-key id shape, or an `sk`-prefixed bearer-token shape, no
   tool restriction; blocks.
-- `policies/secrets-guard-redact-output.yaml` -- the same three text shapes, `on: output`;
-  redacts rather than blocks, since output has already been produced and the goal is keeping it
-  out of the trace/audit record, not stopping the hop.
 
 ## Undo
 
 ```bash
 rm ~/.docket/config/pods/<project>/policies/secrets-guard-block-paths.yaml
 rm ~/.docket/config/pods/<project>/policies/secrets-guard-block-credential-text.yaml
-rm ~/.docket/config/pods/<project>/policies/secrets-guard-redact-output.yaml
 ```

@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 4.12.0
+**Version**: 4.13.0
 **Status**: Implemented
 **Last Updated**: 2026-11-07
 
@@ -684,8 +684,8 @@ checkout, and a global git config edit, and asks before a push that names or is 
 protected branch (`main`/`master`/`production`/`prod`); `no-egress` asks before a bash-run network
 client, a package install, or a `fetch` call; `secrets-guard` blocks a write/edit whose path looks
 like a credential file (`.env`, `.pem`, `.key`, `id_rsa`, `.p12`) or whose rendered text carries a
-private-key header, an AWS access-key id shape, or a bearer-token shape, and redacts the same
-shapes from output. A deploy/production-shaped command asks from any role without a pack: the
+private-key header, an AWS access-key id shape, or a bearer-token shape (a hop's output is
+redacted of credentials by the runtime, not by the pack). A deploy/production-shaped command asks from any role without a pack: the
 built-in high-risk classes apply to every tool that acts (security-gates). `secure-build`'s own policy is stated the same way (an `anyOf`
 of `{tool, path}` pairs plus a `matches` for text) rather than free-text matching.
 

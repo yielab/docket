@@ -214,9 +214,10 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   the policies unless the binary itself is off the allowlist. With isolation on, the jail contains
   what such code can reach; with it off (the default), nothing does. The two text screens are
   tripwires, not classifiers: `prompt-injection` warns on a few known phrases (a paraphrase, a
-  translation or an encoded payload passes), and `secret-pii-redact` masks fixed secret shapes
-  (provider API keys, GitHub and AWS tokens, `*_PASSWORD=`, JWTs, private key blocks, `Bearer`
-  credentials, email addresses), not a secret that is spelled out, reversed or encoded.
+  translation or an encoded payload passes), and the always-on output redaction masks fixed
+  secret shapes (provider API keys, GitHub and AWS tokens, `*_PASSWORD=`, JWTs, private key
+  blocks, `Bearer` credentials, email addresses), not a secret that is spelled out, reversed or
+  encoded.
   `specs/functional/security-gates.spec.md`, "Known limits of the command gate", is the list.
 - **A pod can widen its own allowlist** with `docket pod set allowCommands uv,tox`
   (comma-separated) for its own turns only — a high-risk-class binary like `git` or `npm` is

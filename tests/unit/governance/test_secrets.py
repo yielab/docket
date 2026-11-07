@@ -227,3 +227,53 @@ class TestPersonalRedaction:
 
         assert "abcdefghijklmnopqrstuvwxyz" not in out and "hunter2hunter2" not in out
         assert "ana@example.com" in out
+
+
+_SK_SPLIT = "sk-abcdefghijklmnopqrst uvwxyz0123456789"
+_PEM = "-----BEGIN RSA PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7\n-----END RSA PRIVATE KEY-----"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "token sk-abcdefghijklmnopqrstuvwxyz0123456789",
+        "ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+        "gho_abcdefghijklmnopqrstuvwxyz0123456789",
+        "ghu_abcdefghijklmnopqrstuvwxyz0123456789",
+        "ghs_abcdefghijklmnopqrstuvwxyz0123456789",
+        "ghr_abcdefghijklmnopqrstuvwxyz0123456789",
+        "AKIAIOSFODNN7EXAMPLE",
+        "ASIAIOSFODNN7EXAMPLE",
+        "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        "DB_PASSWORD=hunter2hunter2",
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r",
+        _PEM,
+        "contact alice@example.com",
+        _SK_SPLIT,
+        "Authorization: Bearer abcdef0123456789abcdef0123456789",
+        "Bearer abcdef0123456789",
+        "sk_live_abcdefghijklmnop0123",
+    ],
+)
+def test_a_listed_secret_shape_is_masked(text: str) -> None:
+    out = secrets.redact(text)
+
+    assert "[REDACTED]" in out
+    assert "abcdefghijklmnop" not in out.replace("[REDACTED]", "")
+    assert "example.com" not in out and "hunter2" not in out and "MIIEvQ" not in out
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "contact alice at example dot com",
+        "contact alice@exämple.com",
+        "YXBpX2tleT1hYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ejAxMjM0NTY3ODk=",
+        "9876543210zyxwvutsrqponmlkjihgfedcba-ks",
+        "card 4242 4242 4242 4242",
+        "Build finished in 3.2s: 41 passed",
+        "Write the summary of the refund policy to report.md",
+    ],
+)
+def test_a_secret_spelled_another_way_or_plain_output_is_left_alone(text: str) -> None:
+    assert secrets.redact(text) == text

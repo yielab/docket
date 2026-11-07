@@ -305,6 +305,48 @@ class TestValidateCompilesRegex:
         assert "pattern" in err
 
 
+class TestPreOutputAction:
+    def _doc(self, hook: str, then: str) -> dict[str, object]:
+        return {
+            "kind": "policy",
+            "name": "zz-output",
+            "appliesTo": ["*"],
+            "on": hook,
+            "when": {"matches": "zebra"},
+            "then": then,
+        }
+
+    def test_ask_on_output_is_refused_naming_the_hook(self, policies_dir: Path) -> None:
+        f = _write_policy(policies_dir, "zz-output.json", self._doc("output", "ask"))
+
+        err = _policy.validate_policy(f)
+
+        assert "pre_output" in err
+        assert "then: ask" in err
+
+    def test_an_ask_policy_on_output_fails_closed_when_loaded(self, policies_dir: Path) -> None:
+        _write_policy(policies_dir, "zz-output.json", self._doc("output", "ask"))
+
+        assert _policy.policy_eval_detail("lead", "pre_output", "a zebra").action == "block"
+
+    @pytest.mark.parametrize(
+        ("hook", "then"),
+        [
+            ("output", "warn"),
+            ("output", "block"),
+            ("output", "redact"),
+            ("input", "ask"),
+            ("toolCall", "ask"),
+        ],
+    )
+    def test_every_other_pairing_stays_valid(
+        self, policies_dir: Path, hook: str, then: str
+    ) -> None:
+        f = _write_policy(policies_dir, "zz-output.json", self._doc(hook, then))
+
+        assert _policy.validate_policy(f) == ""
+
+
 # ── pod policies ───────────────────────────────────────────────────────────────
 
 
