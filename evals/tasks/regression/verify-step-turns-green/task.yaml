@@ -7,6 +7,7 @@ instruction: >-
   slugify() in slug.py is wrong: it must lowercase, turn every run of non-alphanumeric
   characters into one "-", and strip "-" from both ends. Fix it so that
   `sh checks/verify.sh` exits 0. Do not edit anything under checks/ or tests/.
+pipeline: pipeline.yaml
 pod:
   blueprint: build
   isolation: false

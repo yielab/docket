@@ -13,6 +13,7 @@ instruction: >-
 pod:
   blueprint: build
   isolation: true
+  memory: {lead: lead-memory/MEMORY.md}
 operator:
   approval: approve_once
 graders:

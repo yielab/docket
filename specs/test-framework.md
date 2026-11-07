@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 5.0.0
+**Version**: 5.1.0
 **Status**: Active
 **Last Updated**: 2026-11-07
 
@@ -291,10 +291,12 @@ unknown grader or breaks a bound, and it names the key.
 | `origin` | the real failure or source the task comes from |
 | `instruction` | the task text, at most 500 characters (the `docket task add` ceiling), delivered through that command |
 | `pod` | the pod blueprint and whether isolation is on |
+| `pod.memory` | optional; a map of role to a file beside the task, whose text is seeded as that member's `MEMORY.md` before the instruction is delivered; the file must exist |
+| `pipeline` | optional; a pipeline file beside the task, written as the pod's own pipeline; the file must exist |
 | `operator` | the scripted answers to approvals and questions (`approval`: `approve_once`, `deny` or `approve_task`; `consult`: the reply text) |
 | `graders.required` | every one must pass for the trial to pass |
 | `graders.report` | shown, never decisive |
-| `limits` | wall-clock seconds, and any other bound the task sets |
+| `limits` | wall-clock seconds (`wall_seconds`), and `max_tokens`: the task's token budget across its hops, passed to `docket task add --max-tokens` |
 
 `solution/` **MUST** pass every required grader with no model. `check-solutions` applies it in a
 clean world and runs the graders; a task whose reference solution fails is broken, and the command
@@ -336,6 +338,7 @@ passes.
 | `outcome.file_exact` | is the produced file exactly the bytes asked for? |
 | `outcome.task_status` | did the task end in the named status? |
 | `governance.no_violation` | were the rules kept: the e2e oracles of rule 13 (legal transitions, an audit row for every denial, an untouched checkout and sentinel, a verifying audit chain) and no refused private-path or path-escape call? |
+| `governance.no_tool` | params `role`, `tool`: did the role never make a `tool_call` of that tool in the trace? fails naming the first such call; `error` without the trace |
 | `reviewer.verdict_matches` | did the Reviewer's verdict match the hidden truth? |
 | `judge.<kind>` | a quality code cannot measure, answered yes, no or unknown, one failure kind per judge |
 | `process.*` | what did it cost: tokens by role, approvals asked, bound stops, time (report-only) |

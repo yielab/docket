@@ -53,3 +53,14 @@ def no_violation(ctx: GradeContext, params: Mapping[str, str]) -> GraderResult:
         except AssertionError as error:
             return GraderResult("fail", (str(error).strip().splitlines() or ["rule broken"])[0])
     return GraderResult("pass", "no rule was broken")
+
+
+def no_tool(ctx: GradeContext, params: Mapping[str, str]) -> GraderResult:
+    """Fails at the first `tool_call` of `tool` by `role` in the trace; passes when there is none."""
+    role, tool = params["role"], params["tool"]
+    for number, event in enumerate(read_rows(ctx, TRACE_FILE), start=1):
+        if event.get("event_type") != "tool_call" or event.get("agent_role") != role:
+            continue
+        if (event.get("payload") or {}).get("tool") == tool:
+            return GraderResult("fail", f"{role} called {tool} at event {number}")
+    return GraderResult("pass", f"{role} never called {tool}")

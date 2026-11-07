@@ -51,6 +51,12 @@ def spec_for(
         credential=credential,
         credential_env=dict(credential_env or {}),
         epoch=epoch,
+        pipeline=(task.path / spec.pipeline).read_text(encoding="utf-8") if spec.pipeline else None,
+        memory={
+            role: (task.path / rel).read_text(encoding="utf-8")
+            for role, rel in spec.pod.memory.items()
+        },
+        task_max_tokens=spec.limits.max_tokens,
     )
 
 

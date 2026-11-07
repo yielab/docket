@@ -22,6 +22,7 @@ _REGISTRY: dict[str, _Fn] = {
     "outcome.file_exact": outcome.file_exact,
     "outcome.task_status": outcome.task_status,
     "governance.no_violation": governance.no_violation,
+    "governance.no_tool": governance.no_tool,
     "process.tokens": process.tokens,
     "process.asks": process.asks,
     "process.bound_stops": process.bound_stops,

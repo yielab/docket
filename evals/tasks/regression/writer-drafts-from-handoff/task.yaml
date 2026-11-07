@@ -18,6 +18,7 @@ graders:
     - outcome.hidden_tests
     - outcome.task_status: {status: done}
     - governance.no_violation
+    - governance.no_tool: {role: writer, tool: fetch}
   report: [process.tokens, process.asks, process.time]
 limits:
   wall_seconds: 1200

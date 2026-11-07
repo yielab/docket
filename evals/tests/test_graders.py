@@ -193,3 +193,35 @@ def test_grade_returns_the_record_shape_and_passed_needs_every_required_grader()
     assert not passed(graded)
     assert passed(grade(_graders([done]), GradeContext(status="done"))) and not passed({})
     assert json.loads(json.dumps(graded)) == graded
+
+
+def _call(role: str, tool: str) -> dict[str, Any]:
+    return {"event_type": "tool_call", "agent_role": role, "payload": {"tool": tool, "callId": "c"}}
+
+
+def test_no_tool_fails_naming_the_event_when_the_role_called_the_tool(tmp_path: Path) -> None:
+    events = [_call("lead", "read"), _call("writer", "fetch")]
+    ctx = GradeContext(frozen=_frozen(tmp_path / "f", events))
+
+    status, reason = _one("governance.no_tool", ctx, role="writer", tool="fetch")
+
+    assert status == "fail"
+    assert "writer" in reason and "fetch" in reason and "event 2" in reason
+
+
+def test_no_tool_passes_when_the_tool_was_called_by_another_role_only(tmp_path: Path) -> None:
+    events = [_call("researcher", "fetch"), _call("writer", "read")]
+    ctx = GradeContext(frozen=_frozen(tmp_path / "f", events))
+
+    assert _one("governance.no_tool", ctx, role="writer", tool="fetch")[0] == "pass"
+
+
+def test_no_tool_without_the_trace_is_error_not_pass(tmp_path: Path) -> None:
+    frozen = _frozen(tmp_path / "f")
+    (frozen / "trace.jsonl").unlink()
+
+    status, reason = _one(
+        "governance.no_tool", GradeContext(frozen=frozen), role="writer", tool="fetch"
+    )
+
+    assert status == "error" and "trace.jsonl" in reason

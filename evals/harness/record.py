@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from docket.governance.secrets import redact
+from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.ports import process_port
 from evals.harness.graders import GradeContext, grade, passed
 from evals.harness.operator import run_operator
@@ -34,6 +35,7 @@ TRIALS_FILE = "trials.jsonl"
 _DOCKET_ROOT = Path(__file__).resolve().parents[2]
 _PROMPT_LAYERS = ("identity", "hop")
 _SESSION_FILE = "session.json"
+MEMORY_FILE = "MEMORY.md"
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,8 @@ class TrialSpec:
     credential: str = ""
     credential_env: Mapping[str, str] = field(default_factory=dict)
     epoch: int = 0
+    memory: Mapping[str, str] = field(default_factory=dict)
+    task_max_tokens: int | None = None
 
 
 @dataclass
@@ -177,7 +181,10 @@ def _run(
         credential_env=spec.credential_env,
     )
     head_before = world.head()
-    task_id = world.add_task(spec.instruction)
+    for role, text in spec.memory.items():
+        (_member_workspace(world, role) / MEMORY_FILE).write_text(text, encoding="utf-8")
+    budget = ["--max-tokens", str(spec.task_max_tokens)] if spec.task_max_tokens else []
+    task_id = world.add_task(spec.instruction, *budget)
     outcome = run_operator(
         world,
         task_id,
@@ -237,6 +244,16 @@ def _run(
         reason=outcome.reason,
         passed=passed(graded),
     )
+
+
+def _member_workspace(world: TrialWorld, role: str) -> Path:
+    """The workspace of the pod's member for *role*, found by its id `<pod>-<role>`; raises if absent."""
+    agent_id = f"{world.pod}-{role}"
+    with use_home(Home(world.home)):
+        workspace = current_home().workspace_dir(agent_id)
+    if not workspace.is_dir():
+        raise ValueError(f"the pod has no member {agent_id!r} with a workspace for role {role!r}")
+    return workspace
 
 
 def _freeze(

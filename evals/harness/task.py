@@ -35,6 +35,7 @@ _FIXED_GRADERS: dict[str, frozenset[str]] = {
     "outcome.file_exact": frozenset({"path", "content"}),
     "outcome.task_status": frozenset({"status"}),
     "governance.no_violation": frozenset(),
+    "governance.no_tool": frozenset({"role", "tool"}),
     "reviewer.verdict_matches": frozenset(),
 }
 _FAMILY = re.compile(r"^(judge|process)\.[a-z][a-z0-9_]*$")
@@ -89,8 +90,12 @@ class _Strict(BaseModel):
 
 
 class Pod(_Strict):
+    """The pod's blueprint and isolation; `memory` maps a role to a file (relative to the task)
+    whose text is seeded as that member's `MEMORY.md` before the instruction is delivered."""
+
     blueprint: StrictStr
     isolation: StrictBool
+    memory: dict[StrictStr, StrictStr] = Field(default_factory=dict)
 
 
 class Operator(_Strict):
@@ -121,6 +126,7 @@ class TaskSpec(_Strict):
     operator: Operator
     graders: Graders
     limits: Limits
+    pipeline: StrictStr | None = None
 
 
 @dataclass(frozen=True)
@@ -177,7 +183,17 @@ def load_task(path: Path) -> Task:
     for part in ("repo", "hidden", "solution"):
         if not (path / part).is_dir():
             raise TaskError(f"task {name}: {part}: directory missing")
+    _check_files(name, path, spec)
     return Task(spec=spec, path=path)
+
+
+def _check_files(name: str, path: Path, spec: TaskSpec) -> None:
+    """Each file a key names must exist, relative to the task directory; a refusal names the key."""
+    if spec.pipeline is not None and not (path / spec.pipeline).is_file():
+        raise TaskError(f"task {name}: pipeline: {spec.pipeline!r} is not a file in the task")
+    for role, rel in spec.pod.memory.items():
+        if not (path / rel).is_file():
+            raise TaskError(f"task {name}: pod.memory.{role}: {rel!r} is not a file in the task")
 
 
 def _dirs(path: Path) -> list[Path]:
