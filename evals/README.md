@@ -47,3 +47,21 @@ skipped; other grader kinds are not checked here. It exits 1 naming the first ta
 that fails, and 0 when there is nothing to check. CI runs it on every push.
 
 Tests of the evaluator itself are `evals/tests`: `uv run pytest evals/tests -q`.
+
+## Watch production, and turn a real failure into a task
+
+```bash
+uv run python -m evals.evaluator.run online-report --home ~/.docket           # last 7 days
+uv run python -m evals.evaluator.run online-report --home ~/.docket --trend   # 7 days against the 28 before
+uv run python -m evals.evaluator.run promote TASK_ID --pod POD --home ~/.docket
+```
+
+`online-report` reads a home and never writes it: pods through `docket status --all --json`, the
+tasks from each pod's queue file. It prints success, reviewer rejection and rework by pod, role,
+model id and prompt hash, each as `k/n` with its Wilson 95% interval. `--trend` marks a figure
+`worse` or `better` only when the two intervals do not overlap, and says `not detectable` for
+overlap or for fewer than 5 samples in a window. No prices appear. `promote` writes
+`evals/tasks/candidates/<id>/` from a failed task: instruction, a `repo/` seed at the task's base
+commit, a failing TODO check in `hidden/`, no `solution/`, secrets, home paths and user names
+removed. A candidate is not a task: `check-solutions` refuses its suite until a person finishes it
+and moves it into a real one. The directory is not committed.

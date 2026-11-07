@@ -3,6 +3,8 @@
 uv run python -m evals.evaluator.run check-solutions [SUITE|TASK]
 uv run python -m evals.evaluator.run run SELECTOR --provider P --model M [--epochs N] [--out DIR]
 uv run python -m evals.evaluator.run nightly [--base DIR|SHA] [--out DIR]
+uv run python -m evals.evaluator.run online-report --home HOME [--trend]
+uv run python -m evals.evaluator.run promote TASK_ID --pod POD --home HOME [--out DIR]
 """
 
 from __future__ import annotations
@@ -32,6 +34,8 @@ from evals.evaluator.nightly import (
     stamped_out,
     unpaired,
 )
+from evals.evaluator.online import HomeError, online_report
+from evals.evaluator.promote import DEFAULT_OUT, PromoteError, promote
 from evals.evaluator.report import read_trials
 from evals.evaluator.task import Grader, Task, TaskError, discover
 from evals.evaluator.verify import run_hidden
@@ -249,6 +253,35 @@ def nightly(
     if raised:
         raise typer.Exit(1)
     typer.echo("no task regressed against the base")
+
+
+@app.command("online-report")
+def online_report_command(
+    home: Annotated[Path, typer.Option(help="a docket home, read and never written")],
+    trend: Annotated[bool, typer.Option(help="the last 7 days against the 28 before")] = False,
+) -> None:
+    """Print the production figures of a home by pod, role, model and prompt hash, with Wilson 95%."""
+    try:
+        typer.echo(online_report(home, trend=trend), nl=False)
+    except HomeError as error:
+        typer.echo(f"FAIL {error}")
+        raise typer.Exit(1) from error
+
+
+@app.command("promote")
+def promote_command(
+    task_id: Annotated[str, typer.Argument(help="a failed task's id, or a unique prefix of it")],
+    pod: Annotated[str, typer.Option(help="the pod that owns the task")],
+    home: Annotated[Path, typer.Option(help="a docket home, read and never written")],
+    out: Annotated[Path, typer.Option(help="where the candidate directory goes")] = DEFAULT_OUT,
+) -> None:
+    """Turn a real failed task into a candidate task directory for a person to finish."""
+    try:
+        candidate = promote(task_id, pod, home, out)
+    except PromoteError as error:
+        typer.echo(f"FAIL {error}")
+        raise typer.Exit(1) from error
+    typer.echo(f"wrote {candidate.name}: a candidate, not a task; read candidate.md to finish it")
 
 
 if __name__ == "__main__":
