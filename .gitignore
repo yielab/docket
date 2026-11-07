@@ -75,3 +75,6 @@ site/
 
 # Coordinator handoff packets: working notes with local paths and environment details, never published.
 .agents/handoffs/
+
+# Eval runs: trials.jsonl, summaries and frozen worlds (evals/README.md); a base is copied to internal-docs/.
+evals-out/
