@@ -1,0 +1,6 @@
+{
+  "decision": "retry with exponential backoff capped at 30 s, not a fixed 5 s, because the broker sheds load on bursts.",
+  "failure": "ConnectionResetError at worker.py line 88, exit 2 on attempt 4",
+  "file": "src/queue/worker.py",
+  "open_item": "tests/load/test_burst.py is not written yet"
+}

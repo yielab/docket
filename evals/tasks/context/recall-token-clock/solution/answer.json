@@ -1,0 +1,6 @@
+{
+  "decision": "inject a clock parameter into token checks, no freezegun, because tests must not patch time.",
+  "failure": "FAILED test_tokens.py::test_expiry - assert 59 == 60 at the boundary second",
+  "file": "src/auth/tokens.py",
+  "open_item": "src/auth/refresh.py still calls datetime.now() directly"
+}

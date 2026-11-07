@@ -1,0 +1,121 @@
+@@ -2,3 +2,3 @@ def item_2(value, count):
+-    return value * count  # unchecked item 2
++    return value * count  # item 2, checked against the ledger
+@@ -3,3 +3,3 @@ def item_3(value, count):
+-    return value * count  # unchecked item 3
++    return value * count  # item 3, checked against the ledger
+@@ -4,3 +4,3 @@ def item_4(value, count):
+-    return value * count  # unchecked item 4
++    return value * count  # item 4, checked against the ledger
+@@ -5,3 +5,3 @@ def item_5(value, count):
+-    return value * count  # unchecked item 5
++    return value * count  # item 5, checked against the ledger
+@@ -6,3 +6,3 @@ def item_6(value, count):
+-    return value * count  # unchecked item 6
++    return value * count  # item 6, checked against the ledger
+@@ -7,3 +7,3 @@ def item_7(value, count):
+-    return value * count  # unchecked item 7
++    return value * count  # item 7, checked against the ledger
+@@ -8,3 +8,3 @@ def item_8(value, count):
+-    return value * count  # unchecked item 8
++    return value * count  # item 8, checked against the ledger
+@@ -9,3 +9,3 @@ def item_9(value, count):
+-    return value * count  # unchecked item 9
++    return value * count  # item 9, checked against the ledger
+@@ -10,3 +10,3 @@ def item_10(value, count):
+-    return value * count  # unchecked item 10
++    return value * count  # item 10, checked against the ledger
+@@ -11,3 +11,3 @@ def item_11(value, count):
+-    return value * count  # unchecked item 11
++    return value * count  # item 11, checked against the ledger
+@@ -12,3 +12,3 @@ def item_12(value, count):
+-    return value * count  # unchecked item 12
++    return value * count  # item 12, checked against the ledger
+@@ -13,3 +13,3 @@ def item_13(value, count):
+-    return value * count  # unchecked item 13
++    return value * count  # item 13, checked against the ledger
+@@ -14,3 +14,3 @@ def item_14(value, count):
+-    return value * count  # unchecked item 14
++    return value * count  # item 14, checked against the ledger
+@@ -15,3 +15,3 @@ def item_15(value, count):
+-    return value * count  # unchecked item 15
++    return value * count  # item 15, checked against the ledger
+@@ -16,3 +16,3 @@ def item_16(value, count):
+-    return value * count  # unchecked item 16
++    return value * count  # item 16, checked against the ledger
+@@ -17,3 +17,3 @@ def item_17(value, count):
+-    return value * count  # unchecked item 17
++    return value * count  # item 17, checked against the ledger
+@@ -18,3 +18,3 @@ def item_18(value, count):
+-    return value * count  # unchecked item 18
++    return value * count  # item 18, checked against the ledger
+@@ -19,3 +19,3 @@ def item_19(value, count):
+-    return value * count  # unchecked item 19
++    return value * count  # item 19, checked against the ledger
+@@ -20,3 +20,3 @@ def item_20(value, count):
+-    return value * count  # unchecked item 20
++    return value * count  # item 20, checked against the ledger
+@@ -21,3 +21,3 @@ def item_21(value, count):
+-    return value * count  # unchecked item 21
++    return value * count  # item 21, checked against the ledger
+@@ -22,3 +22,3 @@ def item_22(value, count):
+-    return value * count  # unchecked item 22
++    return value * count  # item 22, checked against the ledger
+@@ -23,3 +23,3 @@ def item_23(value, count):
+-    return value * count  # unchecked item 23
++    return value * count  # item 23, checked against the ledger
+@@ -24,3 +24,3 @@ def item_24(value, count):
+-    return value * count  # unchecked item 24
++    return value * count  # item 24, checked against the ledger
+@@ -25,3 +25,3 @@ def item_25(value, count):
+-    return value * count  # unchecked item 25
++    return value * count  # item 25, checked against the ledger
+@@ -26,3 +26,3 @@ def item_26(value, count):
+-    return value * count  # unchecked item 26
++    return value * count  # item 26, checked against the ledger
+@@ -27,3 +27,3 @@ def item_27(value, count):
+-    return value * count  # unchecked item 27
++    return value * count  # item 27, checked against the ledger
+@@ -28,3 +28,3 @@ def item_28(value, count):
+-    return value * count  # unchecked item 28
++    return value * count  # item 28, checked against the ledger
+@@ -29,3 +29,3 @@ def item_29(value, count):
+-    return value * count  # unchecked item 29
++    return value * count  # item 29, checked against the ledger
+@@ -30,3 +30,3 @@ def item_30(value, count):
+-    return value * count  # unchecked item 30
++    return value * count  # item 30, checked against the ledger
+@@ -31,3 +31,3 @@ def item_31(value, count):
+-    return value * count  # unchecked item 31
++    return value * count  # item 31, checked against the ledger
+@@ -32,3 +32,3 @@ def item_32(value, count):
+-    return value * count  # unchecked item 32
++    return value * count  # item 32, checked against the ledger
+@@ -33,3 +33,3 @@ def item_33(value, count):
+-    return value * count  # unchecked item 33
++    return value * count  # item 33, checked against the ledger
+@@ -34,3 +34,3 @@ def item_34(value, count):
+-    return value * count  # unchecked item 34
++    return value * count  # item 34, checked against the ledger
+@@ -35,3 +35,3 @@ def item_35(value, count):
+-    return value * count  # unchecked item 35
++    return value * count  # item 35, checked against the ledger
+@@ -36,3 +36,3 @@ def item_36(value, count):
+-    return value * count  # unchecked item 36
++    return value * count  # item 36, checked against the ledger
+@@ -37,3 +37,3 @@ def item_37(value, count):
+-    return value * count  # unchecked item 37
++    return value * count  # item 37, checked against the ledger
+@@ -38,3 +38,3 @@ def item_38(value, count):
+-    return value * count  # unchecked item 38
++    return value * count  # item 38, checked against the ledger
+@@ -39,3 +39,3 @@ def item_39(value, count):
+-    return value * count  # unchecked item 39
++    return value * count  # item 39, checked against the ledger
+@@ -40,3 +40,3 @@ def item_40(value, count):
+-    return value * count  # unchecked item 40
++    return value * count  # item 40, checked against the ledger
+@@ -41,3 +41,3 @@ def item_41(value, count):
+-    return value * count  # unchecked item 41
++    return value * count  # item 41, checked against the ledger
+edited src/cache/store.py: ttl is now read from the redis key, not a module constant

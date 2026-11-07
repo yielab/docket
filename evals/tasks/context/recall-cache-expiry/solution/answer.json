@@ -1,0 +1,6 @@
+{
+  "decision": "keep the session cache in redis, not in process memory, because the workers are separate processes.",
+  "failure": "FAILED test_cache.py::test_expiry - KeyError: 'session:42' after 301 s",
+  "file": "src/cache/store.py",
+  "open_item": "docs/ops/runbook.md still names the old 300 s ttl"
+}

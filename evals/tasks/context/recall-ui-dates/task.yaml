@@ -1,0 +1,18 @@
+id: recall-ui-dates
+version: 1
+suite: context
+shape: build
+origin: "tests/agent/context/test_compaction_recall.py (retired), whose RETIRE_WHEN read: 'a recall figure is published per model and tracked by the bench, which then replaces this single-model check.' Seed: a date storage decision, a format mismatch, a ui file; carries an 8k-char real tool output."
+instruction: "Read every file in session/ in order, one read call per file, from 01-start.md to the last one. Do not reread a file. Then write answer.json with the string keys decision, failure, file, open_item, taken from 01-start.md: the decision and its reason, the failing symptom with its numbers, the file that was fixed, and the item still open. Change nothing else."
+pod:
+  blueprint: build
+  isolation: false
+operator:
+  approval: approve_task
+graders:
+  required:
+    - outcome.hidden_tests
+  report:
+    - process.tokens
+limits:
+  wall_seconds: 3600

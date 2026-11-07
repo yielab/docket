@@ -1,0 +1,6 @@
+{
+  "decision": "store dates as UTC ISO-8601 and format them only in the UI, because three services read them.",
+  "failure": "AssertionError: '07/11/2026' != '2026-11-07'",
+  "file": "src/ui/dates.py",
+  "open_item": "emails/templates/receipt.html still prints the raw timestamp"
+}

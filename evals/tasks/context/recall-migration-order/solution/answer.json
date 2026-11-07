@@ -1,0 +1,6 @@
+{
+  "decision": "run migration 0007 before the deploy, not after, because plan_id becomes NOT NULL.",
+  "failure": "IntegrityError: null value in column plan_id of relation accounts (14 rows)",
+  "file": "migrations/0007_backfill_plan.py",
+  "open_item": "scripts/seed_demo.py inserts accounts without a plan_id"
+}

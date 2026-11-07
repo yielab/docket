@@ -1,0 +1,6 @@
+{
+  "decision": "we will round half-even with decimal, not float, because bank totals must match.",
+  "failure": "FAILED test_invoice.py::test_total - AssertionError: 10.01 != 10.00",
+  "file": "src/billing/rounding.py",
+  "open_item": "the monthly report in reports/monthly.py rounds the same way"
+}
