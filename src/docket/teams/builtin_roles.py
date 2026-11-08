@@ -63,9 +63,8 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         gate_contract=GateContract(kind="none"),
         tool_profile="coordination",
         description="orchestrates the pod; never edits code",
-        # Lead never receives prior-hop carryover: `_hop_message` returns before any
-        # budgeting for this role, and no turn reads this budget (`budget_for_role`
-        # has no caller outside the tests).
+        # Lead never receives prior-hop carryover: `_hop_message` returns before it
+        # budgets the Lead's message, so this value is never read for this role.
         token_budget=2000,
         # `hops/application/compose.py`'s `_hop_message` resolves the Lead's instruction through
         # `resolve_hop_prompt` against this archetype, like any custom role, instead
