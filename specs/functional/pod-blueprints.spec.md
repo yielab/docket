@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 4.14.0
+**Version**: 4.14.1
 **Status**: Implemented
 **Last Updated**: 2026-11-07
 
@@ -264,6 +264,11 @@ overlay, policies, members, pipeline binding, settings) into one command.
      pod's own `config/skills/<name>/` (requirement 6's digest, "Pod manifests: export");
    - `mcp-servers/*.yaml|yml|json`: `kind: mcp-server` documents, applied into this pod's own
      pod-scoped MCP server list;
+   - `services/*.yaml|yml`: `kind: service` documents, applied into this pod's own `services/`
+     (a name declared twice, or equal to an operator service or an MCP server, is refused);
+   - `records/*.yaml|yml`: `kind: records` sets, applied into this pod's own `records/` (the rows
+     live in the pod's `records.sqlite`, not in the overlay);
+   - `routines/*.yaml|yml`: routine documents, applied into this pod's own `routines/`;
    - `pipelines/<name>.yaml|yml`: named pipelines (see "Pod-local pipelines");
    - `pipeline.yaml`, or the file `pod.yaml`'s `pipeline` key names: the pod's bound pipeline;
    - `pod.yaml`: a manifest of eleven top-level keys. `kind: pod` and `name` are the envelope
