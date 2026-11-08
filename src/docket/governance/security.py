@@ -84,12 +84,12 @@ class HighRiskClass:
 
     ``pattern`` is matched case-insensitively against the full command
     string, not just a binary name. ``bins`` names overlapping SAFE_BINS
-    members for visibility only (``docket setup sandbox classes``) -- it does
-    **not** exclude them: excluding e.g. ``git``/``npm`` wholesale would
-    force every benign invocation to ask too, so ``classify_command`` below
-    enforces per-argument instead (``git push origin production`` asks;
-    ``git status`` does not). See specs/functional/security-gates.spec.md
-    item 5.
+    members, read by the display (``docket setup sandbox classes``) and the
+    ``allowCommands`` refusal. It does **not** exclude them: excluding e.g.
+    ``git``/``npm`` wholesale would force every benign invocation to ask too,
+    so ``classify_command`` below enforces per-argument instead
+    (``git push origin production`` asks; ``git status`` does not). See
+    specs/functional/security-gates.spec.md item 5.
     """
 
     name: str

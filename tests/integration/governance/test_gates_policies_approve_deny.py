@@ -96,10 +96,9 @@ class TestHighRiskPatterns:
         assert _sec.match_high_risk("git status") is None
 
     def test_git_and_npm_are_the_bins_with_an_attached_class(self) -> None:
-        # The attached-bin set is read straight off HIGH_RISK_PATTERNS. It used
-        # to come from a `high_risk_bins()` helper, deleted because it had no
-        # production caller: `docket setup sandbox classes` walks `cls.bins`
-        # itself and nothing else ever wanted the flattened set.
+        # The attached-bin set is read straight off HIGH_RISK_PATTERNS. Two readers
+        # take it: `docket setup sandbox classes` walks `cls.bins`, and the
+        # `allowCommands` refusal in teams/pod_settings.py refuses any name in it.
         bins = {name for cls in _sec.HIGH_RISK_PATTERNS for name in cls.bins}
 
         assert "git" in bins
