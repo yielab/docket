@@ -94,7 +94,7 @@ def _later_hop_env(task_id: str, role: str = "implementer") -> dict[str, str]:
         id_to_index={},
         rework_counts={},
         override_index=None,
-        track_pid=False,
+        production_driver=False,
         run=lambda *a, **k: _rd.TurnResult(True, "", {}),
         on_hop=None,
     )

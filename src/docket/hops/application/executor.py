@@ -509,7 +509,7 @@ def dispatch_task(
     # Only the production driver takes the trace and model kwargs; an injected test
     # runner/fake is a plain 5-arg Callable. Gating on `runner is None` (rather
     # than duck-typing) keeps every existing test double working completely unchanged.
-    track_pid = runner is None
+    production_driver = runner is None
     task_id = task.id
     session_id = f"agent:{project}:{task_id}"
 
@@ -569,7 +569,7 @@ def dispatch_task(
             id_to_index=id_to_index,
             rework_counts=rework_counts,
             override_index=applied.gate_override_index,
-            track_pid=track_pid,
+            production_driver=production_driver,
             run=run,
             on_hop=on_hop,
             step_instructions=step_instructions,

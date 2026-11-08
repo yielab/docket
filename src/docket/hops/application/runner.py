@@ -163,7 +163,7 @@ def _run_hop_turn(
             raise DispatchError(f"step {node.step_id!r}: {exc}") from exc
 
     def _run(turn_message: str) -> _rd.TurnResult:
-        if ctx.track_pid:
+        if ctx.production_driver:
             # `ctx.run` is typed as the plain 5-arg `Runner` Callable (every
             # test double's exact shape); calling the concrete production
             # driver directly here (rather than through `ctx.run`) is what

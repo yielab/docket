@@ -25,7 +25,7 @@ the key and applies the provider's preset:
 docket setup provider add openrouter
 ```
 
-For zero-cost experiments, `docket setup model preset openrouter-free` sends the stable
+For experiments on free models, `docket setup model preset openrouter-free` sends the stable
 `openrouter/free` router id. The selected underlying model and availability can change between
 calls, so this preset is not a deterministic production baseline.
 

@@ -256,7 +256,7 @@ class UnitContext:
     id_to_index: dict[str, int]
     rework_counts: dict[str, int]
     override_index: int | None
-    track_pid: bool
+    production_driver: bool
     run: Runner
     on_hop: Callable[[HopResult], None] | None
     # Each step id's own already-interpolated `instructions` override (see
