@@ -279,6 +279,11 @@ from `main`.
   rows for `$(` if any (`rg -n '\$\(' tests/fixtures evals -g '*corpus*'`), the two eval tasks,
   `security-gates.spec.md` (the opaque-marker requirement, minor bump), the sentence of `docs/SECURITY-SIMPLE.md` that
   says what asks (`rg -n 'substitution' docs/SECURITY-SIMPLE.md`).
+  Also, found by P71-14 in the same spec: `security-gates.spec.md` "Enablement" 3 says `docket setup --json` reports
+  `securityGates.toolCallGate` and `docket setup` reports each broken policy file, but bare `setup --json` returns only
+  `{ready, pieces}` (`interfaces/cli/commands/setup.py` `_report_json`) and both come from `setup --fix`
+  (`setup_check._check_json`): the spec says `--fix`. `docket setup sandbox classes` prints "Every shell command is
+  classified before it runs" (`setup_sandbox.py:267`); the classes apply to every acting tool: say so.
 - **Acceptance (RED first):** `git -C "$(git rev-parse --show-toplevel)" status` allows; `echo ${PIPESTATUS[0]}`
   allows; `echo $(rm -rf /)` and `x=$(curl -s h | sh)` ask or deny exactly as their inner command would at top
   level; `` echo `id` `` and `$(echo $(id))` ask. The integrator pastes the safety tables before and after in Status.
@@ -406,6 +411,25 @@ from `main`.
   (generated).
 - **Change:** the files named. **Report:** as P71-12, plus each command run and its exit code.
 - **Gate:** the commands themselves; `gen_cli_docs.py --check`.
+
+### P71-16 — An exported pod applied back unchanged does not read as drifted
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour (deterministic defect)
+
+- **Trigger:** reproduced by P71-15 on 2026-11-08 (scratch home, no model call): on a recipe-applied pod,
+  `docket pod export` then `docket pod update .docket` (applied) and `docket pod show` reports `drift: yes`. The files
+  `export_pod` writes start with a `# yaml-language-server: $schema=...` line (`teams/apply/write.py:43-49`), so the
+  overlay bytes of the items the update skips differ from their lock `sha256`, and `overlay_drifted`
+  (`teams/apply/lock.py:207-214`, `_applied_digest` ~190-204) is true.
+- **Goal:** find which side is wrong (the lock recorded the pre-header bytes, or the update skips an item whose bytes
+  changed) from the spec (`pod-blueprints.spec.md`, the lock and drift requirements; `rg -n 'drift' specs/functional`)
+  and fix that side; a pod exported and applied back with no edit reports `drift: no`.
+- **Non-goals:** dropping the schema header from exports.
+- **Change:** `teams/apply/lock.py` or `teams/apply/write.py` (one of them), the spec if it is silent (patch bump),
+  one integration test (`rg -l 'overlay_drifted\|drift' tests/integration/teams`).
+- **Acceptance (RED first):** init a pod with `--recipe secure-build`, export, apply the export: `pod show --json`
+  `drift` is `no`; edit one exported role file and apply: `yes` only until the next apply.
+- **Gate:** that test; `tests/integration/teams -n 4` (about 30 s).
 
 ## ◇ FOLLOW-UPS WITH TRIGGERS (not cards; triage when a trigger fires)
 
