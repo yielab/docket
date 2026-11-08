@@ -12,7 +12,7 @@ import dataclasses
 import json
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +41,12 @@ from docket.teams import pod_settings as _pod_settings
 
 SUBJECT = "docket.tasks.application.consult"
 
+# One generous bound for every wait on the dispatch thread. A wait ends when the thing it names
+# happens or the thread ends, so the bound is only ever reached by a hang, never by a slow host;
+# the product's own timeouts sit far above it so they cannot fire first.
+_WAIT_S = 120.0
+_PRODUCT_TIMEOUT_S = 600
+
 _CONSULT = {
     "kind": "decision",
     "message": "Which store should the cache use?",
@@ -61,7 +67,9 @@ def _hermetic(tmp_path: Path) -> Iterator[None]:
         record_isolation_off(home)
         with use_home(
             dataclasses.replace(
-                current_home(), tool_approval_poll_interval_s=0.02, tool_approval_timeout=30
+                current_home(),
+                tool_approval_poll_interval_s=0.02,
+                tool_approval_timeout=_PRODUCT_TIMEOUT_S,
             )
         ):
             yield
@@ -116,20 +124,37 @@ def _begin(
     driver = DocketDriver(backend_factory=lambda model_name: backend)
     monkeypatch.setattr(_dr, "default_driver", lambda: driver)
     queued = _queue.enqueue_task_once("demo", "in-place task", channel="cli")[0]
-    worker = _threads.new_thread(lambda: _sweep.dispatch_pod("demo", turn_timeout=60, max_tasks=1))
+    worker = _threads.new_thread(
+        lambda: _sweep.dispatch_pod("demo", turn_timeout=_PRODUCT_TIMEOUT_S, max_tasks=1)
+    )
     worker.start()
     return worker, str(queued.id)
 
 
-def _the_waiting_consult(deadline_s: float = 20.0) -> Escalation:
+def _wait_until(worker: threading.Thread, what: str, ready: Callable[[], bool]) -> None:
+    """Return once *ready* holds. Fails naming *what* if the dispatch thread ends first or
+    ``_WAIT_S`` passes; ``worker.join`` is the wait, so the thread ending wakes it at once."""
+    end = time.monotonic() + _WAIT_S
+    while not ready():
+        assert worker.is_alive(), f"the dispatch thread ended before {what}"
+        assert time.monotonic() < end, f"{what} did not happen within {_WAIT_S:.0f}s"
+        worker.join(0.01)
+
+
+def _the_waiting_consult(worker: threading.Thread) -> Escalation:
     """The consult escalation the blocked turn opened, once it is pending."""
-    end = time.monotonic() + deadline_s
-    while time.monotonic() < end:
-        pending = [e for e in list_escalations(state="pending") if e.kind == "consult"]
-        if pending:
-            return pending[0]
-        time.sleep(0.02)
-    raise AssertionError("the turn never opened a consult escalation")
+
+    def pending() -> list[Escalation]:
+        return [e for e in list_escalations(state="pending") if e.kind == "consult"]
+
+    _wait_until(worker, "the turn opened a consult escalation", lambda: bool(pending()))
+    return pending()[0]
+
+
+def _finished(worker: threading.Thread, after: str) -> None:
+    """The dispatch thread ends on its own once the turn has what it waited for."""
+    worker.join(_WAIT_S)
+    assert not worker.is_alive(), f"the dispatch thread did not finish after {after}"
 
 
 def _task(task_id: str) -> TaskRecord:
@@ -149,13 +174,13 @@ class TestAnsweredInPlace:
         backend = _Backend([_final("plan"), _consult_call(), _final("built with redis")])
         worker, task_id = _begin(tmp_path, monkeypatch, backend)
 
-        waiting = _the_waiting_consult()
+        waiting = _the_waiting_consult(worker)
         assert _task(task_id).status == "running"
         _esc.resolve(waiting.id, "redis", {"note": "hot path"}, by="alice", channel="cli")
-        worker.join(30)
+        _finished(worker, "the option answer")
 
         task = _task(task_id)
-        assert not worker.is_alive() and task.status == "done"
+        assert task.status == "done"
         (answer,) = _tool_results(backend)
         assert f"Operator answered your consultation {waiting.id}:" in answer
         assert "option redis (Redis)" in answer and "hot path" in answer
@@ -170,8 +195,8 @@ class TestAnsweredInPlace:
         backend = _Backend([_final("plan"), _consult_call(), _final("decided alone")])
         worker, task_id = _begin(tmp_path, monkeypatch, backend)
 
-        _esc.resolve(_the_waiting_consult().id, "decline", None, by="alice", channel="cli")
-        worker.join(30)
+        _esc.resolve(_the_waiting_consult(worker).id, "decline", None, by="alice", channel="cli")
+        _finished(worker, "the decline")
 
         assert _task(task_id).status == "done"
         (answer,) = _tool_results(backend)
@@ -182,10 +207,10 @@ class TestAnsweredInPlace:
     ) -> None:
         backend = _Backend([_final("plan"), _consult_call(), _final("built with sqlite")])
         worker, task_id = _begin(tmp_path, monkeypatch, backend)
-        _the_waiting_consult()
+        _the_waiting_consult(worker)
 
         answer_question("demo", task_id, "accept", {"optionId": "sqlite"})
-        worker.join(30)
+        _finished(worker, "the answer by the task")
 
         (answer,) = _tool_results(backend)
         assert "option sqlite (SQLite)" in answer
@@ -196,12 +221,12 @@ class TestAnsweredInPlace:
     ) -> None:
         backend = _Backend([_final("plan"), _consult_call(), _final("built")])
         worker, task_id = _begin(tmp_path, monkeypatch, backend)
-        waiting = _the_waiting_consult()
+        waiting = _the_waiting_consult(worker)
 
         with pytest.raises(_esc.EscalationInvalid, match="redis, sqlite, decline"):
             _esc.resolve(waiting.id, "approve_once", None, by="alice", channel="cli")
         _esc.resolve(waiting.id, "redis", None, by="alice", channel="cli")
-        worker.join(30)
+        _finished(worker, "the option answer")
 
         assert _task(task_id).status == "done"
 
@@ -212,10 +237,12 @@ class TestSeveralQuestions:
     ) -> None:
         backend = _Backend([_final("plan"), _consult_call(2), _final("built")])
         worker, task_id = _begin(tmp_path, monkeypatch, backend)
-        _the_waiting_consult()
-        end = time.monotonic() + 20
-        while len(list_escalations(state="pending")) < 2 and time.monotonic() < end:
-            time.sleep(0.02)
+        _the_waiting_consult(worker)
+        _wait_until(
+            worker,
+            "both parts of the consultation were open",
+            lambda: len(list_escalations(state="pending")) >= 2,
+        )
 
         first, second = sorted(
             list_escalations(state="pending"), key=lambda e: e.part.index if e.part else 0
@@ -224,7 +251,7 @@ class TestSeveralQuestions:
         _esc.resolve(second.id, "sqlite", None, by="alice", channel="cli")
         assert _task(task_id).status == "running"
         _esc.resolve(first.id, "redis", None, by="alice", channel="cli")
-        worker.join(30)
+        _finished(worker, "the last part was answered")
 
         assert _task(task_id).status == "done"
         (answer,) = _tool_results(backend)
@@ -241,7 +268,7 @@ class TestNobodyAnswers:
             backend = _Backend([_final("plan"), _consult_call(), _final("decided alone")])
             worker, task_id = _begin(tmp_path, monkeypatch, backend)
 
-            worker.join(30)
+            _finished(worker, "the consultation expired unanswered")
 
         assert _task(task_id).status == "done"
         assert _tool_results(backend) == ["no answer; decide yourself"]
