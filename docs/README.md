@@ -39,7 +39,7 @@ OpenAI-compatible chat-completions endpoint, hosted or local.
 | [Quick start](QUICK-START-DOCKET.md) | Ten minutes from install to a governed run, then the customization loop |
 | [Agent teams (pods)](AGENT-TEAMS.md) | The core model: project pods, the roles, blueprints, recipes and real pipeline dispatch |
 | [Configuration](CONFIGURATION.md) | Every file, globally and per project: what it controls, what reads it, and recipes for customizing agents, roles, pipelines, policies, tools and trace exporters |
-| [Recipe library](recipes.md) | The seventeen shipped recipes (teams, policy packs, methodology pipelines, checks, a tool pack), what each brings and its README, generated from the recipes themselves |
+| [Recipe library](recipes.md) | The shipped recipes (teams, policy packs, methodology pipelines, checks, tool packs), what each brings and its README, generated from the recipes themselves |
 | [Command reference](commands.md) | Every command with syntax, options and examples, generated from the CLI |
 | [Models, gateways and harnesses](MODEL-GATEWAYS.md) | Hosted providers, OpenRouter and Vercel AI Gateway, other OpenAI-compatible endpoints, and what "compatible" does not promise |
 | [Security](SECURITY-SIMPLE.md) | The layered model: the always-on tool-call gate, policies, high-risk command classes, approvals, the audit log, and what trace export lets leave the host |
@@ -57,8 +57,8 @@ feature is specified before it is built.
 ```bash
 # The team
 docket init                                   # this directory -> a Lead + Implementer pod
-docket pod recipes                           # seventeen shipped recipes: teams, policies, methodologies, checks, tools
-docket init --recipe secure-build             # ... plus a recipe (or your own under ~/.docket/recipes/)
+docket pod recipes                           # the shipped recipes: teams, policies, methodologies, checks, tools
+docket init --recipe secure-build             # ... plus a recipe (or your own under ~/.docket/config/recipes/)
 docket pod validate                               # check every document under ./.docket/
 docket pod update [--dry-run]            # apply ./.docket/ (or a recipe name/dir) onto the pod
 docket pod export                       # write the pod's own scope back to ./.docket/
@@ -103,8 +103,9 @@ The full surface is in the [command reference](commands.md).
 
 ## Where things live
 
-Everything docket owns is under `~/.docket/` (`DOCKET_HOME` relocates it). The team itself lives
-in your repository:
+Everything docket owns is under `~/.docket/` (`DOCKET_HOME` relocates it), split into `config/`
+(what you author) and `state/` (what docket writes while it runs). The team itself lives in your
+repository:
 
 ```
 <your repo>/.docket/                  # the team's configuration of record (commit it)
@@ -116,32 +117,34 @@ in your repository:
 └── .schemas/                         # JSON Schemas for editor autocompletion (export writes them)
 
 ~/.docket/
-├── fleet.json                        # agent registration, channel bindings, isolation flag
-├── docket-providers.json             # your kind: provider documents; fourteen ship built in
-├── secrets.json                      # stored credentials (0600), referenced by name
-├── docket-models.json                # role -> model policy and the default model
-├── policies/                         # global policies (most-restrictive wins with a pod's own)
-├── plugins/                          # operator-scope predicate plugins (rare)
-├── recipes/<name>/                   # your own recipes, addressable by name like the shipped ones
-├── skills/<name>/SKILL.md            # global skills, every pod on this machine
-├── docket-mcp-servers.json           # external MCP tool servers
-├── docket-exporters.json             # your changes to the kind: exporter documents; five ship built in, all off
-├── docket-channels.json              # your changes to the kind: channel documents; console is the only one on by default
-├── notify-state.json                 # the last delivery sweep's dedupe snapshot (docket setup notify)
-├── docket-runs.json  docket-schedules.json  docket-conversations.json
-├── audit.log                         # hash-chained audit log (docket log verify)
-├── traces/  sessions/  approvals/    # per-session traces, durable history, pending approvals
-└── workspaces/
-    ├── pods/<project>/config/        # this pod's own overlay: roles/, prompts/, policies/, plugins/, skills/, applied.lock
-    └── projects/<project>-<role>/    # one isolated workspace per pod member
-        ├── SOUL.md  AGENTS.md  TOOLS.md  HEARTBEAT.md  MEMORY.md
-        ├── INSTRUCTIONS.md           # yours; docket never writes it
-        ├── .docket-meta.json         # role, codebase, model, verify command, pod settings (Lead)
-        ├── tasks/<task-id>/          # one git worktree per task, on branch docket/<p>/<task-id>
-        └── memory/                   # daily logs
+├── config/                           # what you author
+│   ├── docket-providers.json         # your kind: provider documents; fourteen ship built in
+│   ├── docket-models.json            # role -> model policy and the default model
+│   ├── docket-mcp-servers.json       # external MCP tool servers
+│   ├── docket-exporters.json         # your changes to the kind: exporter documents; five ship built in, all off
+│   ├── docket-channels.json          # your changes to the kind: channel documents; console is the only one on by default
+│   ├── policies/                     # global policies (most-restrictive wins with a pod's own)
+│   ├── plugins/                      # operator-scope predicate plugins (rare)
+│   ├── recipes/<name>/               # your own recipes, addressable by name like the shipped ones
+│   ├── skills/<name>/SKILL.md        # global skills, every pod on this machine
+│   └── pods/<project>/               # this pod's own overlay: roles/, prompts/, policies/, plugins/, skills/, applied.lock
+└── state/                            # what docket writes
+    ├── fleet.json                    # agent registration, channel bindings, isolation flag
+    ├── secrets.json                  # stored credentials (0600), referenced by name
+    ├── audit.log                     # hash-chained audit log (docket log verify)
+    ├── docket-runs.json  docket-schedules.json  docket-conversations.json  notify-state.json
+    ├── traces/  sessions/  approvals/  escalations/   # per-session traces, durable history, pending approvals and questions
+    └── workspaces/
+        ├── pods/<project>/           # per-pod runtime: .scratch/, cache/, memory.json
+        └── projects/<project>-<role>/    # one isolated workspace per pod member
+            ├── SOUL.md  AGENTS.md  HEARTBEAT.md  MEMORY.md  WORKFLOW_AUTO.md   # TOOLS.md too, for an Implementer
+            ├── INSTRUCTIONS.md       # yours; docket never writes it
+            ├── .docket-meta.json     # role, codebase, model, verify command, pod settings (Lead)
+            └── tasks/<task-id>/      # one git worktree per task, on branch docket/<p>/<task-id>
 ```
 
-Pod members each get an isolated workspace; no role is ever shared between projects. Which of these files reach a model, and which only look like settings, is the subject
+Pod members each get an isolated workspace; no role is ever shared between projects. The
+complete file list is in [Configuration §1](CONFIGURATION.md#1-what-an-install-creates); which of these files reach a model, and which only look like settings, is the subject
 of [Configuration §2](CONFIGURATION.md#2-how-the-files-reach-a-running-agent).
 
 ---
@@ -156,8 +159,9 @@ Read these before trusting docket with anything consequential.
   scheduler, worker queue, quota system, or large-deployment claim. If you need hosted,
   multi-tenant execution, docket is the wrong tool; if you want a board or a UI, point Tack (or
   your own consumer) at docket's read API, because docket does not ship one.
-- **A pipeline is linear with bounded routes** (`on`, `until`, `when`, `run`), not a DAG. The five
-  blueprints are code, so a new team shape is a recipe, and a recipe against a real model is
+- **A pipeline is a list of steps with bounded routes** (`on`, `until`, `when`, `run`,
+  `parallel`), not a general graph. The four blueprints (`build`, `respond`, `operate`, `routine`)
+  are code, so a new team shape beyond them is a recipe, and a recipe against a real model is
   proven by running it. Nothing in `.docket/` is applied without an operator command.
 
 **Models**
@@ -166,25 +170,27 @@ Read these before trusting docket with anything consequential.
   `/chat/completions` with function tools (`openai-chat`, used by gateways and OpenAI-compatible
   endpoints) and Anthropic's `/v1/messages` (`anthropic-messages`, used by the built-in `anthropic`
   provider). A text-only endpoint can answer text turns but cannot complete tool-dependent work.
-  Google documents its Gemini compatibility layer as beta, and a model registered by hand against
-  Anthropic's compatibility layer gets no prompt caching; the built-in `google` document's preset
-  note says so.
+  Google documents its Gemini compatibility layer as beta, which the built-in `google` document's
+  preset note says, and a model registered by hand against Anthropic's compatibility layer gets no
+  prompt caching ([Models, gateways and harnesses](MODEL-GATEWAYS.md)).
 - **Small models vary.** A small local model still varies run to run; a 16k-context endpoint is
   the honest integration test.
 
 **Isolation and the record**
 
 - **Network egress is open until you close it.** `fetch` is deny-by-default, but with isolation
-  off (the default) `bash` runs on the host and reaches the network. Once isolation is on
-  (`docket setup sandbox on`), the jail has no network unless `docket setup sandbox network open`
+  off (a machine with no Landlock or Seatbelt backend, or after `docket setup sandbox off`)
+  `bash` runs on the host and reaches the network. With isolation on (`docket init` turns it on
+  where a backend is detected), the jail has no network unless `docket setup sandbox network open`
   grants it; verify commands and pipeline `run:` steps run in the same jail.
 - **The audit log is tamper-evident, not tamper-proof.** One predecessor link survives rotation,
   so deleting the log is visible, not impossible.
 - **MCP tools are writes unless the operator says otherwise.** Nothing can prove a remote tool is
   read-only, so a server left at the default reaches no read-only role. `--kind read` is an
   operator assertion. Stdio servers re-spawn per turn, always jailed while isolation is on.
-- **Telegram is not a chat.** Five verbs, no free-text conversation, and a notification never
-  carries a control that decides.
+- **Telegram is not a chat.** Three verbs (`/status`, `/delegate`, `/answer`) and an inert
+  `/wire` handshake, no free-text conversation, and a notification never carries a control that
+  decides.
 
 **Usage and counters**
 

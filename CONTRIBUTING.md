@@ -31,11 +31,12 @@ Enhancement suggestions are welcome! Please provide:
 ### Pull Requests
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+2. Create a feature branch from `develop`, the integration branch (`main` moves only by a
+   fast-forward for a release): `git checkout -b feature/amazing-feature develop`
 3. Make your changes
 4. Run the test suite (`./tests/run-all-tests.sh`)
 5. Run the CI gates (lint, format, types, pytest, golden, spec validation — see [Testing](#testing))
-6. Commit with descriptive messages (`git commit -m 'Add amazing feature'`)
+6. Commit with a `Type: description` subject (`git commit -m 'Add: amazing feature'`; see [Commit Messages](#commit-messages))
 7. Push to your branch (`git push origin feature/amazing-feature`)
 8. Open a Pull Request
 
@@ -53,7 +54,7 @@ cd docket
 uv sync --all-extras --dev
 
 # Create a feature branch
-git checkout -b feature/your-feature
+git checkout -b feature/your-feature develop
 
 # Make changes and test
 ./tests/run-all-tests.sh
@@ -80,53 +81,49 @@ between packages are import-linter contracts, not prose.
 
 **The target.** `src/docket/` holds twelve context packages (`kernel`, `tasks`, `pipeline`,
 `hops`, `agent`, `governance`, `sandbox`, `teams`, `models`, `observability`, `operator`,
-`platform`), `interfaces/` (`cli`, `http`, `mcp`, `telegram`) and one `bootstrap.py`. Inside a
+`platform`), `interfaces/` (`cli`, `http`, `telegram`) and one `bootstrap.py`. Inside a
 context there are at most two levels: `domain/`, `application/` and `adapters/` where the context
 needs them, flat otherwise. The full tree is "Target layout" in
 [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md).
 
-**Allowed dependencies** (the ADR's table; `tests/architecture/` enforces it from stage 2 of
-Phase 46 on):
+**Allowed dependencies** (the ADR's table; `tests/architecture/` enforces it):
 
 | From | May import |
 |---|---|
 | `kernel` | nothing in `docket` |
 | `<context>/domain` | `kernel`, its own `domain` |
-| `<context>/application` | `kernel`, its own `domain` and `ports`, any module of a context below it in the layer order (amended 2026-10-23) |
+| `<context>/application` | `kernel`, its own `domain` and `ports`, any module of a context below it in the layer order |
 | `<context>/adapters`, `platform`, `sandbox` | `kernel`, `platform`'s `__init__`, the ports and domain types they implement |
-| `agent` | `kernel`, `platform`'s `__init__` (amended 2026-10-23), its own modules |
-| `interfaces` | `kernel`, `bootstrap`, any context (amended 2026-10-23) |
+| `agent` | `kernel`, `platform`'s `__init__`, its own modules |
+| `interfaces` | `kernel`, `bootstrap`, any context |
 | `bootstrap` | everything |
 
-The layer order, bottom to top (amended 2026-10-23): `platform` < `governance` < `agent` < `models`
+The layer order, bottom to top: `platform` < `governance` < `agent` < `models`
 < `observability` < `pipeline` < `teams` < `sandbox` < `operator` < `tasks` < `hops`.
 
 So a domain package never imports an adapter, a context imports only contexts below it in that
 order (an import of one above it is the violation the baseline records, and the baseline only
 shrinks), and nothing imports `interfaces/`. Function-local imports of `docket.*` are
 forbidden because they hide cycles; the existing ones are a baseline that only shrinks. A module
-over **1,000 lines is a defect** (D-78). The 700-line ceiling served the Phase 46 split; once every
-module was under it, it forced splits by size rather than by context, so it was raised. Split a
+over **1,000 lines is a defect** (D-78, `tests/architecture/test_module_size.py`). Split a
 module by what it does before it crosses, never to make a number agree.
 
-**What holds today.** The code has moved: `cli/`, `core/` and `edges/` no longer exist, the CLI
-is `interfaces/cli/` and the HTTP control plane is `interfaces/http/`, and this section is the
-whole rule. The import contracts live in `tests/architecture/`.
+The CLI is `interfaces/cli/` and the HTTP control plane is `interfaces/http/`. The import
+contracts live in `tests/architecture/`.
 
-Two invariants matter most and are enforced by tests rather than convention alone; they do not
-move with the refactor:
+Two invariants matter most and are enforced by tests rather than convention alone:
 
-1. **Every tool call goes through the single tool dispatcher** (`dispatch_tool`, today in
+1. **Every tool call goes through the single tool dispatcher** (`dispatch_tool`, in
    `agent/tools/registry.py`). docket's governance stack — the policy engine, the approval store, the
    high-risk classifier, the audit log — only means anything if there is exactly one place a tool
    can execute from. An AST test enforces this:
    `tests/unit/agent/tools/test_registry__dispatch.py::test_only_the_chokepoint_imports_the_handler_module`.
-2. **docket-owned JSON goes through the one store module** (today `platform/store.py`: atomic write
+2. **docket-owned JSON goes through the one store module** (`platform/store.py`: atomic write
    + filelock + `.bak` rotation + 0600 perms) — never write those files directly. The one
    documented exemption is append-only JSONL (`observability/trace.py`, `governance/audit.py`), which writes
    directly by design.
 
-Where things go today:
+Where things go:
 
 - **Commands** are Typer functions in `src/docket/interfaces/cli/` — register them in
   `interfaces/cli/app/__init__.py`, with the command bodies in `interfaces/cli/commands/<group>.py`
@@ -152,12 +149,12 @@ All contributions must include appropriate tests:
 
 - Tests are placed by lane, named by module, per `specs/test-framework.md` §"Lanes and
   placement": `tests/unit/` mirrors `src/docket/` one file per module, `tests/integration/<context>/`
-  covers cross-module, real-socket or real-process behaviour, one folder per context, `tests/guards/` holds AST/layout invariants,
-  and `tests/agent/` holds checks on prose, release artifacts or agent hook scripts — that lane
-  is budgeted, never the default suite, and runs in its own CI job
-  (the directories of today; ADR 0030 replaces them with a mirror of the code, lanes as pytest
-  markers, and `tests/{fixtures,contracts,e2e,architecture,release}/` as the only directories
-  that do not mirror a module — see that section for what holds now and what Phase 46 moves)
+  covers cross-module, real-socket or real-process behaviour, one folder per context,
+  `tests/guards/` holds AST/layout invariants, `tests/architecture/` the import contracts and
+  `tests/contracts/` the wire contracts; these five are the default suite. `tests/e2e/` holds
+  whole-workflow journeys against a fake model, and `tests/agent/` holds checks on prose, release
+  artifacts or agent hook scripts — that lane is budgeted, never the default suite. Each of those
+  two runs in its own CI job
 - New commands also get a spec under `specs/` and golden-parity coverage where output is frozen
 
 For scale on demand, run `uv run python scripts/metrics.py`; no document quotes those numbers, so a change
@@ -178,7 +175,7 @@ uv run python -m evals.evaluator.run compare --base <run dir or sha> --head <run
 # All tests (pytest + golden parity)
 ./tests/run-all-tests.sh
 
-# pytest suite only (default lanes: unit, integration, guards)
+# pytest suite only (default lanes: unit, integration, guards, architecture, contracts)
 uv run pytest   # Python suite
 
 # agent lane only (prose, release artifacts, agent hook scripts; own CI job)
@@ -203,7 +200,7 @@ The same budget as ROADMAP §4 ("Definition of Done"):
 - **Each commit:** `ruff check`, `ruff format --check`, `mypy src` and `pytest --co` (about 10 s).
 - **While changing code:** only the tests of what you changed, by path.
 - **Once per change, before merging:** the default suite in parallel (`uv run pytest -n auto --dist
-  loadfile`, about a minute); fix by cause and re-run only what failed.
+  loadfile`, a minute or two); fix by cause and re-run only what failed.
 - **Once per phase close or release:** everything below, plus
   `scripts/maint/pytest-without-sandbox.sh` (the suite as a host with no sandbox backend sees it)
   and a real run.
@@ -218,12 +215,18 @@ These all gate CI and must pass locally before opening a PR:
 uv run ruff check .          # lint
 uv run ruff format --check . # formatting
 uv run mypy src              # strict type check
-uv run pytest                # default lanes: unit, integration, guards
+uv run pytest                # default lanes: unit, integration, guards, architecture, contracts
+uv run pytest tests/e2e -n auto -q    # end-to-end journeys against the fake model (CI job `e2e`)
+uv run pytest evals/tests -q # the evaluator's own tests (CI job `evals-evaluator`)
+uv run python -m evals.evaluator.run check-solutions   # every reference solution passes, no model
+scripts/maint/pytest-without-sandbox.sh -q   # the default suite on a host with no sandbox backend (CI job `no-sandbox`)
 uv run pytest tests/agent    # agent lane (CI job `agent-lane`)
 bash tests/golden/run.sh verify-all   # golden parity
 ./scripts/validate-specs.sh  # spec format validation
 uv run python scripts/gen_cli_docs.py --check       # docs/commands.md drift (CI job `docs`)
 uv run python scripts/gen_recipe_docs.py --check    # docs/recipes.md drift (CI job `docs`)
+uv run python scripts/gen_evidence_schema.py --check   # docs/contracts/evidence-v1.1 drift (CI job `docs`)
+uv run python scripts/gen_operator_schemas.py --check  # docs/contracts/operator-v1.1 and operator-v2 drift (CI job `docs`)
 uv run python scripts/render-doc-assets.py --check  # README screenshot/GIF drift guard (run by the agent lane)
 uv run python scripts/release_journey.py            # exact-wheel first-turn release rehearsal
 ```
@@ -253,6 +256,10 @@ change (see [AGENTS.md](AGENTS.md)). To add a command:
 - `docs/recipes.md` is generated from the shipped recipes by `scripts/gen_recipe_docs.py`; put
   recipe prose in the recipe's own `README.md` and `pod.yaml` `description`, then regenerate with
   `uv run python scripts/gen_recipe_docs.py`
+- `docs/contracts/` holds generated JSON Schemas, never hand-edited: `config-v1/` by
+  `scripts/gen_config_schemas.py`, `operator-v1.1/` and `operator-v2/` by
+  `scripts/gen_operator_schemas.py`, `evidence-v1.1/` by `scripts/gen_evidence_schema.py`; each
+  takes `--check`
 - Update README.md if adding major features
 - Keep comments to rationale only (see [Python Conventions](#python-conventions)) — command prose
   belongs in the Typer help strings, not in code comments
@@ -272,15 +279,15 @@ Seven rules, each written down because breaking it cost real work here.
    run there. A `git stash` restores neither deleted files nor a changed environment, so it is not
    a baseline. Run `uv sync --all-extras` first: a missing `anyio` produces three phantom mypy
    errors that are not real.
-4. **Isolation is part of done.** The suite has leaked into a developer's real `~/.docket` three
-   times, once displacing the whole environment with fixture agents. Every path docket writes is a
+4. **Isolation is part of done.** The suite has leaked into a developer's real `~/.docket`, once
+   displacing the whole environment with fixture agents. Every path docket writes is a
    `Home` field or property in `kernel/home.py`, every test runs inside the autouse
    `use_home` home in `tests/conftest.py`, and a test choosing its own home enters
    `use_home(Home(root))` rather than patching constants;
    `tests/guards/test_docket_home_isolation.py` checks every path the current `Home` hands out. A test must not depend on the host's sandbox either: one that turns isolation on
    stubs `sandbox_availability` or skips with a named reason when it needs a real backend, and
    `scripts/maint/pytest-without-sandbox.sh` runs the suite as a host with no usable backend
-   (`DOCKET_SANDBOX_PROBE=none`, like a stock CI container). Forcing `DOCKET_SANDBOX_BACKEND=none` is not that check; it hid 40 macOS
+   (`DOCKET_SANDBOX_PROBE=none`, like a stock CI container). Forcing `DOCKET_SANDBOX_BACKEND=none` is not that check; it hid macOS
    failures behind a fixture that deleted the variable.
 5. **A gap list is a claim about the tree and decays like one.** Re-verify before scheduling work
    against it. Work has been scheduled here, and kept over better candidates, against a gap that had
@@ -309,8 +316,9 @@ docstring-length budget is reported but enforced separately by
 placed in a `#` comment above a `def` is not counted against that budget, which is the idiom to
 reach for when an explanation genuinely needs the room.
 
-**A comment describing a constraint is not code applying it.** `TELEGRAM_REQUEST_TIMEOUT_S`
-documented an invariant, was environment-overridable, and was wired to nothing.
+**A comment describing a constraint is not code applying it.** A setting or a docstring that
+states an invariant proves nothing until a reader on the live path applies it; find that reader
+before repeating the claim.
 
 ### The README is descriptive, not a specification
 

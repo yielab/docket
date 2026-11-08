@@ -3,9 +3,9 @@
 docket runs a team of coding agents that you define in files: a `.docket/` directory next to
 your code names the roles, the order they work in, the gates between them and the rules they
 cannot cross. This page takes you from nothing to one governed run, then shows how to make the
-team yours. Everything below was captured from a real run against a local model on 2026-10-09;
-the terminal output shown is what docket printed. It was captured through a pipe, so it carries
-docket's plain voice (`ok`, `->`, `!`); on a terminal the same lines read `✓`, `→`, `⚠`.
+team yours. The terminal output shown is what docket printed, captured through a pipe, so it
+carries docket's plain voice (`ok`, `->`, `!`); on a terminal the same lines read `✓`, `→`, `⚠`.
+Paths, ids, hashes and token counts differ on your machine.
 
 > [!WARNING]
 > **Beta / early-stage software.** The steps work and are test-backed, but expect rough edges
@@ -56,7 +56,7 @@ on this machine:
 $ docket setup
 PIECE               STATE     DETAIL                              COMMAND
 model endpoint      missing   lead ->                             docket setup provider add <name>
-                              anthropic/claude-haiku-4-5:
+                              anthropic/claude-haiku-5-5:
                               ANTHROPIC_API_KEY is required for
                               the resolved endpoint
 notifications       optional  console only (nobody is told)       docket setup notify enable desktop
@@ -79,8 +79,10 @@ provider's preset, so every role resolves to `local/local-model`. Without a pres
 role policy would still route the Lead and Implementer to a hosted model you may have no key
 for; `--no-preset` skips it and `docket setup model preset <name>` applies one later.
 
-Against a small-context local server, also set `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500` in your shell;
-the default suits a large hosted model.
+An endpoint registered without a credential gets the `local` model profile, which cuts one tool
+result at a small share of the context window you gave with `--ctx`, so a small-context server
+needs nothing more. `DOCKET_TOOL_MAX_OUTPUT_CHARS` (default 30000 characters) only lowers that cap
+further.
 
 **Hosted provider instead?** Name it and give its key; the preset is applied for you:
 
@@ -104,7 +106,7 @@ docket init --recipe secure-build
 ```
 
 ```text
--> Provisioning 'software' pod 'myapp' (lead, implementer)...
+-> Provisioning 'build' pod 'myapp' (lead, implementer)...
 ok   myapp-lead  [lead]  local/local-model
 ok   myapp-implementer  [implementer]  local/local-model
 
@@ -122,6 +124,18 @@ ok Pod 'myapp' created with 3 members!
   - myapp-lead
   - myapp-implementer
   - myapp-security-vetter
+
+  docket pod show        # inspect the pod
+  docket pod add reviewer # add a role
+
+! Only console is on, and console sends nothing.
+  A parked task waits unseen until you run docket inbox.
+  Before running unattended, enable a channel:
+    docket setup notify enable desktop                   # this machine
+    docket setup notify enable ntfy --set topic=<topic>  # your phone
+
+This machine
+Sandbox   on (landlock, network none)
 ```
 
 A **pod** is the team of agents attached to one repository: its members, its rules, its queue,
@@ -134,7 +148,7 @@ every command run inside that repository finds its pod by where you stand; outsi
 | --- | --- | --- |
 | nothing yet | `docket init` | the lean default: `myapp-lead` + `myapp-implementer`, no gates beyond the built-in ones |
 | a `.docket/` committed next to the code | `docket init` | that team, validated before anything is provisioned and applied after; an error names the file and field and provisions nothing |
-| a shipped or local recipe | `docket init --recipe secure-build` (`docket pod recipes` shows all seventeen, or a directory) | the recipe applied onto the default pod |
+| a shipped or local recipe | `docket init --recipe secure-build` (`docket pod recipes` lists the shipped ones; a recipe directory works too) | the recipe applied onto the default pod |
 
 Give the Implementer a real check. A non-zero exit fails the task instead of letting it advance:
 
@@ -151,14 +165,22 @@ Pipeline: secure-build
   [plan] role=lead -> myapp-lead [gate: none]
   [build] role=implementer -> myapp-implementer [gate: mechanical(verifyCmd)]
   [vet] role=security-vetter -> myapp-security-vetter [gate: verdict(approve, rework->build)]
+
+Limits
+  plan  300s (default)
+  build  900s (step)
+  vet  300s (default)
+  rounds  200 (default)
+  toolCalls  400 (default)
+  budgetTokens  none
 ```
 
 ---
 
 ## 4. Run a task
 
-Queue work, then run the pipeline once. Each hop is one real, costed model turn, so running is
-always explicit:
+Queue work, then run the pipeline once. Each hop is one real model turn, so running is always
+explicit (`docket run --dry-run` prints the plan and starts nothing):
 
 ```bash
 docket task add "Fix calc.add so it returns the sum of a and b"
@@ -218,11 +240,11 @@ docket log verify                         # the audit chain hashes clean
 docket pod show myapp-implementer         # the effective configuration, with where each value came from
 ```
 
-`docket pod show` ends with the team's source of record:
+`docket pod show` includes the team's source of record:
 
 ```text
   Pipeline: bound pipeline (hash 45f7aaf31d1f...)
-  Network: none (default)
+  Network: none (default); jailed tool calls have no network
   Config source: .../templates/recipes/secure-build (digest ec69082e5924..., drift: no)
 ```
 
@@ -340,19 +362,22 @@ docket pod update .docket            # writes it; a second run plans every item 
 git add .docket && git commit -m "Add: the myapp agent team"
 ```
 
-Nothing is applied without that command. `docket run`, `start`, schedules and `exec` never
-re-read `.docket/`, and `docket pod show` shows `drift: yes` once the directory moves on from
-what was applied. A policy in the repo can only add restrictions: it accumulates with your
+`docket pod update` applies the directory; `docket start` and schedules never read it. `docket
+run` picks up what changed in the pod's recorded `.docket/` before it dispatches, and asks first
+when a command that runs on this machine changed (off a terminal, or on a no, the pod keeps the
+version you allowed). `docket pod show` shows `drift: yes` once the directory moves on from what
+was applied. A policy in the repo can only add restrictions: it accumulates with your
 global policies under most-restrictive-wins.
 
-**Add one thing later.** A recipe does not have to be a whole team. `docket pod recipes` shows
-seventeen shipped ones: teams, policy packs that change no roster, methodology pipelines, checks
-that fail a task whose tests prove nothing, and a tool pack. `docket pod update git-safety` adds two guardrail policies and nothing else;
+**Add one thing later.** A recipe does not have to be a whole team. `docket pod recipes` lists
+the shipped ones: teams, policy packs that change no roster, methodology pipelines, checks that
+fail a task whose tests prove nothing, and tool packs. `docket pod update git-safety` adds two guardrail policies and nothing else;
 `docket pod update tdd` swaps the route for a test-first one. Apply what you need, then
 `docket pod export --force` writes the merged team back to `.docket/` for the commit.
 
 Pod-level knobs are one command each: `docket pod set budgetTokens 500000`,
-`docket pod set allowCommands uv,tox`, `approvalMode refuse`, `maxReworkCycles 2`. Your own
+`docket pod set allowCommands uv,tox`, `approvalMode refuse`, and, on a pod with no bound
+pipeline, `maxReworkCycles 2` (a pipeline bounds its own rework with `max` on the routing step). Your own
 words for one agent go in its operator-owned `INSTRUCTIONS.md`, in the workspace path
 `docket pod show myapp-implementer` prints; docket never regenerates it. The file-by-file reference, with what reads each file on the live path, is
 [Configuration](CONFIGURATION.md); the shipped recipes and every role are listed by
@@ -365,8 +390,8 @@ words for one agent go in its operator-owned `INSTRUCTIONS.md`, in the workspace
 **First, give docket a way to reach you.** The only channel on by default is `console`, and
 console sends nothing: it is the terminal you are already looking at. Unattended, a gated call
 **parks** its task and waits, silently, until you run `docket inbox` or the approval expires and
-the task fails. `docket setup` counts a home with pods and no delivering channel as an issue,
-`docket init` and `docket start --dispatch` print the same warning. The one shortcut: `init`
+the task fails. `docket setup --fix` counts a home with pods and no delivering channel as a critical issue,
+and `docket init`, `docket run` and `docket start --dispatch` print the same warning. The one shortcut: `init`
 run from a terminal with a desktop session asks `Enable desktop notifications now? [Y/n]` and,
 on yes, turns `desktop` on and sends a test notification so you see it work. Pick the rung you
 need:
@@ -381,9 +406,9 @@ docket setup notify test desktop                          # one synthetic event,
 `desktop` needs only a desktop session on the host running docket. `ntfy` reaches you anywhere;
 pick a topic nobody can guess, since the public server shows it to anyone who does (a
 notification carries `content: minimal` by default: pod, task and state, nothing more).
-`telegram` is the one channel that can also *decide* (`/answer`); `enable telegram
---chat <id>` also stores the bot token (`--token`, else `TELEGRAM_BOT_TOKEN` in the environment,
-else a hidden prompt) and binds every pod's Lead. `webhook` and `command` wire anything
+`telegram` is the one channel off this machine that can also *decide* (`/answer`); `enable
+telegram --chat <id>` also stores the bot token (`--token`, else `TELEGRAM_BOT_TOKEN` in the
+environment, else a hidden prompt on a terminal) and binds every pod's Lead. `webhook` and `command` wire anything
 else (Slack, n8n, a pager); `email` notifies and never decides.
 
 ```bash
@@ -392,12 +417,12 @@ docket pod set schedule "@every 30m"   # or a daily HH:MM in UTC, or 5-field cro
 docket inbox                              # everything across every pod that needs you, derived
 ```
 
-A gated call hit by an unattended sweep no longer waits on a thread: it **parks** instead,
-recorded as an ordinary `waiting_approval` task with nothing blocking behind it. `docket inbox`
+A gated call hit by an unattended sweep does not wait on a thread: it **parks**, recorded as an
+ordinary `waiting_approval` task with nothing blocking behind it. `docket inbox`
 lists every task and approval that needs you (`--peek` reads without advancing its cursor); grant
 or deny it exactly like any other approval: `docket task answer <id> --option approve_once|deny` (also HTTP, MCP or Telegram).
 `docket setup notify flush` pushes what changed since the last flush to every enabled channel;
-`docket start --dispatch` and a real `docket run` already call it after every state change. Prefer a hard failure
+`docket run` flushes once when it finishes, and `docket start` flushes on every sweep. Prefer a hard failure
 over a parked one in CI?
 `docket pod set approvalMode refuse` fails the task at once instead, naming the tool
 and the policy that asked.

@@ -44,16 +44,34 @@ breaks a bound, and it names the key.
 ```bash
 uv run python -m evals.evaluator.run check-solutions            # every task
 uv run python -m evals.evaluator.run check-solutions regression # one suite
-uv run python -m evals.evaluator.run check-solutions fix-add    # one task
+uv run python -m evals.evaluator.run check-solutions basic      # one task
 ```
 
 For each task the command copies `repo/` into a fresh `git init`, applies `solution/` and grades
 each required `outcome.*` grader with no model: `outcome.hidden_tests` runs `hidden/` on a copy,
 `outcome.file_exact` compares bytes. `outcome.task_status` needs a trial and is reported as
 skipped; other grader kinds are not checked here. It exits 1 naming the first task and grader
-that fails, and 0 when there is nothing to check. CI runs it on every push.
+that fails, or a selector that matches nothing, and prints the count of solutions that pass. CI
+runs it on every push.
 
 Tests of the evaluator itself are `evals/tests`: `uv run pytest evals/tests -q`.
+
+## Run a model against the tasks
+
+These spend model calls, so they never run in CI.
+
+```bash
+uv run python -m evals.evaluator.run run regression --provider NAME --model ID --epochs 3
+uv run python -m evals.evaluator.run nightly --base <run dir or sha>
+uv run python -m evals.evaluator.run compare --base <run dir or sha> --head <run dir>
+```
+
+`run` takes a suite name or a task id, registers the provider (`--base-url` and `--credential-env`
+for a hosted or custom endpoint), runs each task for `--epochs` trials and writes `trials.jsonl`,
+`summary.md` and `summary.json` under `evals-out/<utc stamp>/` (`--out` changes it). `nightly` is
+`run regression` on the local endpoint (`http://127.0.0.1:8081/v1`) with three trials per task;
+with `--base` it exits 1 naming a task that regressed. `compare` pairs a run with a base by
+`task@version` and prints the difference; it exits 1 if a run is missing.
 
 ## Watch production, and turn a real failure into a task
 
@@ -70,5 +88,5 @@ model id and prompt hash, each as `k/n` with its Wilson 95% interval. `--trend` 
 overlap or for fewer than 5 samples in a window. No prices appear. `promote` writes
 `evals/tasks/candidates/<id>/` from a failed task: instruction, a `repo/` seed at the task's base
 commit, a failing TODO check in `hidden/`, no `solution/`, secrets, home paths and user names
-removed. A candidate is not a task: `check-solutions` refuses its suite until a person finishes it
-and moves it into a real one. The directory is not committed.
+removed. A candidate is not a task: the loader refuses its suite until a person finishes it and moves
+it into a real one.
