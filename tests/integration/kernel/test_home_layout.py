@@ -114,3 +114,12 @@ def test_init_on_a_two_level_home_provisions_as_before(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert (root / "config").is_dir()
     assert (root / "token").read_text() == "secret"
+
+
+def test_every_config_directory_home_resolves_is_found_at_the_top(tmp_path: Path) -> None:
+    root = tmp_path / "docket-home"
+    for name in ("roles", "prompts", "pipelines", "routines", "pods"):
+        (root / name).mkdir(parents=True)
+    (root / "services.json").write_text("{}")
+    found = sorted(p.name for p in layout.single_level_entries(root))
+    assert found == ["pipelines", "pods", "prompts", "roles", "routines", "services.json"]

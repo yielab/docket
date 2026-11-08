@@ -8,14 +8,20 @@ from pathlib import Path
 CONFIG_DIRNAME = "config"
 STATE_DIRNAME = "state"
 
-# What the operator authors: catalogs, recipes, skills, policies and plugins. A pod's overlay
-# is `config/pods/<pod>`.
+# What the operator authors: catalogs, documents, recipes, skills, policies and plugins. A
+# pod's overlay is `config/pods/<pod>`.
 _CONFIG_NAMES = (
     "docket-models.json",
     "docket-mcp-servers.json",
     "docket-providers.json",
     "docket-exporters.json",
     "docket-channels.json",
+    "services.json",
+    "pods",
+    "roles",
+    "prompts",
+    "pipelines",
+    "routines",
     "recipes",
     "skills",
     "policies",
