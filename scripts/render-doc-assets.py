@@ -166,35 +166,30 @@ _GATE = [
     "⋯",
     "  Result: ask",
     "  Reason: matches high-risk action class 'prod-deploy': Production deploys and release pushes",
-    "  Policy: 'high-risk-deploy' -> require_approval",
     "$ docket task add --pod myapp \\",
     '    "Publish the fix. Lead: never call the consult tool and do not ask questions, the '
     "operator already decided; hand this to the implementer as is. Implementer: run exactly this "
     'bash command once and report its output: git push origin production"',
     "⋯",
+    "  May ask you: 2 policies -- see: docket task show task-14a24d2c-5774",
     "$ docket run --pod myapp",
     "-> Running 1 pending task(s) through: lead → implementer → security-vetter",
-    "!   [task-5dc8e4e7-6600-45ad-b08a-18c0396748e5] waiting_input — lead hop parked a "
-    "consultation (question=q-6fa9cac1dbae)",
-    "⋯",
-    "$ docket task answer task-5dc8e4e7-6600-45ad-b08a-18c0396748e5 --option run-push --pod myapp",
-    "ok Answered task task-5dc8e4e7-6600",
-    "$ docket run --pod myapp",
-    "-> Running 1 pending task(s) through: lead → implementer → security-vetter",
-    "!   [task-5dc8e4e7-6600-45ad-b08a-18c0396748e5] waiting_approval — implementer hop parked "
-    "for approval (token=apr-6f40c76c-079c-43b2-858c-dbbb8f1b3d42)",
+    "!   [task-14a24d2c-5774-449b-a4e7-5e77fe51587c] waiting_approval — implementer hop parked "
+    "for approval",
+    "ok 0 done · 0 failed · 1 waiting · 3.9k tokens",
     "$ docket log",
     "  ⋯",
-    "  2026-10-09T10:42:26.093Z  demo        tool.ask          tool=bash agent=myapp-implementer "
-    "role=implementer project=myapp policy_id='high-risk-deploy' policy_action='require_approval' ⋯",
-    "$ docket task trace task-5dc8e4e7-6600-45ad-b08a-18c0396748e5 --export --pod myapp "
+    "  2026-11-08T00:28:58.027Z  demo        tool.ask          tool=bash agent=myapp-implementer "
+    "role=implementer project=myapp ⋯ matches high-risk action class 'prod-deploy': Production "
+    'deploys and release pushes call=bash command="git push origin production" ⋯',
+    "$ docket task trace task-14a24d2c-5774-449b-a4e7-5e77fe51587c --export --pod myapp "
     "| grep '\"deny\"'",
     "⋯",
-    '{"ts": "2026-10-09T10:42:26Z", "project": "myapp", ⋯ "agent_role": "implementer", ⋯ '
+    '{"ts": "2026-11-08T00:28:58Z", "project": "myapp", ⋯ "agent_role": "implementer", ⋯ '
     '"tool": "bash", ⋯ "decision": "deny", "ok": false, "executed": false, "denialKind": '
-    '"approval_parked", "policyId": "high-risk-deploy", ⋯}}',
+    '"approval_parked", "reason": "matches high-risk action class \'prod-deploy\' ⋯"}}',
     "$ docket log verify",
-    "ok 9 chained line(s) verified clean.",
+    "ok 13 chained line(s) verified clean.",
 ]
 
 

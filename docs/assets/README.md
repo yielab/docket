@@ -8,7 +8,7 @@ real run; there are no terminal screenshots and no invented output.
 | --- | --- | --- | --- |
 | `hero.gif` | A diagram, not captured output: the four pod shapes `docket` ships (`build`, `respond`, `operate`, `routine`), with the roles and gates of `specs/functional/pod-blueprints.spec.md`. A task walks each shape, one reviewer sends work back for rework, one step waits for a person, and a strip under all four shows the audit log growing | none (drawn by the renderer) | Docs index |
 | `isolation.png` | The Implementer's own workspace and git worktree, with `docket setup sandbox` showing isolation on (Landlock, network `none`) (the capture runs `docket setup sandbox on`); the operator's checkout holds only the exported team | `3-isolation` | Agent teams guide |
-| `governance.png` | The policy dry-run asks for a high-risk push; the Lead parks a consultation first and the operator answers it with `task answer`; then the Implementer's `bash` call parks the task as `waiting_approval` under the `prod-deploy` class, the audit logs `tool.ask`, the trace records the denial with `executed: false`, and the audit chain verifies | `4-gate` | Security guide |
+| `governance.png` | The policy dry-run asks for a high-risk push; the Implementer's `bash` call parks the task as `waiting_approval` under the `prod-deploy` class, the audit logs `tool.ask`, the trace records the denial with `executed: false`, and the audit chain verifies | `4-gate` | Security guide |
 
 The renderer uses the vendored `DejaVuSansMono.ttf` so glyphs and layout do not depend on host font
 packages. Its redistribution terms are retained in `DejaVu-FONT-LICENSE.txt`. The font is a source
@@ -22,7 +22,7 @@ real CLI through every scene against a live OpenAI-compatible endpoint (default
 capture root rendered as `~`. It takes about five minutes because the gate scene waits out the
 120-second approval timeout. A local model's output varies run to run, so copy what the new run
 actually printed into the scene lists in the renderer: elide with `⋯`, never reword or invent a
-line. The current scenes were captured on 2026-10-09 against a local 16k-context model. The `setup sandbox` lines of `isolation.png` were re-transcribed on 2026-10-13 from the real command on this host after bwrap was deleted (Landlock, network `none`). The CLI prints its plain voice (`ok`, `->`, `!`) when piped, which is what a transcript is, so the scenes show those prefixes. The local model may park a consultation before delegating; when it does, the capture is continued by answering it (`docket inbox`, `docket task answer <id> --option <id>`, `docket run`) in the same throwaway home, and the scene shows that round.
+line. The current scenes were captured on 2026-10-09 against a local 16k-context model; the gate scene was re-captured on 2026-11-07 after the high-risk classes became one list applied by the gate. The `setup sandbox` lines of `isolation.png` were re-transcribed on 2026-10-13 from the real command on this host after bwrap was deleted (Landlock, network `none`). The CLI prints its plain voice (`ok`, `->`, `!`) when piped, which is what a transcript is, so the scenes show those prefixes. The local model may park a consultation before delegating; when it does, the capture is continued by answering it (`docket inbox`, `docket task answer <id> --option <id>`, `docket run`) in the same throwaway home, and the scene shows that round.
 
 ## Regenerate and verify
 
