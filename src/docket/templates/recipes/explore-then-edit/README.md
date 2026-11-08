@@ -1,7 +1,7 @@
 # explore-then-edit
 
 Researcher -> Implementer -> Reviewer. The Researcher runs on the cheap model class
-(`model: cheap` on its step, overriding the built-in `researcher` archetype's `strong`) and
+(`model: cheap` on its step, overriding the `researcher` archetype's `strong`) and
 maps the code the task touches. The Implementer edits with that map as its handoff, and the
 Reviewer's APPROVE/REQUEST-CHANGES verdict is the last gate, with one rework cycle back to the
 Implementer.

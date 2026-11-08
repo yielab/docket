@@ -1,8 +1,8 @@
 kind: pod
 name: frugal
 description: >-
-  A token cap and cheap-tier planning/review as a pipeline: an ordinary build stays inexpensive
-  by policy, not by hoping.
+  A token cap and cheap-tier planning/review as a pipeline: an ordinary build stays within a
+  token cap by policy, not by hoping.
 members: [reviewer]
 settings:
   budgetTokens: 1000000

@@ -20,10 +20,10 @@ makes naive multi-agent setups fall apart.
 
 | Axis | Values | Meaning |
 |------|--------|---------|
-| **scope** | `project` | Owned by exactly one project; no agent is shared between pods |
+| **scope** | `pod` | Owned by exactly one pod, and so one project; no agent is shared between pods |
 | **role** | lead, implementer, reviewer, … | What the agent is *for* |
 
-Every team member lives in a **project pod** — `scope: project`, a self-contained team **per project**, never shared.
+Every team member lives in a **project pod** — `scope: pod`, a self-contained team **per project**, never shared.
 
 The role list above is the everyday roster, not a closed enum — see "Role archetypes" below for
 how a role is actually defined and how you add your own.
@@ -35,20 +35,20 @@ how a role is actually defined and how you add your own.
 `docket init <project>` provisions a **pod**: a small team of project-scoped agents that owns one
 codebase (or, for a non-software pod, one shared working directory — see "Pod blueprints" below).
 Each member is a distinct registered agent with its **own permission-locked workspace**
-(`700`/`600`, with `SOUL.md`, `AGENTS.md`, `HEARTBEAT.md`, `.docket-meta.json`, and a `memory/`
-log) — so **no role is ever shared between two projects.**
+(`700`/`600`, with `SOUL.md`, `AGENTS.md`, `TOOLS.md`, `HEARTBEAT.md`, `MEMORY.md`,
+`WORKFLOW_AUTO.md` and `.docket-meta.json`) — so **no role is ever shared between two projects.**
 
 The default pod is **lean — a Lead and an Implementer.** The full code pod is a Lead, an
 Implementer and a `strong` Reviewer, the one judge; you add the Reviewer, or extra Implementers,
 when the work warrants it.
 
 <p align="center">
-  <img src="assets/isolation.png" alt="Real terminal output: the Implementer's own workspace and model, isolation on, the task's git worktree on its own branch, the operator's main checkout clean, and the one-line fix living only in the worktree" width="760">
+  <img src="assets/isolation.png" alt="Real terminal output: the Implementer's own workspace and model, isolation on, the task's git worktree on its own branch, the operator's main checkout holding only the exported team, and the one-line fix living only in the worktree" width="760">
 </p>
 
 | Pod role | Edits code? | Responsibility | Default model class |
 |----------|:-----------:|----------------|---------------------|
-| **Lead** | **never** | Orchestrates the pod, owns its context and memory, decomposes work, dispatches to workers; surfaces architectural decisions and risky actions at the top of the plan with assumptions and open questions listed | cheap (coordination) |
+| **Lead** | **never** | Orchestrates the pod, owns its context and memory, decomposes work, dispatches to workers; decides from the workspace when it can, lists every assumption at the top of its plan, and asks a person only when a decision needs one | cheap (coordination) |
 | **Implementer** | **yes** | Runs *inside* the project workspace and writes the code | strong (reasoning-dense) |
 | **Reviewer** *(optional)* | no (read-only) | Veto on the work of the step before — correctness + security gate | strong |
 
@@ -66,7 +66,6 @@ docket init --recipe secure-build    # lean pod + a shipped recipe (or a directo
 docket pod show                      # inspect the pod and its roles
 docket pod add reviewer              # add a role to an existing pod (never creates one)
 docket pod add implementer           # scale out: adds another implementer
-docket pod add reviewer              # add a role later
 docket pod remove <member-id>        # drop a member
 docket pod delete                    # tear down the whole pod
 ```
@@ -77,8 +76,8 @@ A pod has **exactly one Lead** (its single orchestrator); every other role may b
 
 ## Role archetypes — roles are data, not hardcoded branches
 
-A pod role is not a closed set wired into code, and adding a fifth role needs no code change.
-Every role — including the four built-in ones — is a **role archetype**
+A pod role is not a closed set wired into code, and adding another role needs no code change.
+Every role — including the three built-in ones — is a **role archetype**
 (`teams/roles.py`): a versioned, declarative record of its scope, model class, identity
 templates, gate contract, denied tools, and tool profile.
 
@@ -97,8 +96,9 @@ ships more you can drop into any pod without writing a line of YAML:
 | `lead` *(built-in)* | cheap | none | write, edit, bash |
 | `implementer` *(built-in)* | strong | mechanical (`verifyCmd`) | none |
 | `reviewer` *(built-in)* | strong | verdict (APPROVE / REQUEST-CHANGES) | write, edit, bash |
-| `researcher`, `analyst` *(starter)* | strong | none | none |
-| `writer` *(starter)* | cheap | none | none |
+| `researcher` *(starter)* | strong | none | none |
+| `analyst` *(starter)* | cheap | none | none |
+| `writer` *(starter)* | cheap | none | bash, fetch |
 | `operator` *(starter)* | strong | mechanical | none |
 | `monitor` *(starter)* | cheap | approval | write, edit, bash |
 | `actor` *(starter)* | strong | none | write, edit, bash (reads with `read`, `glob` only) |
@@ -107,13 +107,13 @@ Provisioning a starter role into a live pod works exactly like any other role:
 `docket pod add researcher`. A user-authored archetype (a standalone YAML file,
 `docket pod update`) can add a brand-new role name or override an existing one — merged into the
 pod's own `config/pods/<pod>/roles/` files, the pod wins by name. A denied tool is absent from that role's turn,
-not merely discouraged: it is the only capability statement a role carries (`cannot:` in the short
-form). Denying a built-in tool removes that tool alone; denying one also removes every MCP tool of
+not merely discouraged (`cannot:` in the short form); a role's `tools` list is the allow-list side,
+and it never grants a tool the role denies. Denying a built-in tool removes that tool alone; denying one also removes every MCP tool of
 its kind.
 
 A custom role's hop message is also data: an archetype can declare its own `hopInstruction` text;
 if it doesn't, one is generated from its `gateContract` (a verdict role, for example, is told its
-exact `APPROVE`/`REJECT`-style marker convention). Either way, a pipeline step's own `instructions`
+exact marker convention). Either way, a pipeline step's own `instructions`
 (when set) overrides it for that one hop — see
 [Change the orchestration](CONFIGURATION.md#35-change-the-orchestration-pipelines-and-blueprints).
 
@@ -143,25 +143,25 @@ Four blueprints exist, one per pipeline shape behind every department:
 | `routine` | workdir | lead, analyst, writer, reviewer | compile -> draft -> review (verdict, rework -> draft) |
 
 Omitting `--blueprint` (or passing `--blueprint build` explicitly) is exactly a plain
-`docket init` — the lean Lead + Implementer pod, same files, no behavior change; the `build` roster
+`docket init` — the lean Lead + Implementer pod, same files; the `build` roster
 carries the Reviewer so the pipeline's review step reaches a hop once you widen the pod
 (`--pod full`). `respond`, `operate` and `routine` are **`workdir`-kind**: no codebase is assumed or
-auto-detected; the pod gets a shared working directory instead (auto-provisioned if you don't name
-one). `--pod full`/`--with` only apply to the `build` roster — passing them against another blueprint
+auto-detected; the pod gets a shared working directory instead (the current directory, unless you name
+another). `--pod full`/`--with` only apply to the `build` roster — passing them against another blueprint
 warns and provisions that blueprint's own fixed roster instead of trying to combine the two.
 
 A department is a shape plus your own prose, connectors and policy, not another blueprint. A
 `respond` pod needs the operator's role overlay to name the Actor's send tool; the `outward` recipe is
 the policy pack that asks before every send and caps them.
 
-The `workdir` shapes have **no git**. A hop in a plain working directory has no commit, diff stat
-or changed-file list to show for its work, so the hop record says "checked, found nothing" rather
-than showing commit evidence; what a `routine` or `respond` pod leaves behind is the files in its
+The `workdir` shapes have **no git**. A hop in a plain working directory has no commit or diff
+to show for its work, so its handoff carries an empty file list and its evidence an empty
+`commit`, `baseCommit` and `diffStat`; what a `routine` or `respond` pod leaves behind is the files in its
 working directory and the pod's records (below). A task on one runs in that directory, never in a
 worktree, so a `baseRef` or a `prepare` command on it fails the task before any hop, with a reason
 that names the pod as working in a folder; `GET /pods` and `GET /pods/<p>` report the kind as
 `workspaceKind` (`codebase` or `workdir`). `docket init --blueprint operate --workdir <dir>` names
-the directory; `--codebase` is the same option.
+the directory (the location argument and `--codebase` are the same option).
 
 Start lean and grow only when the work earns it:
 
@@ -186,7 +186,7 @@ blueprint cannot: a method, a policy pack, a set of records, a schedule. Nothing
 |---|---|---|
 | `build` | `tdd`, `intake` (and the other code recipes in [the library](recipes.md)) | `tdd` is a red-then-green pipeline whose `check-red` step fails the task if the new test passes; `intake` is a Lead step that writes a typed brief and a resource check before any code changes |
 | `respond` | `outward` | the policy pack: ask a person before every `send` tool, and cap the sends |
-| `operate` | none | the blueprint carries its Operator, its approval step and a Reviewer; the built-in high-risk classes ask a person before a deploy-shaped command |
+| `operate` | none | the blueprint carries its Operator, its approval step and a Reviewer; the built-in high-risk list (`docket setup sandbox classes`) asks a person before a production deploy, a payment or a secret write |
 | `routine` | `records` | a set, a capture pipeline and a weekly report routine; apply it with `docket pod update records` on a `routine` pod |
 
 ```bash

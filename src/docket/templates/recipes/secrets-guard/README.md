@@ -4,14 +4,13 @@ A policy pack: two guardrail policies, no roles, no pipeline, no members.
 
 **Threat model, in three sentences.** An agent debugging a failing build, or one following an
 instruction smuggled into its context, can read a real credential and either write it somewhere
-it should never live (committing a `.env` or an SSH private key) or echo it into a hop's own
-output, which the trace/audit log then holds in plain text. Path-shaped predicates catch the
-first case regardless of the file's contents (an empty `.env` is just as sensitive a target as a
-populated one), and text-shaped predicates catch the second regardless of which file or tool
-carried the secret, because a credential can leak through a `bash` command's own arguments just
-as easily as through `write`/`edit`. This pack narrows both. Redacting a credential out of a hop's
-output is built in and always on (`docket.governance.secrets.redact`), so the pack carries no
-output rule.
+it should never live (committing a `.env` or an SSH private key) or carry it in a tool call's own
+text. Path-shaped predicates catch the first case regardless of the file's contents (an empty `.env`
+is just as sensitive a target as a populated one), and text-shaped predicates catch the second
+regardless of which file or tool carried the secret, because a credential can leak through a `bash`
+command's own arguments just as easily as through `write`/`edit`. This pack narrows both.
+Redacting a credential out of a hop's output is built in and always on
+(`docket.governance.secrets.redact`), so the pack carries no output rule.
 
 ## Apply it
 

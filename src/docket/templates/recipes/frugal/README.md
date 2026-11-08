@@ -1,13 +1,13 @@
 # frugal
 
-**Practice:** cost-bounded dispatch — a token cap plus cheap-tier planning and review.
+**Practice:** token-bounded dispatch — a token cap plus cheap-tier planning and review.
 
 **Source idea:** most planning and review turns don't need the strongest, most expensive model —
 reserve spend for the step that actually needs it (the Implementer) and cap the rest, the
 right-size-the-model-to-the-role practice model-routing setups use.
 
 **What docket's gates make structural:** `budgetTokens: 1000000` is enforced by dispatch's own budget
-gate — once the pod has counted that many tokens, the next task blocks and the pod pauses rather than silently overspending. The pipeline's own
+gate — once the pod has counted that many tokens, the next task blocks and the pod pauses rather than silently running past the cap. The pipeline's own
 `on: {REQUEST-CHANGES: {goto: build, max: 1}}` bounds the Reviewer's rework edge. `model: cheap` on `plan` and `review` resolves
 against the live rank anchors for that hop only; it is never persisted to the Lead's or
 Reviewer's own model, so removing this pipeline restores their ordinary resolution.

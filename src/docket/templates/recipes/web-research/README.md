@@ -9,7 +9,7 @@ pod declares a search service (`kind: service`, named `search`) and each web Res
 its `svc__search__search` operation, then reads the pages it picks with `fetch`. A PDF among
 them is read by docket's own interpreter inside the jail. The pages stay in the Researcher's own
 session; only its reply reaches the Analyst as a handoff. The Analyst and the Writer are the
-built-in `analyst` and `writer` roles.
+starter `analyst` and `writer` roles.
 
 ## Search
 

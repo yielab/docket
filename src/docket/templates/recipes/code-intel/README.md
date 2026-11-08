@@ -30,7 +30,7 @@ Neither server was executed here; the checks are package metadata and source rea
 
 ## Isolation
 
-A turn starts stdio servers in the same jail as `bash`, and no server can opt out. If a server
+With isolation on, a turn starts stdio servers in the same jail as `bash`, and no server can opt out. If a server
 cannot start there (for example `uvx` needing a writable cache), the turn reports it; fix the
 server's launch command or cache location rather than leaving the jail.
 

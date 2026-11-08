@@ -46,10 +46,10 @@ plans every item `skip`). `--dry-run` prints the plan without writing.
 
 ## Limits
 
-- The digest reads titles, points and the comments the API returns (8 per story); it does not open
+- The digest reads titles, points and the comments the API returns (4 per story); it does not open
   the linked article, so a summary rests on the title and on what the commenters explain.
 - The service is reached by docket's own process, not the jail, and only on `hn.algolia.com`.
-- The Hacker News search API is public and rate limited; the recipe makes about a dozen calls a digest.
+- The Hacker News search API is public and rate limited; a digest makes about six calls (one search and one comments call per story).
 
 ## Files
 

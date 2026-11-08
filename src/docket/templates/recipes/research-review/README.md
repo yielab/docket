@@ -17,7 +17,7 @@ docket init --recipe research-review          # a new pod for the current direct
 docket pod update research-review    # onto an existing pod
 ```
 
-`pod.yaml` names the four built-in-archetype members this recipe adds; `apply` validates the
+`pod.yaml` names the four members this recipe adds; `apply` validates the
 resulting roster and `pipeline.yaml` before writing anything, and is safe to run again (a
 second run plans every item `skip`). `--dry-run` prints the plan without writing.
 

@@ -33,11 +33,9 @@ verdict.
   the diff, unsafe deserialization, path traversal, dependency changes, auth checks) the
   vetter reads on demand by calling the `skill` tool with `name: security-review`.
 - `policies/require-approval-secret-writes.yaml` — applied into the pod's own policy directory;
-  rewritten on the structured predicates `governance/policy.py` already evaluates (Phase 31, D-47) --
-  an `anyOf` of `{tool: write, path: '**/.env*'}`, `{tool: edit, path: '**/.env*'}`, and a
-  private-key-header `matches` -- so it fires on the call itself rather than the loose
-  "write...env" text match it used to be, and so the Implementer's exec surface for
-  secret-shaped writes still narrows regardless of the vetter's own review.
+  for the Implementer, an `anyOf` of `{tool: write, path: '**/.env*'}`, `{tool: edit, path:
+  '**/.env*'}` and a private-key-header `matches`, which asks on the call itself, so a
+  secret-shaped write waits for a person regardless of the vetter's own review.
 
 ## Undo
 

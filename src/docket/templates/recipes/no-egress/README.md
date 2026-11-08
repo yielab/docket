@@ -2,20 +2,20 @@
 
 A policy pack: three guardrail policies, no roles, no pipeline, no members.
 
-**Threat model, in three sentences.** docket's own security model keeps network egress open by
-default (ROADMAP decision D-23) -- `fetch` is domain-allowlisted and inspectable, but `bash`
-still reaches a network client, an interpreter, or a package manager on the curated allowlist,
-so an agent (or a prompt-injected instruction) can exfiltrate data or pull unreviewed code with
-an ordinary shell command. `git`, `curl`, `pip`, `npm` and friends are all allowlisted because a
-build genuinely needs them, which is exactly what makes them a plausible exfiltration or
-supply-chain path when misused. This pack asks before each one runs, closing by policy what the
-exec allowlist leaves open by design.
+**Threat model, in three sentences.** The sandbox network defaults to `none`, but only a jail
+enforces it: with isolation off, `bash` reaches the network (ADR 0004), and `fetch` is the
+domain-allowlisted, inspectable path. An agent (or a prompt-injected instruction) can exfiltrate data
+or pull unreviewed code with an ordinary shell command through `git`, `pip`, `npm` and the other
+binaries on the curated allowlist, which are allowlisted because a build genuinely needs them, and
+that is exactly what makes them a plausible exfiltration or supply-chain path when misused. This
+pack asks before each package install and `fetch` call, and before a network client even where an
+operator's `allowCommands` has allowlisted it (the command classifier already asks about `curl`,
+`wget`, `nc`, `ssh` and the rest by default).
 
 **What this pack does not close.** A command interpreter already on the allowlist (`python3`,
 `node`, `ruby`, ...) can still reach the network through its own standard library
 (`urllib.request`, `fetch()`, ...) without ever naming a tool this pack recognises -- see
-security-gates.spec.md, "Network egress and the `fetch` tool", and known-true limit 3 in
-`CLAUDE.md`. Closing that gap is `docket setup sandbox network none` (the jail's network is cut; `fetch` stays the allowlisted path), not a policy.
+security-gates.spec.md, "Network egress and the `fetch` tool". Closing that gap is `docket setup sandbox network none` (the jail's network is cut; `fetch` stays the allowlisted path), not a policy.
 
 ## Apply it
 
