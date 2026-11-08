@@ -663,7 +663,7 @@ class TestKeysAudit:
             yield d
 
     def test_keys_add_writes_one_entry_no_secret_value(self, keys_home: Path) -> None:
-        assert _setup_model_credentials._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE, "add")
+        assert _setup_model_credentials._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE)
         entries = _entries("keys.add")
         assert len(entries) == 1
         assert entries[0]["detail"] == "ANTHROPIC_API_KEY"
@@ -672,7 +672,7 @@ class TestKeysAudit:
     def test_keys_rotate_writes_one_entry_no_secret_value(
         self, keys_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _setup_model_credentials._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE, "add")
+        _setup_model_credentials._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE)
         monkeypatch.setattr(getpass, "getpass", lambda *a, **k: _KEY_VALUE)
         rc = _setup_model_credentials.credential_rotate("ANTHROPIC_API_KEY")
         assert rc == 0
@@ -682,7 +682,7 @@ class TestKeysAudit:
         assert "sk-ant-testvalue" not in json.dumps(entries)
 
     def test_keys_remove_writes_one_entry(self, keys_home: Path) -> None:
-        _setup_model_credentials._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE, "add")
+        _setup_model_credentials._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE)
         rc = _setup_model_credentials.credential_remove("ANTHROPIC_API_KEY")
         assert rc == 0
         entries = _entries("keys.remove")

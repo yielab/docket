@@ -29,28 +29,13 @@ def _validate_key_format(name: str, value: str) -> tuple[bool, str]:
     return True, ""
 
 
-def _write_credential(name: str, value: str, event: str) -> bool:
-    """Store ``value`` (keyring or 0600 file), touch the meta and audit ``keys.<event>``."""
+def _write_credential(name: str, value: str) -> bool:
+    """Store ``value`` through ``store_secret`` (keyring or 0600 file, meta, audit); say why not."""
     try:
-        backend = _secrets.store_backend()
+        _secrets.store_secret(name, value)
     except Unavailable as exc:
         ui.error(exc.message, exc.hint)
         return False
-    secrets = _secrets.load_secrets()
-    if backend == "keyring":
-        if not _process.secret_tool_store(current_home().keyring_service, name, value):
-            ui.error(
-                f"Could not store {name} in the OS keyring",
-                "It is not stored in plaintext under DOCKET_SECRETS_BACKEND=keyring",
-            )
-            return False
-        secrets[name] = ""
-    else:
-        secrets[name] = value
-    _secrets.save_secrets(secrets)
-    meta_event = "added" if event == "add" else "rotated"
-    _secrets.touch_meta(name, meta_event)
-    audit_log(f"keys.{event}", name)
     return True
 
 
@@ -75,7 +60,7 @@ def credential_rotate(name: str, value: str | None = None) -> int:
     ok, reason = _validate_key_format(name, value)
     if not ok:
         ui.warn(f"Key format: {reason}")
-    return 0 if _write_credential(name, value, "rotate") else 1
+    return 0 if _write_credential(name, value) else 1
 
 
 def credential_remove(name: str) -> int:

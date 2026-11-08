@@ -355,12 +355,8 @@ class TestEndpointResolution:
         with use_home(Home(tmp_path)):
             monkeypatch.setattr(_setup_model, "audit_log", lambda *args: None)
 
-            assert _setup_model_credentials._write_credential(
-                "OPENROUTER_API_KEY", "sk-or-stored", "add"
-            )
-            assert _setup_model_credentials._write_credential(
-                "AI_GATEWAY_API_KEY", "vercel-stored", "add"
-            )
+            assert _setup_model_credentials._write_credential("OPENROUTER_API_KEY", "sk-or-stored")
+            assert _setup_model_credentials._write_credential("AI_GATEWAY_API_KEY", "vercel-stored")
 
             openrouter = application_endpoint.resolve_endpoint(
                 "openrouter/anthropic/claude-sonnet-4.6"

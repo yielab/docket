@@ -12,6 +12,7 @@ from __future__ import annotations
 from docket.kernel.operator_contract import AnswerResultV11, Escalation
 from docket.platform import mark_escalation_applied, read_escalation
 from docket.tasks.application import consult as _consult
+from docket.tasks.application.escalations import REPLY_ID
 from docket.tasks.domain.parts import Answer
 from docket.tasks.domain.task import TaskRecord
 
@@ -19,7 +20,6 @@ __all__ = ["answers_of", "consult_note", "consult_note_delivered"]
 
 _DECLINE = "decline"
 _NOTED_KINDS = ("consult", "turn")
-_REPLY = "reply"
 
 
 def _listed(task: TaskRecord) -> list[Escalation]:
@@ -98,7 +98,7 @@ def consult_note(task: TaskRecord, step_id: str) -> str:
     assert resolution is not None
     if e.kind == "turn":
         text = str((resolution.content or {}).get("text", ""))
-        return f"\n\nThe operator replied:\n{text}\n" if resolution.option_id == _REPLY else ""
+        return f"\n\nThe operator replied:\n{text}\n" if resolution.option_id == REPLY_ID else ""
     if _call_still_waits(task, step_id):
         return ""
     consults = sorted(

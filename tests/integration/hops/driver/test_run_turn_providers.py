@@ -219,7 +219,7 @@ class TestRunTurn:
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
         monkeypatch.delenv(provider_key, raising=False)
         with use_home(Home(tmp_path)):
-            assert _setup_model_credentials._write_credential(provider_key, secret, "add")
+            assert _setup_model_credentials._write_credential(provider_key, secret)
             _write_meta("gateway-agent", model=model)
 
             captured: dict[str, object] = {}

@@ -120,10 +120,9 @@ class _PendingCredential:
 
     name: str = ""
     value: str = ""
-    event: str = "add"
 
     def store(self) -> bool:
-        return not self.value or _write_credential(self.name, self.value, self.event)
+        return not self.value or _write_credential(self.name, self.value)
 
 
 def _collect_credential(
@@ -154,7 +153,7 @@ def _collect_credential(
     ok, reason = _validate_key_format(cred, value)
     if not ok:
         ui.warn(f"Key format: {reason}")
-    return _PendingCredential(cred, value, "rotate" if cred in stored else "add")
+    return _PendingCredential(cred, value)
 
 
 def _preset_for(spec: _prov.ProviderSpec) -> str | None:

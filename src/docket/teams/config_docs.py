@@ -20,7 +20,6 @@ from docket.models import catalog as _provider
 from docket.observability import exporter as _exporter
 from docket.pipeline.domain import spec as _pipeline
 from docket.teams import autonomy as _autonomy
-from docket.teams import config_docs as _config_docs
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import model_selection as _models_policy
 from docket.teams import prompts as _prompts
@@ -241,7 +240,7 @@ def _validate_policy(path: Path) -> None:
 
 
 def _validate_pod(path: Path, doc: dict[str, Any]) -> None:
-    unknown = set(doc) - _config_docs._MANIFEST_KEYS
+    unknown = set(doc) - _MANIFEST_KEYS
     if unknown:
         raise ConfigDocError(path, f"unknown key(s): {', '.join(sorted(unknown))}")
 

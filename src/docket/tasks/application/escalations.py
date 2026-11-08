@@ -77,7 +77,10 @@ _DENY = "deny"
 # its alias.
 _CANCEL = "cancel"
 _RESUME = Option(id="resume", label="Resume", description="End the wait now and run the next step.")
-_REPLY = Option(id="reply", label="Reply", description="Send the next message of the conversation.")
+REPLY_ID = "reply"
+_REPLY = Option(
+    id=REPLY_ID, label="Reply", description="Send the next message of the conversation."
+)
 _CLOSE = Option(id="close", label="Close", description="End the conversation now.")
 _TURN_SCHEMA: dict[str, Any] = {
     "type": "object",

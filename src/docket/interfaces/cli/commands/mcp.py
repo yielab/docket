@@ -71,14 +71,18 @@ def tool_pods() -> dict[str, Any]:
     return {"pods": _queue.pod_roster()}
 
 
-def tool_queue(project: str) -> dict[str, Any]:
-    """Show a pod's task queue (all statuses, not just pending). Read-only."""
-    _audit("queue", f"project={project}")
+def _queue_dump(project: str) -> dict[str, Any]:
     records = TaskRepository.for_pod(project).list()
     return {
         "project": project,
         "tasks": [r.model_dump(by_alias=True, mode="json") for r in records],
     }
+
+
+def tool_queue(project: str) -> dict[str, Any]:
+    """Show a pod's task queue (all statuses, not just pending). Read-only."""
+    _audit("queue", f"project={project}")
+    return _queue_dump(project)
 
 
 def tool_retry(project: str, task_id: str) -> dict[str, Any]:
@@ -87,11 +91,7 @@ def tool_retry(project: str, task_id: str) -> dict[str, Any]:
     _audit("retry", f"project={project} task={task_id}")
     if not _lifecycle.retry_task(project, task_id):
         raise McpToolError(f"'{task_id}' is not a failed or blocked task in pod '{project}'.")
-    records = TaskRepository.for_pod(project).list()
-    return {
-        "project": project,
-        "tasks": [r.model_dump(by_alias=True, mode="json") for r in records],
-    }
+    return _queue_dump(project)
 
 
 def tool_delegate(project: str, description: str, priority: str = "normal") -> dict[str, Any]:

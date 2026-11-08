@@ -44,7 +44,7 @@ def call(name: str, arguments: str = "{}", call_id: str = "c1") -> ToolCall:
 
 
 def add(name: str, value: str) -> bool:
-    return _setup_model_credentials._write_credential(name, value, "add")
+    return _setup_model_credentials._write_credential(name, value)
 
 
 def reachable(monkeypatch: pytest.MonkeyPatch) -> None:

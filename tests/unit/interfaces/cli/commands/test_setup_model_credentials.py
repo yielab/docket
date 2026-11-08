@@ -47,7 +47,7 @@ class TestNoEnvSync:
             ws = _seed_workspace(home)
 
             stored = _setup_model_credentials._write_credential(
-                "ANTHROPIC_API_KEY", "fake-ant-testvalue00000000000000", "add"
+                "ANTHROPIC_API_KEY", "fake-ant-testvalue00000000000000"
             )
 
             assert stored is True
@@ -165,7 +165,7 @@ class TestKeyringRequestedWithoutSecretTool:
     ) -> None:
         with _home(tmp_path):
             stored = _setup_model_credentials._write_credential(
-                "ANTHROPIC_API_KEY", "sk-ant-secret1", "add"
+                "ANTHROPIC_API_KEY", "sk-ant-secret1"
             )
 
             assert stored is False
