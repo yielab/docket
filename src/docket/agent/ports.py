@@ -36,7 +36,7 @@ hardcode an assumption about the shipped driver's quirks).
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
@@ -269,7 +269,6 @@ class UsageTotals:
     input_tokens: int = 0
     output_tokens: int = 0
     cache_read: int = 0
-    cache_write: int = 0
     turns: int = 0
 
 
@@ -323,16 +322,13 @@ class RuntimeDriver(Protocol):
         timeout: int,
         env: dict[str, str] | None = None,
         *,
-        on_spawn: Callable[[int], None] | None = None,
         trace_project: str | None = None,
         trace_session_key: str | None = None,
         trace_task_id: str | None = None,
         model: str | None = None,
     ) -> TurnResult:
         """Run one real agent turn. Never raises for ordinary failure modes.
-        ``on_spawn`` fires with the process pid immediately after it starts, before
-        this call blocks on its result -- a driver with no real process (or a test
-        double) may ignore it, so this is purely additive. ``trace_project``/
+        ``trace_project``/
         ``trace_session_key`` optionally keep an audit stream separate from the
         durable ``session_key``; drivers without an internal trace producer may
         ignore them. ``trace_task_id`` names the pod task a dispatch hop serves: a non-empty

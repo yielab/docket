@@ -147,7 +147,7 @@ def kill_process_group(pgid: int, grace_s: float = 2.0) -> bool:
     *grace_s*. Requires the subprocess to have been started with
     ``start_new_session=True`` (pid doubles as process group id) -- a pid
     from anywhere else would signal an unrelated group, so callers must only
-    pass one reported via a driver's ``on_spawn`` hook.
+    pass the group of a process they started.
 
     Returns ``True`` if the group was observed alive (a signal was
     meaningfully sent), ``False`` if already gone -- a harmless no-op, not

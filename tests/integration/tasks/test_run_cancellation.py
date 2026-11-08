@@ -6,7 +6,7 @@ die; an already-dead pid is a harmless no-op) and ``tasks/application/runs.py``'
 contextvars) and ``cancel_run`` (unknown run, already-terminal run, a real kill, and a concurrent
 cancel never clobbered back to "succeeded" by normal completion).
 
-The production ``DocketDriver`` never fires ``on_spawn``, so cooperative checkpoints stop its turn
+A turn registers no pid of its own, so cooperative checkpoints stop its turn
 at safe boundaries while already-running backend computation returns; PID signalling alone is not
 a truthful full-stop oracle. Full driver/dispatch coverage is in
 ``test_cooperative_run_cancellation.py``."""

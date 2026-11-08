@@ -324,21 +324,6 @@ class TestRunTurn:
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
         assert "DOCKET_TEST_VAR=hello-from-env" in tool_msg.content
 
-    def test_on_spawn_is_accepted_and_ignored(self) -> None:
-        """No real OS process backs this driver -- on_spawn must not raise or
-        be required, matching the Protocol's own "may simply ignore it"."""
-        _write_meta("solo-agent")
-        backend = _ScriptedBackend([_final_response("ok")])
-        driver = DocketDriver(backend_factory=lambda model: backend)
-        spawned: list[int] = []
-
-        result = driver.run_turn(
-            "solo-agent", "agent:solo-agent:default", "hi", 30, on_spawn=spawned.append
-        )
-
-        assert result.ok is True
-        assert spawned == []
-
 
 class TestConsultParkWiring:
     """Only a non-empty `trace_task_id` marks the turn as a pod dispatch hop."""

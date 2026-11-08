@@ -506,12 +506,9 @@ def dispatch_task(
     claim, and a crash (any *other* exception) still propagates unchanged, leaving the task
     ``running`` for the stale-claim sweep exactly as before."""
     run = runner or _dr.default_driver().run_turn
-    # pid tracking (for `docket task cancel`) only makes sense for a real
-    # OS process, i.e. the production driver — never an injected test
-    # runner/fake, none of which accept an `on_spawn` kwarg (and none of which
-    # have a process to report anyway). Gating on `runner is None` (rather
-    # than duck-typing) keeps every existing 5-arg-Callable test double
-    # working completely unchanged.
+    # Only the production driver takes the trace and model kwargs; an injected test
+    # runner/fake is a plain 5-arg Callable. Gating on `runner is None` (rather
+    # than duck-typing) keeps every existing test double working completely unchanged.
     track_pid = runner is None
     task_id = task.id
     session_id = f"agent:{project}:{task_id}"

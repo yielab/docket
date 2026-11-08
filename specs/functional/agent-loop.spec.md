@@ -1209,7 +1209,7 @@ class DocketDriver:                            # implements RuntimeDriver
     # before run_agent_turn narrows by role -- see mcp-client.spec.md
 
     def run_turn(
-        self, agent_id, session_key, message, timeout=300, env=None, *, on_spawn=None,
+        self, agent_id, session_key, message, timeout=300, env=None, *,
         trace_project=None, trace_session_key=None, trace_task_id=None, model=None,
     ) -> TurnResult: ...
     def list_sessions(self, agent_id) -> list[SessionSummary]: ...
@@ -1218,8 +1218,6 @@ class DocketDriver:                            # implements RuntimeDriver
 
 def default_driver() -> DocketDriver: ...
 ```
-
-`on_spawn` is ignored: the loop makes HTTP calls in-process and backs onto no OS process.
 
 ### Tunables
 

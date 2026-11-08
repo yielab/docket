@@ -25,7 +25,6 @@ from docket.kernel.ids import step_session_key
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.platform import git as _git
-from docket.tasks.application import runs as _runs
 from docket.tasks.application.actions import ParkedCall, approved_calls_for
 from docket.tasks.application.record import (
     UnitContext,
@@ -163,31 +162,12 @@ def _run_hop_turn(
         except ValueError as exc:
             raise DispatchError(f"step {node.step_id!r}: {exc}") from exc
 
-    # Record the production driver's spawned pid as in-flight for
-    # `docket task cancel` — only while the subprocess is actually
-    # running; removed again the moment this attempt returns, so a long
-    # multi-hop task never accumulates stale pids from finished hops.
-    run_id_for_pids = _runs.current_run_id() if ctx.track_pid else None
-    spawned_pid: list[int] = []
-
-    def _on_spawn(pid: int) -> None:
-        spawned_pid.append(pid)
-        if run_id_for_pids is not None:
-            _runs.add_hop_pid(run_id_for_pids, pid)
-
-    def _call(turn_message: str) -> _rd.TurnResult:
-        spawned_pid.clear()
-        run_res = _run(turn_message)
-        if run_id_for_pids is not None and spawned_pid:
-            _runs.remove_hop_pid(run_id_for_pids, spawned_pid[-1])
-        return run_res
-
     def _run(turn_message: str) -> _rd.TurnResult:
         if ctx.track_pid:
             # `ctx.run` is typed as the plain 5-arg `Runner` Callable (every
             # test double's exact shape); calling the concrete production
             # driver directly here (rather than through `ctx.run`) is what
-            # lets it take the extra `on_spawn` kwarg type-safely.
+            # lets it take the trace and model kwargs type-safely.
             driver: _rd.RuntimeDriver = _dr.default_driver()
             return driver.run_turn(
                 member_id,
@@ -195,7 +175,6 @@ def _run_hop_turn(
                 turn_message,
                 hop_timeout,
                 env,
-                on_spawn=_on_spawn,
                 trace_project=ctx.project,
                 trace_session_key=ctx.session_id,
                 trace_task_id=ctx.task_id,
@@ -207,9 +186,9 @@ def _run_hop_turn(
     if failed_hop is not None:
         pinned = tuple(failed_hop.artifact.files_changed) if failed_hop.artifact else ()
         message = _continuation_text(ctx, prior, failed_hop.error, _summary_of(failed_hop), pinned)
-    run_res = _call(message)
+    run_res = _run(message)
     if run_res.ok and isinstance(node.gate, _gates.VerdictGate):
-        run_res = _reask_unmarked_verdict(ctx, role, node.gate, run_res, _call)
+        run_res = _reask_unmarked_verdict(ctx, role, node.gate, run_res, _run)
     return run_res, 1 + run_res.request_retries
 
 

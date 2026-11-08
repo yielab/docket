@@ -142,7 +142,6 @@ class DocketDriver:
         timeout: int = 300,
         env: dict[str, str] | None = None,
         *,
-        on_spawn: Callable[[int], None] | None = None,
         trace_project: str | None = None,
         trace_session_key: str | None = None,
         trace_task_id: str | None = None,
@@ -155,9 +154,7 @@ class DocketDriver:
         misconfiguration, not an ordinary turn failure, and every production call site (``hops/application/executor.py``'s
         pipeline runner) already lets a raised ``DispatchError``
         propagate to its own settle/fail path rather than treating this driver as
-        exception-free. ``on_spawn`` is ignored: this driver backs onto no OS process to
-        track -- the loop makes HTTP calls in-process -- and the Protocol allows a
-        process-less driver to ignore it. ``timeout`` overrides
+        exception-free. ``timeout`` overrides
         ``LoopConfig.wall_clock_timeout_s`` directly, the same per-hop figure ``hops/application/runner.py``
         already resolves, not a second independently-tuned number. ``model``, when given, wins
         over *agent_id*'s own configured model for this call's endpoint only -- a caller (e.g. a
@@ -374,7 +371,6 @@ class DocketDriver:
             totals.input_tokens += record.usage.input_tokens
             totals.output_tokens += record.usage.output_tokens
             totals.cache_read += record.usage.cached_tokens
-            totals.cache_write += record.usage.cache_write_tokens
             totals.turns += record.usage.turns
         return UsageReport(totals=totals, by_day=[days[date] for date in sorted(days)])
 

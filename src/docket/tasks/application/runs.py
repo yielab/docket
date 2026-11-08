@@ -220,7 +220,6 @@ def finish_run(
     state: RunTerminalState,
     task_ids: list[str] | None = None,
     error: str = "",
-    preserve_cancelled: bool = False,
 ) -> bool:
     """Atomically mark a run terminal (including ``cancelled``) and report whether it won; an
     unknown run is a no-op. *task_ids*, when given, replaces the record's task-id list; *error*
@@ -359,9 +358,8 @@ def add_hop_pid(run_id: str, pid: int) -> None:
     """Record a newly-spawned hop subprocess's pid as in-flight for *run_id*.
 
     ``pids`` is a *list*, not a scalar -- a ``parallel`` pipeline step can
-    have more than one hop in flight at once. Reached only through a driver
-    that spawns an OS process; the production ``DocketDriver`` ignores
-    ``on_spawn`` since it backs onto none. No-op if *run_id* is unknown."""
+    have more than one hop in flight at once. Reached only from the trace of a
+    process-spawning tool call (``driver_support``). No-op if *run_id* is unknown."""
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
         runs = _runs_list(doc)
@@ -567,7 +565,6 @@ def execute(run_id: str, fn: Callable[[], list[Any]]) -> list[Any] | None:
             run_id,
             state="failed",
             error=error_text,
-            preserve_cancelled=True,
         )
         if applied:
             _emit_error_trace(project, run_id, source, error_text)
@@ -606,7 +603,6 @@ def execute(run_id: str, fn: Callable[[], list[Any]]) -> list[Any] | None:
         state=state,
         task_ids=task_ids,
         error=error_text,
-        preserve_cancelled=True,
     )
     if failures and not cancellations and applied:
         _emit_error_trace(project, run_id, source, error_text)
