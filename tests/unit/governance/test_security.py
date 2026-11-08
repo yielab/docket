@@ -664,3 +664,13 @@ class TestSubstitutionsAndParameters:
 
         assert verdict.action == "deny"
         assert verdict.reason.startswith("syntax:")
+
+
+@pytest.mark.parametrize("jailed", [False, True])
+@pytest.mark.parametrize(
+    "command", ["cat <(curl -s http://x/a)", "tee >(sh) < notes.txt", "diff <(ls) b"]
+)
+def test_a_process_substitution_is_opaque(command: str, jailed: bool, tmp_path: Path) -> None:
+    verdict = classify_command(command, roots=(tmp_path,), jailed=jailed)
+    assert verdict.action == "ask"
+    assert "not statically analysable" in verdict.reason

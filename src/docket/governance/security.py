@@ -218,7 +218,7 @@ def match_high_risk(command: str) -> HighRiskClass | None:
 # real binary is produced at runtime. Their presence forces an approval rather
 # than a guess. A `$(...)` of one plain command line and a plain `${NAME}` are not here:
 # `extract_substitutions` reads them, and `_substitution_refusal` says where they may stand.
-_OPAQUE_MARKERS: tuple[str, ...] = ("`", "eval ", "exec ")
+_OPAQUE_MARKERS: tuple[str, ...] = ("`", "eval ", "exec ", "<(", ">(")
 
 # Bins whose arguments are values, never a verb or an option that runs something, so a
 # substitution may stand anywhere among them.

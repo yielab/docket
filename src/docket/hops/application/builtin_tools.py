@@ -390,12 +390,13 @@ _GREP_DESCRIPTION = (
 
 
 _ASKING = (
-    "output redirections to files outside the workspace, `$(`, backticks, `${`, `eval`, `exec`, "
+    "output redirections to files outside the workspace, a `$(...)` whose command needs approval, "
+    "a nested or multi-line `$(`, a `${...}` with an operator, `<(`, backticks, `eval`, `exec`, "
     "`sed -i`, `find -exec` and high-risk actions (publishing, deploying, pushing to main)"
 )
 _EXTRA_BINS_SHOWN = 20
-# A model that thinks its directory drifted reaches for `cd "$(git rev-parse --show-toplevel)"`,
-# which asks (security-gates.spec.md, In-turn tool-call gate 15).
+# A model that thinks its directory drifted reaches for `cd "$(git rev-parse --show-toplevel)"`;
+# saying where every call starts makes the search unnecessary.
 _WHERE_A_CALL_RUNS = (
     "Each call is a new shell that starts at the workspace root, so a `cd` does not carry over "
     "and the root never needs finding: give paths relative to it."
@@ -451,7 +452,8 @@ _COMPACT_DESCRIPTIONS = {
     ),
 }
 _COMPACT_ASKING = (
-    "`$(`, `eval`, `sed -i`, writes outside the workspace, publishing and pushing need approval."
+    "A `$(...)` whose command needs approval, backticks, `eval`, `sed -i`, writes outside the "
+    "workspace, publishing and pushing need approval."
 )
 
 

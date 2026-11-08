@@ -212,7 +212,14 @@ class TestBashStatesItsRules:
         assert "Runs without approval: " in stated and "Needs approval: " in stated
         for name in ("git", "pytest", "python3", "rg"):
             assert f" {name}," in stated
-        for rule in ("`sed -i`", "`find -exec`", "`$(`", "backticks", "outside the workspace"):
+        for rule in (
+            "`sed -i`",
+            "`find -exec`",
+            "a `$(...)` whose command needs approval",
+            "`<(`",
+            "backticks",
+            "outside the workspace",
+        ):
             assert rule in stated
 
     def test_it_says_every_call_starts_at_the_workspace_root(self) -> None:

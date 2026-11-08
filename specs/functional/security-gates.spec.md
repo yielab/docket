@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.25.0
+**Version**: 3.25.1
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -52,7 +52,8 @@ and chain (audit.spec.md).
      unescaped newline (`\n`, `\r\n`) **MUST** start a new segment exactly like `;`, since
      `/bin/sh` starts a new command there; a newline inside quotes stays text and a
      backslash-newline is a continuation.
-   - **Substitutions and parameters.** A backtick, `eval ` and `exec ` anywhere in the line are
+   - **Substitutions and parameters.** A backtick, `eval `, `exec ` and a process substitution (`<(`,
+     `>(`) anywhere in the line are
      opaque and **MUST** ask, jailed or not, as does a `$(` that is arithmetic (`$((`), nested,
      empty, spans a newline, holds a `(` or has no closing `)`, a `${` that is not a plain
      parameter, `$IFS` or `${IFS}` (they re-split the line), and any of these `$(`/`${` inside
@@ -1495,7 +1496,8 @@ material, may be read as saying otherwise.
     what needs it: one sentence of the form `Runs without approval: <names>. Needs approval:
     <classes>.` The names are `SAFE_BINS` sorted, then the pod's `allowCommands` additions
     (cut after 20 names with `...`); the classes are every program off that list, output
-    redirections to files outside the workspace, `$(`, backticks, `${`, `eval`, `exec`, `sed -i`,
+    redirections to files outside the workspace, a `$(...)` whose command needs approval, a nested or
+    multi-line `$(`, a `${...}` with an operator, `<(`, backticks, `eval`, `exec`, `sed -i`,
     `find -exec` and the high-risk action classes. For a turn whose `ToolContext.sandbox ==
     "auto"` the allowlist stands down (requirement 1, "Inside the jail"), so the sentence says
     every program runs without approval inside the jail and lists only the classes that still ask.
