@@ -633,6 +633,20 @@ class TestFlush:
         )
         assert (report.failed, report.delivered, report.error) == (1, 1, "")
 
+    def test_flush_notify_channels_returns_the_report(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.operator import inbox as _inbox_mod
+
+        def _boom(**_kw: Any) -> InboxView:
+            raise OSError("pods dir unreadable")
+
+        monkeypatch.setattr(_inbox_mod, "build_inbox", _boom)
+
+        report = _notify.flush_notify_channels(lambda _spec: None)
+
+        assert "pods dir unreadable" in report.error
+
     def test_a_dialect_with_no_sink_is_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._patch_inbox(monkeypatch, InboxView(needs_you=[_approval()]))
         report = _notify.flush([_spec()], lambda _spec: None, now="2026-09-28T00:00:00Z")

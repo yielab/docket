@@ -28,6 +28,7 @@ from docket.kernel import threads as _threads
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
 from docket.operator import load_catalog, save_channel
+from docket.operator.notify import FlushReport
 from docket.platform import store as _store
 from docket.tasks.application import escalation_sweep as _escalation_sweep
 
@@ -62,7 +63,10 @@ class TestSweepRemovesFinishedPushChannels:
         monkeypatch.setattr(
             _server,
             "flush_notify_channels",
-            lambda _sink: present_at_flush.append(f"a2a-{done.id}" in load_catalog().entries),
+            lambda _sink: (
+                present_at_flush.append(f"a2a-{done.id}" in load_catalog().entries),
+                FlushReport(),
+            )[1],
         )
 
         _server._run_sweeps()
@@ -70,6 +74,39 @@ class TestSweepRemovesFinishedPushChannels:
         assert present_at_flush == [True]
         names = set(load_catalog().entries)
         assert f"a2a-{done.id}" not in names and f"a2a-{running.id}" in names
+
+
+class TestSweepSaysWhenTheNotifyFlushFailed:
+    def test_a_flush_that_ended_on_a_store_error_is_named(
+        self, swept_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setattr(
+            _server, "flush_notify_channels", lambda _sink: FlushReport(error="OSError: disk full")
+        )
+
+        _server._run_sweeps()
+
+        assert "[serve] sweep: notify flush: OSError: disk full" in capsys.readouterr().out
+
+    def test_a_channel_whose_delivery_failed_is_counted(
+        self, swept_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setattr(_server, "flush_notify_channels", lambda _sink: FlushReport(failed=2))
+
+        _server._run_sweeps()
+
+        assert "[serve] sweep: notify flush: 2 delivery(ies) failed" in capsys.readouterr().out
+
+    def test_a_clean_flush_prints_nothing_new(
+        self, swept_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setattr(
+            _server, "flush_notify_channels", lambda _sink: FlushReport(events=1, delivered=1)
+        )
+
+        _server._run_sweeps()
+
+        assert "notify flush" not in capsys.readouterr().out
 
 
 class TestSweepRunsRetention:

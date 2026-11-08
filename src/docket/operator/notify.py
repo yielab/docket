@@ -520,8 +520,10 @@ def _flush(
     return FlushReport(events=len(events), delivered=delivered, failed=failed, skipped=skipped)
 
 
-def flush_notify_channels(sink_for: SinkFactory) -> None:
-    """One `operator.notify.flush` call over every catalog channel through *sink_for* -- the
-    periodic half of delivery; `interfaces/cli/commands/run.py::_pod_dispatch` runs the other,
-    foreground half."""
-    _notify.flush(list(_channel.load_catalog().entries.values()), sink_for, now=_clock.stamp())
+def flush_notify_channels(sink_for: SinkFactory) -> FlushReport:
+    """One `operator.notify.flush` call over every catalog channel through *sink_for*, and its
+    report -- the periodic half of delivery; `interfaces/cli/commands/run.py::_pod_dispatch` runs
+    the other, foreground half."""
+    return _notify.flush(
+        list(_channel.load_catalog().entries.values()), sink_for, now=_clock.stamp()
+    )

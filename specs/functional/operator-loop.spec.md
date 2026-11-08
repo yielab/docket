@@ -1,9 +1,9 @@
 # Operator Loop Specification
 
-**Version**: 3.7.0
+**Version**: 3.7.1
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, resolve and answers, the interruption forecast, pre-grants and consultations.
-**Last Updated**: 2026-11-03
+**Last Updated**: 2026-11-08
 
 ## Purpose
 
@@ -369,6 +369,9 @@ CloudEvents 1.0 structured-mode shape. Area 6.1 holds the remaining dialects.
     it once through that one channel's dialect, regardless of its `on` subscription or `enabled`
     flag, reporting success or failure (exit 1). Every periodic sweep of `docket start` (with or
     without `--dispatch`) and `docket run`, after its summary, MUST each call `flush` once;
+    the sweep MUST print `[serve] sweep: notify flush: <FlushReport.error>` when the report carries an
+    `error` and `[serve] sweep: notify flush: <n> delivery(ies) failed` when `failed` is non-zero, and
+    nothing for a clean flush;
     `docket run` prints nothing beyond one warning line naming the failure count when a delivery
     failed and, when the flush found events and nothing delivers (item 17), the text
     `unreached_warning` returns.

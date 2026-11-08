@@ -48,6 +48,7 @@ from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.observability import trace
 from docket.operator import delete_channel
 from docket.operator import flush_notify_channels as flush_notify_channels
+from docket.operator.notify import FlushReport
 from docket.platform import prune_settled_escalations
 from docket.tasks.application import escalation_sweep as _escalation_sweep
 from docket.tasks.application import queue as _queue
@@ -228,10 +229,19 @@ def _run_sweeps(dispatch: bool = False) -> None:
     with contextlib.suppress(Exception):
         finished = finished_channels()
     with contextlib.suppress(Exception):
-        flush_notify_channels(_bootstrap.sink_for)
+        _report_notify_flush(flush_notify_channels(_bootstrap.sink_for))
     for name in finished:
         with contextlib.suppress(Exception):
             delete_channel(name)
+
+
+def _report_notify_flush(report: FlushReport) -> None:
+    """Say on the console what a flush could not do: the stores that ended it, and deliveries
+    that failed (the per-channel record is in `channels-health.json`). A clean flush says nothing."""
+    if report.error:
+        print(f"[serve] sweep: notify flush: {report.error}")
+    if report.failed:
+        print(f"[serve] sweep: notify flush: {report.failed} delivery(ies) failed")
 
 
 def _wait_pass(dispatch: bool) -> None:
