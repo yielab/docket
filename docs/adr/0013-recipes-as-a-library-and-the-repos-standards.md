@@ -64,8 +64,8 @@ still applied only by an operator command.**
    apply a policy pack, `export --force` to `.docket/`, `apply` (all skip), commit — and the
    record names the repository. The repository stays the point of composition; recipes are seeds.
 4. **Three scopes, nearest wins by name.** A directory path as given; else the operator's own
-   `~/.docket/recipes/<name>/`; else the shipped `templates/recipes/<name>/`. This is the
-   extension point: dropping a directory under `~/.docket/recipes/` makes it addressable from
+   `~/.docket/config/recipes/<name>/`; else the shipped `templates/recipes/<name>/`. This is the
+   extension point: dropping a directory under `~/.docket/config/recipes/` makes it addressable from
    `init --recipe` and `pod apply` with no code and no registration.
 5. **A listing, because discovery is the one thing data cannot do for itself.** `docket recipes
    list [--json]` and `docket recipes show <name|dir>` are read-only views over the three scopes:
@@ -104,7 +104,7 @@ policies test` before any agent runs.
    (equal to the directory name) and `description`, an optional body and optional
    `scripts/`/`references/`/`assets/`. Three scopes, nearest wins by name: `<codebase>/.docket/
    skills/`, the pod's `config/skills/` (a recipe's `skills/` is applied there and exported
-   back), `~/.docket/skills/`. Progressive disclosure is literal: the system prompt carries a
+   back), `~/.docket/config/skills/`. Progressive disclosure is literal: the system prompt carries a
    `skills` section of `name: description` lines (descriptions screened through `pre_input`,
    the section capped and reported like every other); the body and a skill's files are read on
    demand through one new built-in tool, `skill`, of kind `read`, dispatched through the same

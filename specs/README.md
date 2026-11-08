@@ -95,16 +95,16 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 
 | Specification | Version | Status |
 | ------------- | ------- | ------ |
-| Agent Lifecycle | 4.1.0 | Complete |
-| Agent Loop | 4.25.1 | Implemented and live |
+| Agent Lifecycle | 4.1.1 | Complete |
+| Agent Loop | 4.25.2 | Implemented and live |
 | API Keys | 2.3.0 | Complete |
-| Audit | 3.5.0 | Implemented |
-| Config Format | 2.12.0 | Implemented |
+| Audit | 3.5.1 | Implemented |
+| Config Format | 2.12.1 | Implemented |
 | Cost Tracking | 2.2.0 | Implemented, recorded dollars unavailable |
 | Model Profiles | 7.5.0 | Complete |
 | Observability Export | 3.3.0 | Implemented and live |
 | Pipeline Format | 4.8.0 | Implemented |
-| Pod Blueprints | 4.14.2 | Implemented |
+| Pod Blueprints | 4.14.3 | Implemented |
 | Pod Dispatch | 12.12.0 | Implemented |
 | Role Archetypes | 5.13.0 | Implemented |
 | Security Gates | 3.24.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
@@ -113,16 +113,16 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Session History | 1.23.0 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 5.0.0 | Implemented |
-| Trace Store | 6.1.0 | Implemented and live |
+| Trace Store | 6.1.1 | Implemented and live |
 | Workspace Structure | 4.3.0 | Complete |
-| CLI Interface | 5.17.0 | Complete |
+| CLI Interface | 5.17.2 | Complete |
 | MCP Client | 3.3.1 | Implemented and wired to the live turn path |
 | Runtime Library | 3.0.0 | Implemented (artifact-tested; **not published to any index**) |
 | MCP Server | 3.0.0 | Implemented |
-| CLI JSON Shapes | 5.8.0 | Complete |
+| CLI JSON Shapes | 5.8.1 | Complete |
 | docket-meta schema | 5.10.0 | Complete |
 | Docket Store | 3.5.0 | Implemented |
-| Operator API | 7.31.0 | Implemented (Phase 43, ADR 0027) |
+| Operator API | 7.31.1 | Implemented (Phase 43, ADR 0027) |
 | A2a Binding | 1.3.2 | Implemented |
 | Serve Read API | 6.9.0 | Stable |
 | Adoption Benchmark | 2.3.1 | Implemented |
@@ -130,7 +130,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Test Framework | 5.4.0 | Active |
 | Starter Journey | 2.1.0 | Implemented |
 | Operator Loop | 3.7.1 | Implemented |
-| User Stories | 2.3.0 | Active |
+| User Stories | 2.3.1 | Active |
 
 ## Tools
 

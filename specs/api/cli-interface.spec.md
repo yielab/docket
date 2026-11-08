@@ -1,9 +1,9 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.17.1
+**Version**: 5.17.2
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
-**Last Updated**: 2026-11-07
+**Last Updated**: 2026-11-08
 
 ## Purpose
 
@@ -605,7 +605,7 @@ scopes `resolve_recipe` reads. Installs, removes, or fetches nothing; `docket po
 init --recipe` remain the only writers
 **Syntax**: `docket pod recipes [NAME|DIR] [--json]`
 **Output**: With no argument, a table (NAME, SCOPE, BRINGS, DESCRIPTION) of every recipe
-`list_recipes()` returns -- the operator's own `$DOCKET_HOME/recipes/<name>/` before the shipped
+`list_recipes()` returns -- the operator's own `$DOCKET_HOME/config/recipes/<name>/` before the shipped
 library, nearest scope wins by name, sorted by name. BRINGS is derived, never a stored field: the
 non-empty parts of the recipe's summary joined with `+` in the order roles, policies, members,
 pipeline, plugins, skills, mcp-servers, settings (`roles+policies+members+pipeline`, `policies`,

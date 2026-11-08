@@ -327,7 +327,7 @@ Example: docket pod check "git push origin production" --role implementer
 
 List the recipe library, or show one recipe.
 
-Recipes resolve nearest scope first: your own ~/.docket/recipes/ before the
+Recipes resolve nearest scope first: your own ~/.docket/config/recipes/ before the
 shipped library. Nothing is installed; `pod update` installs.
 
 Example: docket pod recipes tdd

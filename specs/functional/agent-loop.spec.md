@@ -1,10 +1,10 @@
 # Agent Loop Specification
 
-**Version**: 4.25.1
+**Version**: 4.25.2
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 reduces a request that does not fit, and gates every tool call through `dispatch_tool` until a typed stop fires.
-**Last Updated**: 2026-11-07
+**Last Updated**: 2026-11-08
 
 ## Purpose
 
@@ -259,7 +259,7 @@ This specification does NOT cover:
     **Skills index.** A `# Skills` section lists every skill
     `discover_skills(project, project_roots[0])` resolves — three scopes, nearest wins by name: the
     codebase's `.docket/skills/`, the pod's own `config/skills/`, and the operator's skills
-    directory (`SKILLS_DIR`, default `~/.docket/skills/`) — as `- <name>: <description>` lines
+    directory (`SKILLS_DIR`, default `~/.docket/config/skills/`) — as `- <name>: <description>` lines
     sorted by name, each description screened through the same `pre_input` hook
     (audited `identity.skill_blocked`/`identity.skill_warn`). A skill whose
     `SKILL.md` frontmatter is invalid, or whose `name` disagrees with its directory, is skipped and

@@ -1,8 +1,8 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.31.0
+**Version**: 7.31.1
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
-**Last Updated**: 2026-11-07
+**Last Updated**: 2026-11-08
 
 ## Purpose
 
@@ -103,7 +103,7 @@ body fields with no `docket task add` flag.
 | `externalRef` | string, 1-200 chars | a caller label, stored verbatim, never interpreted; filterable |
 | `idempotencyKey` | string, 1-200 chars | when a task in this pod's queue already carries it, nothing is enqueued and that task is returned with `200`; a new task answers `201` |
 | `baseRef` | string | a branch name or commit the task worktree starts from (`git worktree add -b <task-branch> <dir> <baseRef>`); unset means the codebase's HEAD. Validated at claim, not at enqueue: an unresolvable ref, a `workdir` pod, or a pod with no Implementer codebase to make the worktree from, fails the task before any hop with `failureKind: "base_ref"` (see "A task on a `workdir` pod") |
-| `pipeline` | string | the name of a pod-local pipeline (`<pod config dir>/pipelines/<name>.yaml`) or of a recipe that carries a `pipeline.yaml`, the operator's own (`~/.docket/recipes/`) before the shipped ones (`docket pod recipes`); unset means the pod's effective pipeline. Resolved at claim; a name that resolves to nothing valid, a pipeline with a step whose role the pod lacks (`pipeline 'tdd' (recipe:tdd) names roles this pod does not have: reviewer (step review)`; `docket task retry` re-queues it once the pod has the role), or a `gate` that cannot be honoured, fails the task before any hop with `failureKind: "pipeline"` |
+| `pipeline` | string | the name of a pod-local pipeline (`<pod config dir>/pipelines/<name>.yaml`) or of a recipe that carries a `pipeline.yaml`, the operator's own (`~/.docket/config/recipes/`) before the shipped ones (`docket pod recipes`); unset means the pod's effective pipeline. Resolved at claim; a name that resolves to nothing valid, a pipeline with a step whose role the pod lacks (`pipeline 'tdd' (recipe:tdd) names roles this pod does not have: reviewer (step review)`; `docket task retry` re-queues it once the pod has the role), or a `gate` that cannot be honoured, fails the task before any hop with `failureKind: "pipeline"` |
 | `gate` | object | `{"command": string, "timeoutS"?: int, "map"?: {exit code: label}}` -- an `ExternalGate` (ADR 0025) added **after** the last implementer step's own gate, with the same labels and `on:` routing. It never replaces a gate the pipeline declares |
 | `maxTokens` | int > 0 | a budget over the task's counted usage (`input - cached + output` summed over hops; a cache read is not counted); each hop runs with a turn token budget of `maxTokens - used so far`; a hop that would start with nothing left, or a turn that stops on that budget, fails the task with `failureKind: "budget"` |
 | `prepare` | string | the install command run in this task's worktree before its first hop; `""` or `none` runs nothing and wins over the pod's `prepare` and the lockfile. Unset means the pod's `prepare` setting, else the command for the worktree's lockfile (`pod-dispatch.spec.md` "Task preparation"). Stored on the task record and shown by `GET /tasks/<pod>/<id>`; an install that fails settles the task before any hop with `failureKind: "prepare"` and the output tail as `reason`. A newline or NUL, or more than 1,000 characters, is `400`. On a `workdir` pod a command fails the task at claim with `failureKind: "prepare"`; `""` or `none` is accepted (see "A task on a `workdir` pod") |

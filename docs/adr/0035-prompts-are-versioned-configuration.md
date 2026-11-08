@@ -59,8 +59,8 @@ Read at `52c22f89`; every locator is a symbol or a line, re-locate with `rg -n` 
    `files_changed`/`diff` from the git probe (`:342`). The next hop gets the whole text, trimmed to
    budget.
 8. **Resolution orders differ by kind.** Skills `codebase .docket/skills > pod config/skills >
-   ~/.docket/skills` (`teams/workspace/skills.py::discover_skills`, `:109`); pipelines `pod
-   config/pipelines > ~/.docket/recipes > shipped` (`steps.py::_task_pipeline_file`, `:136`);
+   ~/.docket/config/skills` (`teams/workspace/skills.py::discover_skills`, `:109`); pipelines `pod
+   config/pipelines > ~/.docket/config/recipes > shipped` (`steps.py::_task_pipeline_file`, `:136`);
    roles `pod roles.json > starter > built-in`; policies global plus pod, as a union
    (`governance/policy.py:380-382`); plugins global plus pod (`governance/plugins.py:78`); MCP
    servers pod plus global (`teams/mcp_servers.py:26-32`). A pod binds its pipeline by sha256:

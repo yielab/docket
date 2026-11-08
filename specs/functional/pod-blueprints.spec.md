@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 4.14.2
+**Version**: 4.14.3
 **Status**: Implemented
 **Last Updated**: 2026-11-08
 
@@ -359,7 +359,7 @@ overlay, policies, members, pipeline binding, settings) into one command.
    directory through this section's own plan and apply (never a second write path), and the
    resulting `pod.apply` audit entry is this requirement's, not a duplicate. `docket init --recipe
    <name|dir>` **MUST** resolve *name|dir* as: a directory path if one exists at that location,
-   else the operator's own `$DOCKET_HOME/recipes/<name|dir>`, else a shipped recipe: three scopes,
+   else the operator's own `$DOCKET_HOME/config/recipes/<name|dir>`, else a shipped recipe: three scopes,
    nearest wins by name (ADR 0013). It applies the result the same way; an unresolvable name
    **MUST** exit 1 naming both scopes' recipe names, before provisioning. `--recipe` together with
    a present `.docket/` **MUST** exit 1 naming both sources, before provisioning: two sources of

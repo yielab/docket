@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 5.8.0
+**Version**: 5.8.1
 **Status**: Complete. The shapes were checked against the commands run with `--json` in a throwaway `DOCKET_HOME` and against their code; shapes that need a live run or a hand-built state (run records, pending approvals) were checked against the code alone.
-**Last Updated**: 2026-11-05
+**Last Updated**: 2026-11-08
 
 ## Purpose
 
@@ -429,7 +429,7 @@ excludes every other configured server, never merely relabels it.
 
 `skills` carries its own, three-value scope vocabulary — `"codebase"` (this agent's own
 codebase root's `.docket/skills/`), `"pod"` (this pod's own `config/skills/`), or
-`"global"` (the operator's `~/.docket/skills/`) — nearest wins by name, and only the
+`"global"` (the operator's `~/.docket/config/skills/`) — nearest wins by name, and only the
 winning scope's skill is listed (ADR 0013).
 
 ```json
