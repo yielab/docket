@@ -998,5 +998,13 @@
     "heading": "✓ PHASE 70 CLOSED 2026-11-07 — guardrails with two numbers: one source per check, framed tool results, and the gaps the audit found (D-91, accepted 2026-11-06; starts after P69-14)",
     "bytes": 25879,
     "sha256": "3c5a63bbc41dd4be25ff8518ee148663950144d77be5cec6a7a20b9650168433"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "✓ PHASE 71 CLOSED 2026-11-08 — WAVE 71 · what the follow-ups' fired triggers and verified drift leave, and a deep clean (triage 2026-11-08, no new decision)",
+    "bytes": 30718,
+    "sha256": "6bbe2d1bbe721bfc62d1fd0453d757f39f4c14c0896766c6978ed2033aae4d5e"
   }
 ]
