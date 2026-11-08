@@ -12,7 +12,7 @@ presets:
   - name: openrouter-free
     ranks: {economy: openrouter/free, standard: openrouter/free, premium: openrouter/free}
     note: >-
-      Experimental zero-cost router; model selection and availability can change per call.
+      Experimental router over OpenRouter's free models; model selection and availability can change per call.
       Free account at openrouter.ai.
   - name: openrouter
     ranks:
