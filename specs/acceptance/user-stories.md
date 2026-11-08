@@ -1,6 +1,6 @@
 # User Stories and Acceptance Criteria
 
-**Version**: 2.3.0
+**Version**: 2.3.1
 **Status**: Active
 **Last Updated**: 2026-11-03
 
@@ -60,7 +60,7 @@ sections, not story coverage.
 The surface is `docket pod reset <member>`.
 
 **Acceptance Criteria:**
-- [ ] `pod reset` resets the member's HEARTBEAT.md and leaves MEMORY.md, `memory/` and the
+- [ ] `pod reset` resets the member's HEARTBEAT.md and leaves MEMORY.md and the
       pod's memory alone (`test_leaves_memory_md_the_daily_logs_and_the_pod_memory_alone`)
 - [ ] `pod reset` rebuilds SOUL.md, AGENTS.md and the other generated workspace files from the
       member's metadata (`test_rebuilds_workspace_files_from_metadata`)

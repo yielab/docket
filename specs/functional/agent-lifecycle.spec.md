@@ -1,6 +1,6 @@
 # Agent Lifecycle Specification
 
-**Version**: 4.1.0
+**Version**: 4.1.1
 **Status**: Complete. Pods and their members are created, shown, added to, reset, removed and
 deleted as described below; `docket init --from` provisions pods from a spec file (see
 Declarative Provisioning).
@@ -150,7 +150,7 @@ write anything.
 
 1. **MUST** confirm exactly as `pod remove` does
 2. **MUST NOT** call a model: there is no distillation turn (ADR 0028)
-3. **MUST NOT** read, move, delete or clear `memory/`, `MEMORY.md` (the operator's notes) or the
+3. **MUST NOT** read, move, delete or clear `MEMORY.md` (the operator's notes) or the
    pod's `memory.json` (workspace-structure.spec.md "Pod memory"); a pod's learned memory is
    decided per entry, never by a member reset
 4. **MUST** replace HEARTBEAT.md with a fresh ledger. For a pod Lead this also drops the

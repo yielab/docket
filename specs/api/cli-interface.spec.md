@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.17.0
+**Version**: 5.17.1
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-11-07
@@ -469,7 +469,7 @@ Each state-changing verb ends with one `Next:` line on stderr.
 - `remove MEMBER [--yes]`: remove one member. Confirms on a terminal; off one it exits 1 naming
   `--yes`. The Lead is refused ("delete the pod instead").
 - `reset MEMBER [--yes]`: rebuild the member's workspace files from metadata and reset its
-  ledger; no model call, and `MEMORY.md`, `memory/` and the pod's memory are left alone
+  ledger; no model call, and `MEMORY.md` and the pod's memory are left alone
   (agent-lifecycle.spec.md "Member Reset").
 - `set KEY VALUE [--member ID]` / `unset KEY [--member ID]`: the one writer of every
   `PodSettings` key (`budgetTokens` included); `verify` with `--member` writes or clears an

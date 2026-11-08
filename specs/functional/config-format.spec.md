@@ -1,6 +1,6 @@
 # Configuration Document Format Specification
 
-**Version**: 2.12.0
+**Version**: 2.12.1
 **Status**: Implemented
 **Last Updated**: 2026-11-05
 
@@ -112,7 +112,7 @@ This specification does NOT cover:
      instructions file) followed by `validate_archetype_dict(name, doc)` (the structure check and
      a dry-run render of both templates); an `ArchetypeError` or a non-empty error list is mapped
      to `ConfigDocError(path, str(exc))`
-   - `pipeline` -> `load_pipeline(text)` (the raw file text, not the parsed dict: it does its
+   - `pipeline` -> `load_pipeline(text, *, roles)` (the raw file text, not the parsed dict: it does its
      own parse)
    - `policy` -> `validate_policy(path)` (the file path: this parser reads the file itself, JSON
      or YAML, short or canonical form)

@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 6.1.0
+**Version**: 6.1.1
 **Status**: Implemented and live. Every component that traces writes through `trace_event` into
 one append-only JSONL file per session; the periodic sweep of `docket start` closes stale traces
 and expires old ones.
@@ -250,6 +250,10 @@ report into a trace event, so an external plan-of-record can show and cancel a l
     event carries `exitCode` if the command had already exited, otherwise `run_bash` kills the
     group and the event carries `signal`); a `Popen` call that raises before a process exists
     **MUST NOT** produce either event.
+    The exception to items 30-32 is an MCP server session (`agent/tools/mcp_client.py`): its
+    `process_started` and `process_exited` carry `{"tool": "mcp", "server": <name>}`, and
+    `process_exited` adds `"reason": <text>` (for example `died`, `timeout` or `turn_end`). Neither
+    carries `pgid`, so the driver registers no pid for them against the run.
 33. A turn with no process-spawning tool call **MUST** produce a trace carrying no
     `process_started`/`process_exited` events at all.
 34. When a dispatch run is current (`current_run_id()` is not `None`) at the moment a

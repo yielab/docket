@@ -1,6 +1,6 @@
 # Audit Log Specification
 
-**Version**: 3.5.0
+**Version**: 3.5.1
 **Status**: Implemented. Recording, the hash chain, rotation continuation, the head sidecar and
 `docket log` / `docket log verify` are live; the log is `$DOCKET_HOME/audit.log`. Requirement 1
 lists every action the code writes; Requirement 2 says what the log cannot see.
@@ -83,7 +83,7 @@ policy (see security-gates.spec.md), or token accounting (see cost-tracking.spec
      naming every member created), `pod.remove`, `pod.reset`, `pod.delete` (one line for the whole
      pod), `pod.set-verify` and `pod.unset-verify` (name the member and the validated command,
      never its output), `pod.config` (`action=set|unset`, key and value), `pod.apply`, `pod.export`,
-     `pod.sync` (a re-render of stale member files), `pod.worktrees.prune` (a forced prune,
+     `pod.sync` (a re-render of stale member files), `pod.network_widen` (a network grant, naming its overrides) and `pod.network_narrow` (the grant withdrawn, naming the action), `pod.fetch_widen` (the fetch reach opened to any host) and `pod.fetch_narrow` (that any-host grant revoked), `pod.worktrees.prune` (a forced prune,
      with the problems), `pod.memory.<action>` (`approved`, `refused`, `reverted`, or the status
      an automatically recorded entry lands in), `pod.memory.reset`, `pod.memory.error`, and `repo.allow` (a repository's
      review code was accepted).
