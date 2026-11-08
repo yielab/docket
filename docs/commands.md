@@ -1062,23 +1062,23 @@ No command emits any other exit code today.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DOCKET_HOME` | Root of everything docket owns — the only state root; no external daemon directory exists | `~/.docket` |
-| `TRACES_DIR` | Root of per-session trace JSONL files (`docket task trace`) | `$DOCKET_HOME/traces` |
-| `POLICIES_DIR` | Root of installed/edited policy JSON (`docket pod policies`, `docket setup sandbox`) | `$DOCKET_HOME/policies` |
-| `PLUGINS_DIR` | Root of operator-applied predicate plugins (`docket pod policies --plugins`, a policy's `when.plugin`) | `$DOCKET_HOME/plugins` |
-| `SKILLS_DIR` | The operator's own Agent Skills, the outermost of the three scopes `agent.skills.discover_skills` reads | `$DOCKET_HOME/skills` |
-| `APPROVALS_DIR` | Where the approval records behind `docket task answer` live | `$DOCKET_HOME/approvals` |
-| `CORRECTIONS_DIR` | Per-pod append-only ledger of operator decisions and rejections (`docket task show`) | `$DOCKET_HOME/corrections` |
-| `SCHEDULE_FILE` | The persisted pod schedules (`docket pod set schedule`) | `$DOCKET_HOME/docket-schedules.json` |
-| `RUNS_FILE` | The persisted dispatch-run registry — one record per `dispatch_pod` invocation | `$DOCKET_HOME/docket-runs.json` |
-| `SESSIONS_DIR` | Root of durable per-session turn history (`agent/session.py`) | `$DOCKET_HOME/sessions` |
-| `MCP_SERVERS_FILE` | Registry of configured external MCP tool servers (`docket setup mcp`) | `$DOCKET_HOME/docket-mcp-servers.json` |
-| `PROVIDERS_FILE` | Global provider catalog scope (`docket setup provider add`, `models/catalog.py`) | `$DOCKET_HOME/docket-providers.json` |
-| `EXPORTERS_FILE` | Global exporter catalog scope (`observability/exporter.py`) | `$DOCKET_HOME/docket-exporters.json` |
-| `EXPORTERS_HEALTH_FILE` | Per-exporter delivery counters and last-error state (`observability/exporter.py::read_health`) | `$DOCKET_HOME/exporters-health.json` |
-| `CHANNELS_FILE` | Global channel catalog scope (`operator/channel.py`) | `$DOCKET_HOME/docket-channels.json` |
-| `NOTIFY_STATE_FILE` | `operator/notify.py::flush`'s dedupe snapshot, so two flushes over the same state deliver each event once | `$DOCKET_HOME/notify-state.json` |
-| `CHANNELS_HEALTH_FILE` | Per-channel delivery counters and last-error state (`operator/notify.py::flush`) | `$DOCKET_HOME/channels-health.json` |
-| `FLEET_FILE` | Agent registration, channel bindings, gate/isolation flags, org default model | `$DOCKET_HOME/fleet.json` |
+| `TRACES_DIR` | Root of per-session trace JSONL files (`docket task trace`) | `$DOCKET_HOME/state/traces` |
+| `POLICIES_DIR` | Root of installed/edited policy JSON (`docket pod policies`, `docket setup sandbox`) | `$DOCKET_HOME/config/policies` |
+| `PLUGINS_DIR` | Root of operator-applied predicate plugins (`docket pod policies --plugins`, a policy's `when.plugin`) | `$DOCKET_HOME/config/plugins` |
+| `SKILLS_DIR` | The operator's own Agent Skills, the outermost of the three scopes `agent.skills.discover_skills` reads | `$DOCKET_HOME/config/skills` |
+| `APPROVALS_DIR` | Where the approval records behind `docket task answer` live | `$DOCKET_HOME/state/approvals` |
+| `CORRECTIONS_DIR` | Per-pod append-only ledger of operator decisions and rejections (`docket task show`) | `$DOCKET_HOME/state/corrections` |
+| `SCHEDULE_FILE` | The persisted pod schedules (`docket pod set schedule`) | `$DOCKET_HOME/state/docket-schedules.json` |
+| `RUNS_FILE` | The persisted dispatch-run registry — one record per `dispatch_pod` invocation | `$DOCKET_HOME/state/docket-runs.json` |
+| `SESSIONS_DIR` | Root of durable per-session turn history (`agent/session.py`) | `$DOCKET_HOME/state/sessions` |
+| `MCP_SERVERS_FILE` | Registry of configured external MCP tool servers (`docket setup mcp`) | `$DOCKET_HOME/config/docket-mcp-servers.json` |
+| `PROVIDERS_FILE` | Global provider catalog scope (`docket setup provider add`, `models/catalog.py`) | `$DOCKET_HOME/config/docket-providers.json` |
+| `EXPORTERS_FILE` | Global exporter catalog scope (`observability/exporter.py`) | `$DOCKET_HOME/config/docket-exporters.json` |
+| `EXPORTERS_HEALTH_FILE` | Per-exporter delivery counters and last-error state (`observability/exporter.py::read_health`) | `$DOCKET_HOME/state/exporters-health.json` |
+| `CHANNELS_FILE` | Global channel catalog scope (`operator/channel.py`) | `$DOCKET_HOME/config/docket-channels.json` |
+| `NOTIFY_STATE_FILE` | `operator/notify.py::flush`'s dedupe snapshot, so two flushes over the same state deliver each event once | `$DOCKET_HOME/state/notify-state.json` |
+| `CHANNELS_HEALTH_FILE` | Per-channel delivery counters and last-error state (`operator/notify.py::flush`) | `$DOCKET_HOME/state/channels-health.json` |
+| `FLEET_FILE` | Agent registration, channel bindings, gate/isolation flags, org default model | `$DOCKET_HOME/state/fleet.json` |
 | `AUDIT_LOG_MAX_BYTES` | Audit-log rotation threshold (`docket log`) | `5242880` (5 MiB) |
 | `SESSION_TIMEOUT` | Age past which an expired approval is denied (fail-closed) | `3600` |
 | `APPROVAL_TIMEOUT` | The async approval-gate window (`hops/gates/pre_hop.py`'s `_gate_pre_hop_approval`) — a task waits `waiting_approval`; no process or turn is blocked on it | `900` |
