@@ -194,8 +194,12 @@ def _plan_policies(directory: Path, project: str) -> tuple[list[ApplyItem], list
         # Compared by parsed (canonical) content, not raw text: an export's regenerated
         # short-form YAML -- reordered keys, an added `# yaml-language-server` header --
         # otherwise never plans `skip` even when it is the exact same policy already applied.
+        # The same policy in other bytes is still `skip`, but its overlay copy is refreshed so
+        # that it hashes to what `applied.lock` records.
         if dest.is_file() and _policy.read_policy(dest) == _policy.read_policy(policy_file):
             action: ApplyAction = "skip"
+            if dest.read_text(encoding="utf-8") != text:
+                writes.append(_PolicyWrite(name=policy_file.name, text=text))
         else:
             action = "replace" if dest.is_file() else "add"
             writes.append(_PolicyWrite(name=policy_file.name, text=text))

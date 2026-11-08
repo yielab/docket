@@ -533,6 +533,30 @@ def test_export_then_apply_round_trip_matches_pod_show(
             )
 
 
+def test_an_export_applied_back_unchanged_reads_as_not_drifted(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Export a recipe-applied pod and apply the export to the same pod: every item plans
+    `skip` yet the overlay hashes to what `applied.lock` records, so `drift` stays `no`. An
+    edit to one exported role file then reads `yes` until the next apply."""
+    project = "roundtrip"
+    member = f"{project}-security-vetter"
+    with _seed_fixture_pod(tmp_path, project):
+        _write.apply(_pod_apply.plan_apply(project, RECIPES_DIR / "secure-build"))
+        export_dir = tmp_path / "exported"
+        assert _pod_cli("export", str(export_dir), "--pod", project).exit_code == 0
+
+        _write.apply(_pod_apply.plan_apply(project, export_dir))
+        assert _explain_json(member, capsys)["drift"] == "no"
+
+        role_md = export_dir / "roles" / "security-vetter.md"
+        role_md.write_text(role_md.read_text(encoding="utf-8") + "\nAn added rule.\n")
+        assert _explain_json(member, capsys)["drift"] == "yes"
+
+        _write.apply(_pod_apply.plan_apply(project, export_dir))
+        assert _explain_json(member, capsys)["drift"] == "no"
+
+
 def test_export_writes_only_this_pods_own_scope_never_global(tmp_path: Path) -> None:
     """A fleet-wide policy, installed alongside this pod's own pod-scoped role/policy, must
     never appear in an export."""

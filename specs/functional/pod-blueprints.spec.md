@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 4.14.3
+**Version**: 4.14.4
 **Status**: Implemented
 **Last Updated**: 2026-11-08
 
@@ -324,7 +324,11 @@ overlay, policies, members, pipeline binding, settings) into one command.
    replaced or removed; MCP servers the directory does not name are kept; a role, policy, plugin,
    skill, server, pipeline binding, or setting already present with different content plans as
    `replace`. Applying the same directory twice in a row **MUST** plan every item `skip` the second
-   time and write nothing. `--dry-run` **MUST** print the plan and write nothing. A setting that
+   time and write nothing. A role or policy whose parsed content matches but whose bytes differ (an
+   export regenerates the short form under a schema header) still plans `skip`, and the update
+   rewrites its overlay copy to the directory's bytes so the copy hashes to the `sha256` the lock
+   records; `docket pod show` then reports `drift: no` for a pod whose own export was applied
+   back unedited. `--dry-run` **MUST** print the plan and write nothing. A setting that
    plans `skip` because the pod holds that value by default **MUST** carry the note `already the
    default`, printed on its plan line (`[skip] setting: approvalMode (already the default)`) and
    returned as the item's `note`. `--json` prints `{"items": [...]}`, each item
