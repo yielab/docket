@@ -20,8 +20,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from docket.governance.command_lexer import (
+    SUBSTITUTION_MARK,
     Segment,
     cut_quoted_heredocs,
+    extract_substitutions,
     split_segments,
     starts_background,
     unwrap,
@@ -214,8 +216,23 @@ def match_high_risk(command: str) -> HighRiskClass | None:
 
 # Substrings that make a command line impossible to classify statically: the
 # real binary is produced at runtime. Their presence forces an approval rather
-# than a guess.
-_OPAQUE_MARKERS: tuple[str, ...] = ("$(", "`", "${", "eval ", "exec ")
+# than a guess. A `$(...)` of one plain command line and a plain `${NAME}` are not here:
+# `extract_substitutions` reads them, and `_substitution_refusal` says where they may stand.
+_OPAQUE_MARKERS: tuple[str, ...] = ("`", "eval ", "exec ")
+
+# Bins whose arguments are values, never a verb or an option that runs something, so a
+# substitution may stand anywhere among them.
+_VALUE_ARG_BINS: frozenset[str] = frozenset(
+    {"echo", "printf", "cd", "pwd", "test", "[", "dirname", "basename", "realpath"}
+)
+# Bins whose arguments are paths: a substitution may stand as a whole path component.
+_PATH_ARG_BINS: frozenset[str] = frozenset(
+    {"ls", "cat", "head", "tail", "wc", "stat", "file", "tree"}
+)
+# Options whose value is a directory or file, so a substitution after one is data.
+_PATH_VALUE_OPTS: frozenset[str] = frozenset(
+    {"-C", "-f", "--prefix", "--directory", "--git-dir", "--work-tree", "--cwd", "--manifest-path"}
+)
 
 # A lone `&` starts a child the call does not wait for; the governed way is the `bash` tool's
 # `background` argument.
@@ -414,6 +431,52 @@ def command_segments(command: str) -> list[CommandSegment]:
     return found
 
 
+_DYNAMIC_PART = re.compile(re.escape(SUBSTITUTION_MARK) + r"|\$\{[^}]*\}")
+
+
+def _slash_bounded(word: str) -> bool:
+    """Whether every substitution and ``${NAME}`` in *word* is a whole path component: the start or
+    end of the word, or beside a ``/``, never glued to other text or to another expansion. A
+    glued one can assemble a word the high-risk classes would match (``api.${H}pe.com``)."""
+    parts = _DYNAMIC_PART.split(word)
+    for index, part in enumerate(parts):
+        glued_before = index > 0 and part and not part.startswith("/")
+        glued_after = index < len(parts) - 1 and part and not part.endswith("/")
+        if glued_before or glued_after or (0 < index < len(parts) - 1 and not part):
+            return False
+    return True
+
+
+def _substitution_refusal(segment: Segment, effective: list[str]) -> str | None:
+    """Why a ``$(...)`` or ``${...}`` in *segment* cannot be placed, else ``None``. A substitution
+    body is classified on its own; this reads where its output lands, because the output is not
+    known: never the program or a wrapper's operand, never an output redirect target, and as an
+    argument only where it cannot become a verb or an option (``_VALUE_ARG_BINS``, a whole path
+    component of a ``_PATH_ARG_BINS`` bin, the value of a ``_PATH_VALUE_OPTS`` option, or a word
+    with a ``/``). A ``${NAME}`` must not be glued to other text in an argument of any other bin."""
+    lead = segment.tokens[: len(segment.tokens) - len(effective)]
+    if any(SUBSTITUTION_MARK in t or "${" in t for t in (*lead, effective[0])):
+        return "a substitution or parameter builds the program"
+    if any(SUBSTITUTION_MARK in t or "${" in t for t in segment.targets):
+        return "a substitution or parameter builds an output redirect target"
+    bin_name = os.path.basename(effective[0])
+    if bin_name in _VALUE_ARG_BINS:
+        return None
+    for index, word in enumerate(effective[1:], start=1):
+        if _DYNAMIC_PART.search(word) is None:
+            continue
+        if not _slash_bounded(word):
+            return "a substitution or parameter is glued to other text in a word"
+        if SUBSTITUTION_MARK not in word:
+            continue
+        if word.startswith("-"):
+            return "a substitution builds an option"
+        if bin_name in _PATH_ARG_BINS or "/" in word or effective[index - 1] in _PATH_VALUE_OPTS:
+            continue
+        return f"a substitution could become a verb or an option of {bin_name!r}"
+    return None
+
+
 def classify_command(
     command: str,
     extra_bins: frozenset[str] = frozenset(),
@@ -421,8 +484,11 @@ def classify_command(
     jailed: bool = False,
 ) -> CommandVerdict:
     """Decide whether *command* may run unattended. First match wins: empty
-    -> deny; opaque (command substitution/``eval``/``exec``) or
-    untokenizable -> ask, since the binary that will run is not knowable; a
+    -> deny; opaque (a backtick, ``eval``/``exec``, a ``$(...)`` that is not one plain line, a
+    ``${...}`` with an operator) -> ask, since the binary that will run is not knowable. A
+    ``$(...)`` of one plain command line is classified as a command of its own and the line takes
+    the stricter verdict (``_substitution_refusal`` says where its output may stand); a
+    plain ``${NAME}`` is not opaque; a
     lone ``&`` -> ask, since the child outlives the call (``bash`` has ``background``); a
     high-risk class matching the full line -> ask, naming it (argument-aware:
     ``git`` is allowlisted, but ``git push origin production`` still asks);
@@ -471,12 +537,32 @@ def classify_command(
         return CommandVerdict("deny", "no binary found in command")
 
     lowered = text.lower()
-    for marker in _OPAQUE_MARKERS:
-        if marker in lowered:
+    marked = [marker for marker in _OPAQUE_MARKERS if marker in lowered]
+    marked_text, bodies, unread = extract_substitutions(text)
+    if marked or unread is not None:
+        return CommandVerdict(
+            "ask",
+            "command is not statically analysable"
+            f" (contains {(marked[0] if marked else unread or '').strip()!r})",
+        )
+    inner = [classify_command(body, extra_bins, roots, jailed) for body in bodies]
+    inner.sort(key=lambda v: v.action != "deny")
+    for candidate in inner:
+        if candidate.action != "allow":
             return CommandVerdict(
-                "ask", f"command is not statically analysable (contains {marker.strip()!r})"
+                candidate.action,
+                f"command substitution: {candidate.reason}",
+                bin_name=candidate.bin_name,
+                risk_class=candidate.risk_class,
             )
+    return _classify_lexed(marked_text, full_text, extra_bins, roots, jailed)
 
+
+def _classify_lexed(
+    text: str, full_text: str, extra_bins: frozenset[str], roots: tuple[Path, ...], jailed: bool
+) -> CommandVerdict:
+    """The verdict on *text*, a command line whose substitutions ``extract_substitutions`` took out;
+    *full_text* is the line as written, which the high-risk classes read."""
     try:
         segments = split_segments(text)
     except ValueError as ex:
@@ -508,6 +594,9 @@ def classify_command(
             return CommandVerdict(
                 "ask", "command wrapper could not be read", bin_name=segment.tokens[0]
             )
+        refusal = _substitution_refusal(segment, effective)
+        if refusal is not None:
+            return CommandVerdict("ask", refusal, bin_name=os.path.basename(effective[0]))
         bin_name = os.path.basename(effective[0])
         if not jailed:
             reason = _executes_or_writes(bin_name, effective)

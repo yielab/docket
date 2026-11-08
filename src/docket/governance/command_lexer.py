@@ -159,6 +159,89 @@ def cut_quoted_heredocs(text: str) -> tuple[str, str | None]:
     return "\n".join(out), None
 
 
+# Stands in a lexed line for each `$(...)` taken out of it; `$` makes any redirect target or `cd`
+# argument that holds it unplaceable.
+SUBSTITUTION_MARK = "$__docket_subst"
+_PLAIN_PARAM = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?:\[[0-9]+\])?\}")
+# Parameters whose value changes how the shell splits a line into words.
+_PARSING_PARAMS: frozenset[str] = frozenset({"IFS"})
+
+
+def _substitution_end(text: str, start: int) -> int | None:
+    """The index of the ``)`` closing the ``$(`` whose body begins at *start*, or ``None`` when the
+    body is not one plain line: a nested ``$(``, a ``(``, a newline, or no closing ``)``."""
+    quote = ""
+    j = start
+    while j < len(text):
+        ch = text[j]
+        if ch in "\r\n" or text.startswith("$(", j):
+            return None
+        if quote == "'":
+            quote = "" if ch == "'" else quote
+        elif ch == "\\":
+            j += 1
+        elif quote == '"':
+            quote = "" if ch == '"' else quote
+        elif ch in "'\"":
+            quote = ch
+        elif ch == ")":
+            return j
+        elif ch == "(":
+            return None
+        j += 1
+    return None
+
+
+def extract_substitutions(text: str) -> tuple[str, list[str], str | None]:
+    """Take every ``$(...)`` whose body is one plain command line out of *text*: the text with
+    ``SUBSTITUTION_MARK`` in its place, and the bodies in order. A plain ``${NAME}`` or
+    ``${NAME[N]}`` stays in the text. The third item names the construct that cannot be read
+    (``$(`` that is arithmetic, nested, empty, multi-line or unclosed, ``${`` with an operator,
+    ``$IFS``, a backslashed ``$``, any of them inside single quotes) and is ``None`` otherwise."""
+    out: list[str] = []
+    bodies: list[str] = []
+    quote = ""
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if quote == "'":
+            if text.startswith(("$(", "${"), i):
+                return text, [], text[i : i + 2]
+            quote = "" if ch == "'" else quote
+        elif ch == "\\":
+            if text[i + 1 : i + 2] == "$":
+                return text, [], "$("
+            out.append(text[i : i + 2])
+            i += 2
+            continue
+        elif ch == "'" and not quote:
+            quote = "'"
+        elif ch == '"':
+            quote = "" if quote else '"'
+        elif text.startswith("$((", i):
+            return text, [], "$("
+        elif text.startswith("$(", i):
+            end = _substitution_end(text, i + 2)
+            if end is None or not text[i + 2 : end].strip():
+                return text, [], "$("
+            bodies.append(text[i + 2 : end])
+            out.append(SUBSTITUTION_MARK)
+            i = end + 1
+            continue
+        elif text.startswith("${", i):
+            param = _PLAIN_PARAM.match(text, i)
+            if param is None or param.group(1) in _PARSING_PARAMS:
+                return text, [], "${"
+            out.append(param.group(0))
+            i = param.end()
+            continue
+        elif re.match(r"\$IFS(?![A-Za-z0-9_])", text[i : i + 5]):
+            return text, [], "$IFS"
+        out.append(ch)
+        i += 1
+    return "".join(out), bodies, None
+
+
 def _tokens(command: str) -> list[str]:
     """The shell tokens of *command*, each logical line closed by a ``"\\n"`` token. Raises
     ``ValueError`` on unbalanced quotes; deliberately not caught here."""

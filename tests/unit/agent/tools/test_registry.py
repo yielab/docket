@@ -257,7 +257,8 @@ class TestJailedGateStandsDownTheAllowlist:
         self,
     ) -> None:
         assert classify_command("git push origin production", jailed=True).action == "ask"
-        assert classify_command("echo $(id)", jailed=True).action == "ask"
+        assert classify_command("echo `id`", jailed=True).action == "ask"
+        assert classify_command("echo $(echo $(id))", jailed=True).action == "ask"
         assert classify_command('ls "unterminated', jailed=True).action == "deny"
         assert classify_command("  ", jailed=True).action == "deny"
 

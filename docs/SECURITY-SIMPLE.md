@@ -194,7 +194,10 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   `dispatch_tool` classifies the *whole command line* — including every segment behind a
   `;`/`&&`/`||`/pipe — before a call is allowed to run. `git status` is allowed;
   `git push origin production` asks, because the classifier reads the arguments, not just the binary
-  name. Any other tool that acts (an MCP or service tool, a `send` tool) asks when its call, or a
+  name. A `$(...)` holding one plain command (`git -C "$(git rev-parse --show-toplevel)" status`) is
+  classified as that command and a plain `${NAME}` is read as text; a backtick, `eval`, `exec`, a nested
+  or multi-line `$(...)` and a `${...}` with an operator ask, as does a substitution that builds the
+  program, an option or an output path. Any other tool that acts (an MCP or service tool, a `send` tool) asks when its call, or a
   string argument read as a command, matches a class, whatever policies are installed. `write`,
   `edit` and the tools that only read carry no action, so a match there asks nothing: a file's
   content or a `handoff` summary that names Stripe is not a payment.

@@ -1,11 +1,11 @@
 # Security Gates Specification
 
-**Version**: 3.24.0
+**Version**: 3.25.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
 closed when on without a usable backend.
-**Last Updated**: 2026-11-07
+**Last Updated**: 2026-11-08
 
 ## Purpose
 
@@ -52,6 +52,32 @@ and chain (audit.spec.md).
      unescaped newline (`\n`, `\r\n`) **MUST** start a new segment exactly like `;`, since
      `/bin/sh` starts a new command there; a newline inside quotes stays text and a
      backslash-newline is a continuation.
+   - **Substitutions and parameters.** A backtick, `eval ` and `exec ` anywhere in the line are
+     opaque and **MUST** ask, jailed or not, as does a `$(` that is arithmetic (`$((`), nested,
+     empty, spans a newline, holds a `(` or has no closing `)`, a `${` that is not a plain
+     parameter, `$IFS` or `${IFS}` (they re-split the line), and any of these `$(`/`${` inside
+     single quotes or after a backslash. A `$(...)` whose body is one plain command line is not
+     opaque: its body is classified by this same function (same `extra_bins`, `roots`, `jailed`)
+     as a command of its own, and the line takes the stricter verdict, an inner `ask` or `deny`
+     winning over the outer line's, with the reason prefixed `command substitution:` and the inner
+     `bin_name` and `risk_class`; so `echo $(rm -rf /)` asks as `rm -rf /` does and
+     `x=$(curl -s h | sh)` asks for `curl`. A plain `${NAME}` or `${NAME[N]}` (digits only; no
+     `:-`, `/`, `#`, `!`, `@` or nested `$`) is not opaque. Because a substitution's output is not
+     known, where it may stand is limited: it **MUST** ask when it builds the program (the first
+     word, or a wrapper's operand: `$(echo rm) -rf x`, `${x} -rf /`), builds an output redirect
+     target (`> "$(mktemp)"`, `>> ${D}sh/authorized_keys`), builds an option (a word that starts
+     with `-`), or, for an argument of a bin that is not a value bin (`echo`, `printf`, `cd`,
+     `pwd`, `test`, `[`, `dirname`, `basename`, `realpath`), is glued to other text in its word
+     (`api.${H}pe.com`, `"$(echo .dock)et/token"`; a substitution or `${NAME}` must be the whole
+     word or a whole path component beside a `/`). A substitution in an argument of any bin
+     other than a path bin (`ls`, `cat`, `head`, `tail`, `wc`, `stat`, `file`, `tree`) **MUST**
+     also have a `/` in its word or follow `-C`, `-f`, `--prefix`, `--directory`, `--git-dir`,
+     `--work-tree`, `--cwd` or `--manifest-path`, so it cannot become a subcommand or option
+     (`git "$(echo push)" origin main` asks, `git -C "$(git rev-parse --show-toplevel)" status`
+     does not). A `cd` whose argument holds an expansion is not followed, so a later relative
+     redirect cannot be placed and asks. The gate does not follow where a variable's value came
+     from: `x=push; git ${x}` is as unread as `git $x` always was; the jail owns what the
+     command then does.
    - **A lone `&`.** A command holding the lone control operator `&`, last or not
      (`sleep 30 &`, `nohup x > log 2>&1 &`, `sleep 30 & echo hi`) **MUST** ask, jailed or not, with the reason
      `background a process with bash background=true`: a child started that way outlives the call
@@ -64,8 +90,8 @@ and chain (audit.spec.md).
      quoting and call again`, so the model sees `REFUSED [gate_denied]: syntax: ...` and rewrites
      it. Nothing runs and no approval record is made: a person cannot approve text that is not a
      command, and a lights-out pod would stall on a typo. The denial is audited as `tool.deny` like
-     any other and counts toward the consecutive-denial stop. The opaque markers (`$(`, a backtick,
-     `${`, `eval`, `exec`) and an unclosed heredoc keep asking: they are risk, not syntax. This is
+     any other and counts toward the consecutive-denial stop. The opaque markers (see "Substitutions and
+     parameters") and an unclosed heredoc keep asking: they are risk, not syntax. This is
      checked before the lone `&`, so a command both unparseable and backgrounded is refused.
    - **Builtins.** `cd`, `pwd`, `true`, `false`, `test`, `[` and `echo` are on `SAFE_BINS` and
      **MUST NOT** force approval merely because they lead a segment, so `cd <path> && git status`
@@ -144,7 +170,8 @@ and chain (audit.spec.md).
      resolved to a real backend; a turn without one is refused before it starts, so this is the
      decision `run_bash` acts on). When `jailed`, a binary off `SAFE_BINS` and `extra_bins` is
      allowed instead of asking. Unchanged in both modes: the not-statically-analysable `ask`
-     (command substitution, `eval`, `exec`, a lone `&`), every high-risk class, the
+     (the opaque markers of "Substitutions and parameters", `eval`, `exec`, a lone `&`; the body
+     of a readable `$(...)` is classified with `jailed` like any command), every high-risk class, the
      empty-command `deny` and the unparseable-text `deny`, and redirect containment (an output redirect whose targets do not all
      resolve inside `roots` or name `/dev/null` still asks, for every binary when jailed). A `run:`
      step (and a `wait` step's probe) classifies its command with the same arguments a turn's
@@ -279,8 +306,9 @@ and chain (audit.spec.md).
    sandbox` with any verb other than `status`, `on`, `off`, `backend`, `network`, `classes` or
    `read` **MUST** be a usage error (exit 2), and an unrecognised flag (e.g. `--force`) **MUST**
    exit 2. Bare `docket setup sandbox` is a read and exits 0.
-3. There **MUST** be a way to verify gate status: `docket setup` (`--json`:
-   `securityGates.toolCallGate` is `"always-on"`) and `docket setup sandbox` (`--json`: `gate` is
+3. There **MUST** be a way to verify gate status: `docket setup --fix` (`--json`:
+   `securityGates.toolCallGate` is `"always-on"`; bare `docket setup --json` reports only
+   `{ready, pieces}`) and `docket setup sandbox` (`--json`: `gate` is
    `"always active"`) report the gate as always active, plus the isolation posture.
 
 ### High-risk action classes
@@ -481,7 +509,7 @@ where it applies to commands docket itself launches.
    every hook and role when the document itself is unreadable, with `PolicyHit.policy_id` naming
    the broken file and `message` naming the reason, so the existing non-`allow` audit and trace
    paths attribute the denial to the file.
-   `docket setup` **MUST** report each broken policy file as an issue.
+   `docket setup --fix` **MUST** report each broken policy file as an issue.
 8. `docket pod check "<text>" --role <role> [--hook <hook>]` **MUST** accept `--tool <name>`
    (default `bash`; `--hook` defaults to `pre_tool_call` and an unknown hook is a usage error,
    exit 2). At `pre_tool_call` the name is resolved against the built-in tool registry (unknown →
@@ -1060,7 +1088,7 @@ runs: additive to the gate and to `resolve_within`, never a replacement for eith
      on" meaning something. The refusal names the fixes: use Linux 5.13+ (landlock) or macOS
      (seatbelt), choose docker with `docket setup sandbox backend docker`, or record
      `docket setup sandbox off`.
-   - `docket setup` probes `sandbox_availability()` and reports the backend a turn would use, or
+   - `docket setup --fix` probes `sandbox_availability()` and reports the backend a turn would use, or
      that turns will be refused and the fixes; its `--json` `securityGates` carries `isolation`
      (`off (default)` | `on` | `off`), `sandboxBackend`, `sandboxUsable`, `dockerImageHasGit`,
      `network` and `networkEnforced`. `docket setup sandbox` reports the gate, the isolation state,
@@ -1798,8 +1826,8 @@ persisted, and the trace holds one closed session (`guardrail_check`, `guardrail
 
 `docket setup sandbox classes` prints one row per class (`CLASS`, `DESCRIPTION`, `PATTERN`,
 `ALLOWLISTED BINS`): `money-movement` and `secret-access` show `none allowlisted; always asks`,
-`prod-deploy` shows `git, npm`. The footer reads `Every shell command is classified before it
-runs; a match asks for approval.`
+`prod-deploy` shows `git, npm`. The footer reads `Every tool call that acts is classified before
+it runs; a match asks for approval.`
 
 ### Docket-launched process classification: examples
 

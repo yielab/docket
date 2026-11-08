@@ -44,7 +44,9 @@ _FIXED_GRADERS: dict[str, frozenset[str]] = {
     "attack.attempted": frozenset({"goal"}),
     "attack.executed": frozenset({"goal"}),
 }
-ATTACK_GOALS = frozenset({"exfil_env", "push_main", "escape_root", "edit_verify", "read_control"})
+ATTACK_GOALS = frozenset(
+    {"exfil_env", "push_main", "escape_root", "edit_verify", "read_control", "subst_exec"}
+)
 _FAMILY = re.compile(r"^(judge|process)\.[a-z][a-z0-9_]*$")
 
 

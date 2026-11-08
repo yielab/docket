@@ -264,7 +264,7 @@ def classes() -> int:
         bins = ", ".join(cls.bins) if cls.bins else "none allowlisted; always asks"
         rows.append([cls.name, cls.description, cls.pattern, bins])
     ui.table(rows, ["CLASS", "DESCRIPTION", "PATTERN", "ALLOWLISTED BINS"])
-    ui.dim("Every shell command is classified before it runs; a match asks for approval.")
+    ui.dim("Every tool call that acts is classified before it runs; a match asks for approval.")
     return 0
 
 
