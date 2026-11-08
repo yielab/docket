@@ -37,6 +37,7 @@ from docket.platform import read_json
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.state import Status
+from docket.teams import blueprints as _blueprints
 from docket.teams import fleet as _fleet
 from docket.teams import identity as _identity
 from docket.teams import mcp_servers as _mcp_servers
@@ -639,6 +640,18 @@ def pod_summary(project: str) -> dict[str, Any]:
         **_work_dir_fields(project),
         **_pause_fields(project),
     }
+
+
+def pod_skill(project: str) -> tuple[str, list[str]]:
+    """What the A2A agent card says of *project*: its blueprint's description with what a task
+    delivers, and the blueprint name as the one tag; the plain sentence and no tag for a pod
+    provisioned without a blueprint."""
+    name = _blueprint(project)
+    blueprint = _blueprints.load_registry().get(name)
+    if blueprint is None:
+        return f"Runs tasks in the {project} pod.", []
+    delivers = ", ".join(_delivers(project))
+    return f"{blueprint.description}. Delivers: {delivers}.", [name]
 
 
 def _pause_fields(project: str) -> dict[str, Any]:

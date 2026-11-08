@@ -1,8 +1,8 @@
 # A2A binding (JSON-RPC over HTTP) -- contract spec
 
-**Version**: 1.3.1
+**Version**: 1.3.2
 **Status**: Implemented
-**Last Updated**: 2026-11-01
+**Last Updated**: 2026-11-08
 
 ## Purpose
 
@@ -159,7 +159,9 @@ the view does not: no approval token, no resolve URL.
 `{"streaming": false, "pushNotifications": true, "stateTransitionHistory": false,
 "extensions": [{"uri": <the extension `$id`>, "required": false}]}`, `defaultInputModes`
 `["text/plain"]`, `defaultOutputModes` `["text/plain", "application/json"]`, `skills` (one per
-provisioned pod: `id` and `name` the pod, `description`, `tags` `[]`), and `securitySchemes`
+provisioned pod: `id` and `name` the pod; for a pod with a blueprint, `description` the
+blueprint's description followed by `Delivers: <what a task hands back>.` and `tags` `[<blueprint>]`;
+for a pod without one, `description` `Runs tasks in the <pod> pod.` and `tags` `[]`), and `securitySchemes`
 `{"bearer": {"type": "http", "scheme": "bearer"}}` with `security` `[{"bearer": []}]`.
 
 The card requires the Bearer token. A2A lets a card be public, but docket's only public routes are

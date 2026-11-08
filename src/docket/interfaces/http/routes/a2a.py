@@ -11,6 +11,7 @@ from collections.abc import Callable
 from typing import Any
 
 from docket import __version__
+from docket.hops.application import report as _report
 from docket.interfaces.http.exchange import HttpExchange
 from docket.interfaces.http.routes import a2a_push, a2a_rpc, a2a_task
 from docket.interfaces.http.routes.a2a_rpc import RpcError
@@ -259,10 +260,10 @@ def post_a2a(h: HttpExchange, _arg: str) -> None:
 
 def get_agent_card(h: HttpExchange, _arg: str) -> None:
     """``GET /.well-known/agent.json``: the pods as skills, push on, the operator extension."""
-    skills = [
-        {"id": pod, "name": pod, "description": f"Runs tasks in the {pod} pod.", "tags": []}
-        for pod in _queue.dispatchable_pods()
-    ]
+    skills = []
+    for pod in _queue.dispatchable_pods():
+        description, tags = _report.pod_skill(pod)
+        skills.append({"id": pod, "name": pod, "description": description, "tags": tags})
     host = h.headers.get("Host") or "localhost"
     h._send_json(
         {

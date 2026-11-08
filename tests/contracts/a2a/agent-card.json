@@ -27,8 +27,10 @@
     {
       "id": "e2e",
       "name": "e2e",
-      "description": "Runs tasks in the e2e pod.",
-      "tags": []
+      "description": "Lead, Implementer and Reviewer against a codebase (the default pod). Delivers: branch.",
+      "tags": [
+        "build"
+      ]
     }
   ],
   "securitySchemes": {
