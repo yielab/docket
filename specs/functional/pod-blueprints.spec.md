@@ -2,7 +2,7 @@
 
 **Version**: 4.14.1
 **Status**: Implemented
-**Last Updated**: 2026-11-07
+**Last Updated**: 2026-11-08
 
 ## Purpose
 
@@ -584,9 +584,12 @@ overlay, policies, members, pipeline binding, settings) into one command.
     blueprint, `docket init`, `POST /pods`) or a member is added (`docket pod add`) and the pod
     holds a `researcher`, docket **MUST** add `fetch-hosts`, `search-host` and `isolation` to the
     Lead's recorded `needs` (the union of this requirement, never a duplicate; the same three
-    `web-research` declares), and `docket init` and `docket pod add` **MUST**
+    `web-research` declares), and `docket init` (one blueprint or `--from`) and `docket pod add` **MUST**
     print the `fetch-hosts` line after their own output, so a team made to read sources says at its creation
-    that it cannot read the web and which command changes that. It **MUST NOT** give any role the
+    that it cannot read the web and which command changes that. `docket init` prints it once, after it
+    has recorded isolation on where a backend is detected and printed that state, never before, so the
+    line is computed from the jail as it now is; when `--recipe` or a `.docket/` declares `fetch-hosts`,
+    the recipe's block above is that line and it prints no second one. It **MUST NOT** give any role the
     `fetch` tool, write `fetchDomains` or change `network`: `fetch` is bounded by the hosts a person
     names or by open read, which `fetch_reach` decides from facts that already exist. A pod without a
     `researcher` records nothing.

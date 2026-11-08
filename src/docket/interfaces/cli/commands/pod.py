@@ -35,7 +35,6 @@ from docket.interfaces.cli.commands.pod_settings import (
 )
 from docket.interfaces.cli.commands.target import pod_option
 from docket.interfaces.cli.render import ui
-from docket.interfaces.cli.render.apply import render_reading_need
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.teams import fleet as _fleet
@@ -107,9 +106,7 @@ def build_pod_from_blueprint(
     except _pp.PodProvisionError as exc:
         ui.warn(f"  pod provisioning failed: {exc}")
         return []
-    created = _render_created(result.members)
-    render_reading_need(project)
-    return created
+    return _render_created(result.members)
 
 
 @pod_app.command("show")

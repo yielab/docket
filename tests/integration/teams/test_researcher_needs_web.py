@@ -131,7 +131,10 @@ def test_a_pod_without_a_researcher_records_no_need(tmp_path: Path) -> None:
         assert pod_report.pod_report("demo")["needs"] == []
 
 
-def test_init_of_a_respond_pod_prints_the_line_and_writes_no_grant(tmp_path: Path) -> None:
+def test_init_of_a_respond_pod_prints_the_line_and_writes_no_grant(
+    tmp_path: Path, bind_launcher: Callable[..., Launcher]
+) -> None:
+    bind_launcher(landlock=False, seatbelt=False, docker=False)
     with _seed(tmp_path):
         result = runner.invoke(app, ["init", "demo", "--blueprint", "respond"])
 
@@ -140,6 +143,56 @@ def test_init_of_a_respond_pod_prints_the_line_and_writes_no_grant(tmp_path: Pat
         settings = _pod_settings.PodSettings.load_for("demo")
         assert settings.fetch_domains == ()
         assert _fleet.meta_get("demo-lead", "network", "") == ""
+
+
+def test_init_names_the_jail_it_recorded_before_the_need_that_depends_on_it(
+    tmp_path: Path, bind_launcher: Callable[..., Launcher]
+) -> None:
+    """The need line is computed after init records isolation on, so it prints after that record
+    and says the folder pod reads openly, never that the jail is off."""
+    bind_launcher(landlock=True)
+    with _seed(tmp_path):
+        result = runner.invoke(app, ["init", "demo", "--blueprint", "respond"])
+
+        assert result.exit_code == 0, result.output
+        lines = result.output.splitlines()
+        isolation_at = next(i for i, ln in enumerate(lines) if ln.startswith("Sandbox   on"))
+        need_at = [i for i, ln in enumerate(lines) if ln.strip().startswith("needs ")]
+        assert len(need_at) == 1
+        assert isolation_at < need_at[0]
+        assert _need_lines(result.output) == ["needs fetch-hosts: ready (any public host)"]
+
+
+def test_init_with_a_recipe_declaring_fetch_hosts_prints_the_line_once(
+    tmp_path: Path, bind_launcher: Callable[..., Launcher]
+) -> None:
+    bind_launcher(landlock=True)
+    recipe = tmp_path / "recipe"
+    recipe.mkdir()
+    (recipe / "pod.yaml").write_text(
+        "kind: pod\nname: recipe\nneeds: [fetch-hosts]\n", encoding="utf-8"
+    )
+    with _seed(tmp_path):
+        result = runner.invoke(
+            app, ["init", "demo", "--blueprint", "respond", "--recipe", str(recipe)]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert result.output.count("needs fetch-hosts") == 1
+
+
+def test_a_declarative_add_prints_the_need_after_the_jail_is_recorded(
+    tmp_path: Path, bind_launcher: Callable[..., Launcher]
+) -> None:
+    bind_launcher(landlock=True)
+    spec = tmp_path / "pods.json"
+    spec.write_text(json.dumps([{"id": "demo", "blueprint": "respond"}]), encoding="utf-8")
+    with _seed(tmp_path):
+        result = runner.invoke(app, ["init", "--from", str(spec)])
+
+        assert result.exit_code == 0, result.output
+        assert _need_lines(result.output) == ["needs fetch-hosts: ready (any public host)"]
+        assert result.output.rindex("needs fetch-hosts") > result.output.index("Created ")
 
 
 def test_adding_a_researcher_records_the_need_and_prints_the_line(tmp_path: Path) -> None:

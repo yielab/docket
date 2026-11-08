@@ -26,6 +26,7 @@ from docket.interfaces.cli.render import ui
 from docket.interfaces.cli.render.apply import (
     render_apply_header,
     render_apply_plan,
+    render_reading_need,
     render_recipe_needs,
     render_review,
     render_run_items,
@@ -43,6 +44,7 @@ from docket.teams import fleet as _fleet
 from docket.teams import pod_provisioning as _pp
 from docket.teams import provisioning as _prov
 from docket.teams.apply import model as _model
+from docket.teams.apply import needs as _needs
 from docket.teams.apply import plan as _pod_apply
 from docket.teams.apply import recipes as _recipes
 from docket.teams.apply import review as _review
@@ -412,9 +414,14 @@ def run_init(req: InitRequest) -> int:
     ui.console.print("This machine")
     _setup_sandbox.print_sandbox_block()
 
-    if apply_source is not None and not req.no_apply:
+    # One `fetch-hosts` line per init: the recipe's block prints it when the recipe declares it.
+    recipe_dir = apply_source if apply_source is not None and not req.no_apply else None
+    declared = _recipes.recipe_needs(recipe_dir) if recipe_dir is not None else ()
+    if _needs.FETCH_HOSTS not in declared:
+        render_reading_need(aid)
+    if recipe_dir is not None and declared:
         ui.console.print()
-        render_recipe_needs(aid, apply_source)
+        render_recipe_needs(aid, recipe_dir)
 
     if not _setup.readiness().endpoint.ok:
         ui.warn("No model endpoint yet")
@@ -526,6 +533,7 @@ def _cmd_add_declarative(from_file: str) -> int:
         return 1
 
     created: list[str] = []
+    provisioned: list[str] = []
     skipped: list[str] = []
     had_invalid_id = False
     had_refused = False
@@ -562,6 +570,7 @@ def _cmd_add_declarative(from_file: str) -> int:
             skipped.append(aid)
             continue
         created.extend(pod_created)
+        provisioned.append(aid)
         tg_group = str(spec.get("telegram", "")).strip()
         if tg_group:
             lead_id = f"{aid}-lead"
@@ -577,6 +586,8 @@ def _cmd_add_declarative(from_file: str) -> int:
         ui.warn("No agents provisioned.")
     if created:
         _setup_sandbox.turn_on_where_detected()
+        for aid in provisioned:
+            render_reading_need(aid)
     if had_refused:
         return 2
     return 1 if had_invalid_id else 0
