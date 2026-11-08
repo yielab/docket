@@ -9,8 +9,8 @@ Agents don't respond to messages in Telegram groups, even though they're registe
 
 #### 0. **It isn't a chat**
 docket's inbound Telegram bot is inbound-only and understands exactly three verbs: `/status`,
-`/delegate <task>`, and `/answer <escalation-id> <option or text>` (for any
-pause, an approval included; the older `/answer <task-id> <text>` still answers a parked question).
+`/delegate <task>`, and `/answer <id> <option or text>` (for any pause, an approval included; the
+id is an escalation id, or the id of a task parked on one).
 Plain prose is refused by design, this bot never messages a chat first, and `/delegate`/`/answer`
 answer with a task id or a confirmation, never the pipeline's output. Use `docket task list`/`docket task trace <task-id>`
 to see results. A *push* notification into the chat is a separate,
@@ -26,7 +26,7 @@ own turn loop calls the endpoint directly and does not pre-validate model names 
 catalog).
 
 **Root cause:** a stale or misspelled model id in an agent's `.docket-meta.json` (e.g.
-`haiku-3-5` instead of `haiku-4-5`).
+`claude-haiku-9` instead of `claude-haiku-5-5`).
 
 **How to diagnose:**
 ```bash
@@ -46,23 +46,23 @@ docket setup model set reviewer anthropic/claude-opus-4-6
 > **Never edit an agent's `.docket-meta.json` model field directly** — use `docket setup model`
 > so the change is validated, applied consistently, and audit-logged.
 
-**Valid model names (Anthropic defaults):**
-- `anthropic/claude-haiku-4-5` (cheap class — lead)
-- `anthropic/claude-sonnet-4-6` (strong class — implementer, reviewer)
-- `anthropic/claude-opus-4-6` (strong class, premium)
+**Valid model names:** the ids the provider's document lists (`docket setup provider show
+anthropic`). The `anthropic` preset puts `anthropic/claude-haiku-5-5` on the roles whose model class
+is cheap (the Lead), `anthropic/claude-sonnet-5-5` on the strong ones (the Implementer, the
+Reviewer), and keeps `anthropic/claude-opus-5-5` as the premium anchor for a role you pin yourself.
 
 Check the live mapping anytime with `docket setup model`.
 
 #### 2. **Missing Telegram Bindings**
 **How to fix:**
 ```bash
-docket setup notify bind <agent-id>
+docket setup notify bind <agent-id> --chat <chat-id>
 ```
 
 #### 3. **Unbound / unauthorized chat**
-Since docket owns the Telegram bot itself, the `docket setup notify bind` binding **is** the entire
-authorization boundary — there is no separate daemon-side allowlist to also configure. A message
-from a chat that isn't bound to an agent gets a plain refusal, and the attempt is audit-logged
+The `docket setup notify bind` binding **is** the entire authorization boundary: anyone who can
+post in a bound chat can approve, deny and delegate as that member. A message from a chat that
+isn't bound to an agent gets a plain refusal, and the attempt is audit-logged
 (`telegram.unauthorized`) rather than silently dropped.
 
 **How to diagnose:**
@@ -72,78 +72,60 @@ docket log | grep telegram.unauthorized
 
 **How to fix:**
 ```bash
-docket setup notify bind <agent-id>
+docket setup notify bind <agent-id> --chat <chat-id>
 ```
 
 #### 4. **The Telegram poller isn't running, or no bot token is stored**
-Telegram is docket's own bot (ROADMAP Phase 19 P19-8) — there is no external gateway process to
-be "down." Two things have to both be true for a wired chat to get an answer:
+Telegram is docket's own bot. Two things have to both be true for a wired chat to get an answer:
 
 **How to diagnose:**
 ```bash
-docket setup provider list                    # is TELEGRAM_BOT_TOKEN stored?
+docket setup secret list                      # is TELEGRAM_BOT_TOKEN stored?
 # and: is a `docket start --telegram` process actually running?
 ```
 
 **How to fix:**
 ```bash
-docket setup notify enable telegram --chat <chat-id>  # if the token is not already stored
+docket setup notify enable telegram --chat <chat-id> --token  # if the token is not already stored
 docket start --telegram             # or: docket start --dispatch --telegram
 ```
 
-## High Costs / Context Bloat
+## Large Context / Many Tokens
 
 ### Symptom
-A session accumulates an unusually large context, or an agent's turn count keeps climbing.
+A turn re-sends an unusually large context, or an agent's turn count keeps climbing.
 
 ### Root Cause
-docket's turn loop keeps a growing message history for a session across turns. With enough turns,
-cached/re-sent context grows — the same shape of problem any long-lived chat session has.
+docket's turn loop replays a session's history on every model call. The history is bounded by
+compaction, and every pod-dispatch step has a history of its own, but a long step, a large tool
+result or a big instruction file still makes each call large.
 
 ### Solutions
 
-#### 1. **Reset Agent Sessions**
-```bash
-# Reset a pod member: clears its ledger and rebuilds its workspace files
-docket pod reset <agent-id>
-```
-
-#### 2. **Switch to a cheaper model policy**
-
-Set the whole fleet to a lower-cost provider preset:
+#### 1. **Use a different model for the role**
 
 ```bash
-# Switch the role policy for all agents at once
-docket setup model preset openrouter-free
+docket setup model                          # the current role-to-model table
+docket setup model set <role> <provider/model>
+docket setup model preset openrouter-free   # or apply a whole preset (docket setup model preset lists them)
 ```
 
-See `docket setup model` for the current role→model table and all available presets.
-
-#### 3. **Monitor token usage**
+#### 2. **Monitor token usage**
 ```bash
 docket status
 docket status --all  # Every pod
+docket log --summary # measured tokens per accepted task and the cache-hit ratio
 ```
 Token counts here are real and measured. docket shows no dollar figure; your provider's bill is
 the record of spend. See [Known limits](README.md#known-limits).
 
-#### 4. **Check the per-turn context footprint**
-`docket setup --fix` estimates the tokens re-sent every turn from the files that
-actually get re-injected (SOUL.md, AGENTS.md, TOOLS.md, HEARTBEAT.md, MEMORY.md) and warns when
-they exceed the configured budget:
-```bash
-docket setup --fix
-# ⚠ Context footprint: ~7,400 tok re-sent each turn (budget 6,000 via default) — trim MEMORY.md/HEARTBEAT.md
-```
-The budget itself scales with the model's registered context window (`via window`), not a flat
-number — `via default` is the 6,000-token floor used when no larger window is registered.
-If it's over budget, summarize the daily logs into MEMORY.md and archive them instead of letting
-`memory/` grow unbounded:
-```bash
-docket pod reset <agent-id>
-```
+#### 3. **A tool result is too large**
+A tool result over `DOCKET_TOOL_MAX_OUTPUT_CHARS` (default 30,000 characters) is cut. A provider
+document with `local: true` also caps a result at 2% of the model's context window, and a `read` at
+5%, once the window is known (`docket setup provider show <name>` names it). Lower the variable to
+cut results further.
 
-#### 5. **A single turn is running away**
+#### 4. **A single turn is running away**
 docket's own turn loop bounds every hop: a wall-clock timeout, a measured-token budget
 (`AGENT_LOOP_TOKEN_BUDGET`, default 100,000), a cap on consecutive denied tool calls
 (`AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS`, default 3), and two guards against a loop that ran
@@ -163,35 +145,34 @@ stop on real work is rare enough to be worth a look at the transcript before rai
 **Cause:** `models/application/endpoint.py`'s `resolve_endpoint` couldn't find a base URL for the model's
 provider — no `DOCKET_LLM_BASE_URL`, no registered global document, and the provider isn't one of
 the built-in catalog documents (`docket setup provider list`). Every built-in document has a
-mapping now — not only OpenRouter (`openrouter/...`) and Vercel AI Gateway (`ai-gateway/...`), but
-also `anthropic`, `openai`, `google`, `groq`, `mistral`, `deepseek`, `xai`, `cerebras`, `together`,
-`ollama`, `lmstudio` and `local` — so this now means an arbitrary hosted prefix outside that set.
+mapping: OpenRouter (`openrouter/...`), Vercel AI Gateway (`ai-gateway/...`), `anthropic`,
+`openai`, `google`, `groq`, `mistral`, `deepseek`, `xai`, `cerebras`, `together`, `ollama`,
+`lmstudio` and `local`, so this means a prefix outside that set.
 
-**Fix:** for a built-in provider, apply the matching preset (`docket setup model preset <name>`) and
-store its credential — no separate registration needed. For any other hosted or local server,
-register it first (`docket setup provider add <file.yaml>`, or the shortcut `docket setup model
-provider add <name> <base-url>`). A credential authenticates a known endpoint; it cannot supply a
-missing URL.
+**Fix:** for a built-in provider, `docket setup provider add <name>` stores its credential and
+applies its preset, with no separate registration. For any other hosted or local server, register
+it first (`docket setup provider add <file.yaml>`, or the shortcut `docket setup provider add
+<name> <base-url>`). A credential authenticates a known endpoint; it cannot supply a missing URL.
 
-### "⚠ `<CREDENTIAL>` is missing (HTTP 401)" after `provider add`
+### "`<CREDENTIAL>` is missing (HTTP 401)" or "was rejected (HTTP 401)" after `provider add`
 **Cause:** registration probes `<base-url>/models` with the resolved credential and classifies
-the response rather than refusing outright — a 401/403 still registers the provider, with this
+the response rather than refusing outright — a 401/403 still registers the provider, with a
 warning naming the missing or rejected credential (model-profiles.spec.md, "Provider readiness"
 3). For example:
 
 ```
-$ docket setup provider add mygw https://api.example.com/v1 --model gpt-4 --credential MYGW_API_KEY
-→ Checking the endpoint is alive: https://api.example.com/v1/models
-→ Registering provider 'mygw'
-✓ Provider wired: mygw  ->  https://api.example.com/v1
-⚠ MYGW_API_KEY is missing (HTTP 401)
-  Store it: docket setup provider add MYGW_API_KEY --credential
+$ docket setup provider add mygw https://api.example.com/v1 --model gpt-4
+ok Provider mygw: https://api.example.com/v1
+! a credential is missing (HTTP 401)
 ```
 
-**Fix:** `docket setup provider add <CREDENTIAL> --credential`, then confirm with `docket setup provider show <name>`
-(or `--json`) — it names the resolved scope, dialect, base URL and which credential name the
-provider expects. `docket pod show <agent-id> --json`'s `provider.credential.source` shows
-whether a given agent actually resolved that credential (`env`/`store`) or not (`none`).
+**Fix:** pass the key (`docket setup provider add <provider> --credential <key>`, which stores it
+and probes again), or export the provider's environment variable first; `--credential` takes the key
+itself, never a variable name. To replace a key already stored, `docket setup provider rotate
+<provider>`. Confirm with `docket setup provider show <name>` (or `--json`) — it names the
+resolved scope, dialect, base URL and which credential name the provider expects.
+`docket pod show <agent-id> --json`'s `provider.credential.source` shows whether a given agent
+actually resolved that credential (`env`/`store`) or not (`none`).
 
 ### "cannot reach `<url>`: ..." / "timed out after Ns calling `<url>`"
 **Cause:** the configured endpoint (hosted or local) isn't reachable — wrong URL, the local
@@ -205,11 +186,10 @@ server isn't running, or a network/firewall issue.
 invalid/expired API key, or a context-length overflow. The detail text in the error is the
 provider's own response body, truncated to 500 characters.
 
-**Fix:** see "Invalid Model Name" above for a bad model id; `docket setup provider rotate <KEY>` for a bad
-credential; `docket pod reset <agent-id>` if the context has grown
-past what the model accepts. On a small-context endpoint the usual overflow is tool output: lower
-`DOCKET_TOOL_MAX_OUTPUT_CHARS` (default 30,000 characters per tool result; about 2,500 suits a
-16k-token window).
+**Fix:** see "Invalid Model Name" above for a bad model id; `docket setup provider rotate <provider>`
+for a bad credential. For a context overflow, see "Large Context / Many Tokens" above; on a
+small-context endpoint the usual cause is tool output, and `DOCKET_TOOL_MAX_OUTPUT_CHARS` (default
+30,000 characters per tool result) can be lowered.
 
 ## Trace Export
 
@@ -246,7 +226,7 @@ silently at the start of a turn), or deliveries are failing.
 
 **Fix:** `docket setup export list` shows whether it is enabled; `docket setup export show <name>`
 shows its `exported`/`dropped`/`failed` counters and last error; `docket setup export test <name>`
-re-probes the endpoint without changing anything; `docket setup` warns about an enabled
+re-probes the endpoint without changing anything; `docket setup --fix` warns about an enabled
 exporter with a failure since its last success. Check that `DOCKET_NO_EXPORT` and
 `DOCKET_NO_TRACE` are unset.
 
@@ -256,10 +236,9 @@ exporter with a failure since its last success. Check that `DOCKET_NO_EXPORT` an
 docket setup --fix
 ```
 
-This fixes:
-- Workspace permissions (700 for dirs, 600 for files)
-- Missing workspace files and memory directory
-- Missing fleet registration
+This tightens `fleet.json` and the secrets files to owner-only (600), installs the baseline
+policies, re-syncs the dispatch ledger, then prints the health report. A missing or stale member
+file (`SOUL.md`, `AGENTS.md`, `TOOLS.md`) is re-rendered by `docket pod update`, not by `--fix`.
 
 ## Telegram Issues
 
@@ -268,16 +247,13 @@ This fixes:
 ```bash
 # Is the bot actually in the group?
 # Is TELEGRAM_BOT_TOKEN stored?
-docket setup provider list
+docket setup secret list
 
 # Is a docket start --telegram process actually running?
-# (docket has no separate gateway process or log to check instead)
 ```
 
 ### Messages Not Being Sent
-Since docket owns the Telegram integration directly, a send failure surfaces in whatever terminal
-is running `docket start --telegram` (or in `docket log`/`docket task trace` for the triggering
-action), not in a separate daemon log.
+A send failure prints a `[serve] telegram:` line in the terminal running `docket start --telegram`.
 
 **Fix:**
 ```bash
@@ -286,7 +262,7 @@ docket start --telegram
 
 # Re-wire agent
 docket setup notify unbind <agent-id>
-docket setup notify bind <agent-id>
+docket setup notify bind <agent-id> --chat <chat-id>
 ```
 
 ## Session/Scope Issues
@@ -313,7 +289,7 @@ docket task list               # check what's pending
 ### A dispatched task stays "blocked" (budget cap reached)
 
 Dispatch compares the pod's counted tokens (input minus cache reads, plus output) with the
-Lead's `budgetTokens` before *every* hop, whatever the model costs. Once the cap is reached, the task is left `blocked` (never silently retried or
+Lead's `budgetTokens` before *every* hop. Once the cap is reached, the task is left `blocked` (never silently retried or
 rewritten back to `pending`) **and the pod's Lead is marked paused** — every further claim
 against this pod is refused outright (`paused_refused`) until the pause is explicitly cleared,
 not just re-blocked hop by hop:
@@ -330,8 +306,7 @@ Lead also un-blocks every `blocked` task in that pod at once:
 docket status                    # see measured token usage
 docket pod set budgetTokens <N> # raise the cap (counted tokens), if the spend is expected
 docket run --resume        # clear the auto-pause + unblock the pod's queue
-# → Unblocked 1 blocked task(s) in pod 'myapp'.
-# ✓ Resumed 'myapp-lead' — auto-pause cleared.
+# Unblocked 1 blocked task(s) in pod 'myapp'
 ```
 
 To retry a single blocked task without touching the pod-wide pause, use `docket task retry
@@ -341,7 +316,7 @@ To retry a single blocked task without touching the pod-wide pause, use `docket 
 
 **Cause:** a gated tool call parked. Under `start --dispatch`'s sweep or a non-interactive
 `docket run` (an unattended caller resolves an unset `approvalMode` to `park`), an
-in-turn `ask` no longer blocks the hop — it records the exact call and parks the task
+in-turn `ask` does not block the hop — it records the exact call and parks the task
 immediately, so it never shows up as a long-running turn. Nothing pushes this at you unless a
 delivering notification channel is enabled. `console` is on by default but sends nothing, so with
 nothing else enabled a parked task waits unseen until `docket inbox`; `docket setup` warns about
@@ -394,7 +369,7 @@ non-zero exit or a bad verdict never is). Inspect the recorded output and either
 underlying failure or clear/adjust the gate:
 
 ```bash
-docket task trace --tail                       # see the verify command's (redacted) output
+docket task trace <task-id>                    # see the verify command's (redacted) output
 docket pod set verify "npm test" --member <p>-implementer   # change the gate command
 docket task add <task>              # re-queue once you believe it will pass
 ```
@@ -405,24 +380,25 @@ thing to check.
 
 ### A task fails with "reviewer rejected" or an unparseable verdict
 
-The Reviewer gate is a structural parse: exactly one distinct `APPROVE` or `REQUEST-CHANGES`
-marker at the start of a non-blank line of its reply. A `REQUEST-CHANGES` gets one rework cycle by
-default (`maxReworkCycles`); a second one, no marker, or both markers (`review_rejected`,
-`reviewer_verdict_unparseable`) fails the task:
+The Reviewer gate is a structural parse: the verdict the Reviewer declares in its handoff, else the
+last line of its reply that starts with `APPROVE` or `REQUEST-CHANGES` (markdown decoration is
+ignored, never a substring match). A `REQUEST-CHANGES` gets one rework cycle by default
+(`maxReworkCycles`); a second one (`review_rejected`) or no marker at all
+(`reviewer_verdict_unparseable`) fails the task:
 
 ```bash
 $ docket run
   [task-91a2c410-...] failed — reviewer rejected after 1 rework cycle(s): REQUEST-CHANGES
 ```
 
-Read the Reviewer's full reply via `docket task trace --tail`, fix the underlying issue, then queue it
+Read the Reviewer's full reply via `docket task trace <task-id>`, fix the underlying issue, then queue it
 again (`docket task retry` is for a task that is blocked or failed and keeps the hops it finished; a new `task add` starts clean):
 
 ```bash
 docket task add <task>
 ```
 
-### "pod has no lead — cannot dispatch"
+### "pod '<name>' has no lead — cannot dispatch"
 The pod is missing its Lead. A pod must have exactly one Lead, which orchestrates dispatch.
 Add one back (only a *second* Lead is refused):
 ```bash
@@ -433,52 +409,47 @@ docket pod add lead
 Inspect the pod and run diagnostics to find and fix the gap:
 ```bash
 docket pod show     # list the pod's members and status
-docket setup      # system-wide diagnostics (add --fix to repair drift)
+docket setup --fix  # system-wide health report; also repairs file modes, policies and the ledger
 ```
 
 ### Implementer touching the wrong project?
 Check its session key:
 ```bash
-grep "Session Key" ~/.docket/workspaces/projects/<p>-implementer/SOUL.md   # verify identity
+grep "Session Key" ~/.docket/state/workspaces/projects/<p>-implementer/SOUL.md   # verify identity
 ```
 
 ## Memory & Context
 
-There is no per-agent `SNAPSHOT.md` or `.memory-index.json`, and there is no separate semantic memory
-index: docket's own turn loop has no `memory_search` tool of its own, so an agent searches
-its memory files with the same `read`/`grep` tools it uses for anything else. The real per-agent
-memory contract is: `WORKFLOW_AUTO.md` (the startup contract for reading the workspace by hand; a docket
-turn composes its own startup contract instead), `HEARTBEAT.md` (the durable task ledger) and `MEMORY.md`.
+A pod member's workspace (`~/.docket/state/workspaces/projects/<agent-id>/`) holds `SOUL.md`,
+`AGENTS.md`, `TOOLS.md` (an Implementer with resources or a verify command), `HEARTBEAT.md` (the
+durable task ledger), `WORKFLOW_AUTO.md` (the startup contract for reading the workspace by hand;
+a docket turn composes its own startup contract instead) and `MEMORY.md` (your notes about the
+project: docket seeds a header and never writes it again). There is no `memory/` directory and no
+daily log. What a pod learns by itself is kept apart, in the pod's `memory.json`, and is reviewed
+with `docket pod memory list|approve|refuse|revert|reset`.
 
 ### Agents still using large context?
 
-1. **Get the real per-turn footprint estimate and distill if it's over budget:**
+See "Large Context / Many Tokens" above, then check the fleet:
 
-   ```bash
-   docket setup --fix     # look for the "Context footprint" line
-   docket pod reset <agent-id>   # summarize memory/*.md into MEMORY.md, archive originals, rebuild
-   ```
-
-2. **Verify the fleet is healthy:**
-
-   ```bash
-   docket status --all
-   docket setup
-   ```
+```bash
+docket status --all
+docket setup --fix
+```
 
 ### Startup contract stale, or HEARTBEAT.md wrong on resume?
 
-`docket setup` re-seeds a missing or stale `WORKFLOW_AUTO.md` (the contract-version marker is
+`docket setup --fix` re-seeds a missing or stale `WORKFLOW_AUTO.md` (the contract-version marker is
 checked; a docket turn does not replay the file, but a human or tool reading the workspace does):
 
 ```bash
-docket setup
+docket setup --fix
 # Runtime startup contract:
-# ✓ myproject-implementer: seeded WORKFLOW_AUTO.md (codebase /home/user/code/myproject)
+#   myproject-implementer: seeded WORKFLOW_AUTO.md (codebase /path/to/myproject)
 ```
 
-If HEARTBEAT.md itself looks wrong (not just the startup file), reset it; `MEMORY.md` is left
-as it is:
+If HEARTBEAT.md itself looks wrong (not just the startup file), reset it; `MEMORY.md` and the
+pod's `memory.json` are left as they are:
 
 ```bash
 docket pod reset <agent-id>
@@ -494,25 +465,25 @@ and no approval was ever created.
 **Cause:** the pod's `approvalMode` is `refuse`, so a gated tool call ends the hop at once
 instead of waiting for a human. A frequent trigger with a small local model is `echo "..." > file`:
 a redirected `echo` asks unless every target is inside the workspace. A redirect into the
-workspace is allowed (it is the `write` tool by another name); `echo` into `/tmp`, `~`, a `$VAR`
-path or after a `cd` still asks, and so does any binary off the allowlist (`uv`, `tox`, `rm`, ...).
-`pytest` and `python` are on it.
+workspace is allowed (it is the `write` tool by another name); `echo` into `/tmp`, `~` or a `$VAR`
+path, or after a `cd` whose target the gate cannot follow, still asks. With isolation off, so does
+any binary off the allowlist (`uv`, `tox`, `rm`, ...); `pytest` and `python` are on it.
 
-**Fix:** `docket pod set approvalMode park` (or `wait`) so the call is put to an operator, adjust
-the policy so the task's tool calls don't need approval (see
+**Fix:** `docket pod set approvalMode park` (or `wait`) so the call is put to an operator, put the
+binary on the pod's own allowlist (`docket pod set allowCommands uv,tox`; see
 [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)), or re-scope the task to avoid the gated action.
 
 ## Getting Help
 
 1. **Run diagnostics:**
    ```bash
-   docket setup
+   docket setup --fix
    ```
 
 2. **Check logs:**
    ```bash
-   ls ~/.docket/workspaces/projects/<agent-id>/memory   # daily memory logs
-   docket task trace --tail  # live dispatch trace, if it's pod-related
+   ls ~/.docket/state/workspaces/projects/<agent-id>/    # the member's workspace files
+   docket task trace <task-id> --tail  # follow a dispatched task's trace
    docket log                 # recent docket-initiated changes
    ```
 

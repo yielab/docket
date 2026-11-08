@@ -17,11 +17,12 @@ The gateway setup below is specifically for Docket's runtime.
 
 ## Quick setup
 
-OpenRouter has a built-in endpoint mapping:
+OpenRouter has a built-in endpoint mapping. `provider add` reads the key from `OPENROUTER_API_KEY`
+or a hidden prompt (`--credential <key>` passes it on the command line), probes `/models`, stores
+the key and applies the provider's preset:
 
 ```bash
-docket setup provider add OPENROUTER_API_KEY --credential
-docket setup model preset openrouter
+docket setup provider add openrouter
 ```
 
 For zero-cost experiments, `docket setup model preset openrouter-free` sends the stable
@@ -31,8 +32,7 @@ calls, so this preset is not a deterministic production baseline.
 Vercel AI Gateway also has a built-in mapping:
 
 ```bash
-docket setup provider add AI_GATEWAY_API_KEY --credential
-docket setup model preset ai-gateway
+docket setup provider add ai-gateway
 ```
 
 Docket model ids add one routing prefix. For example,
@@ -45,14 +45,15 @@ gateway API key is the straightforward local setup.
 To mix gateways by policy role, apply one baseline preset and then override named policy roles:
 
 ```bash
-docket setup provider add OPENROUTER_API_KEY --credential
-docket setup provider add AI_GATEWAY_API_KEY --credential
+docket setup provider add openrouter --no-preset
+docket setup provider add ai-gateway --no-preset
 docket setup model preset openrouter
-docket setup model set programmer ai-gateway/anthropic/claude-sonnet-4.6
+docket setup model set implementer ai-gateway/anthropic/claude-sonnet-4.6
 ```
 
-Use policy names such as `manager` and `programmer`, not pod labels such as Lead and Implementer.
-Applying another preset later replaces all seven policy-role selections.
+The names `docket setup model set` takes are role names (`lead`, `implementer`, `reviewer` and the
+other roles `docket pod roles` lists) or `default`. Applying another preset later replaces the
+selection of every named role and the default.
 
 Stored keys are read directly by Docket's model client. Provider environment variables override
 the central store for one process, and `DOCKET_LLM_BASE_URL` / `DOCKET_LLM_API_KEY` override every
@@ -61,8 +62,8 @@ the selected endpoint's context/output limits unknown.
 
 ## Other OpenAI-compatible endpoints
 
-The shipped wire is a non-streaming `POST /chat/completions` request with OpenAI function-tool
-shapes. Every provider — built-in or your own — is a `kind: provider` document
+The `openai-chat` dialect, the default, is a non-streaming `POST /chat/completions` request with
+OpenAI function-tool shapes. Every provider — built-in or your own — is a `kind: provider` document
 (`models.catalog.ProviderSpec`; see `docs/CONFIGURATION.md` §3.1 and
 `specs/functional/model-profiles.spec.md` "Provider catalog"): `name`, `dialect`, `baseUrl`,
 `auth` (`bearer`/`header`/`none` plus credential names, never values), optional `headers` for a
@@ -72,7 +73,7 @@ static header a gateway requires, and `models[]` with each id's optional declare
 ```bash
 docket setup provider add my-provider https://example.invalid/v1 \
   --model creator/model-id --ctx 200000 --max-tokens 8192
-docket setup model set programmer my-provider/creator/model-id
+docket setup model set implementer my-provider/creator/model-id
 ```
 
 The exact registered model receives those declared limits in the loop's preflight. A limit you
@@ -93,20 +94,24 @@ document can override `toolSurface` (`full` or `minimal`), `descriptions` (`full
 context window), and declare `sampling: {temperature, topP}`; sampling is sent only when declared,
 so an endpoint's own defaults apply otherwise. `docket status` names each member's profile.
 `toolSurface: minimal` is applied to every hop: the request offers `bash`, `read`, `glob`, `edit`,
-`write` and `verify`, the step's closing tool, and any MCP tool the role's `tools` allow-list (or the
-step's, when it declares one) names, as `mcp__<server>__<tool>` or `mcp__<server>` for every tool of
-that server. A role with no allow-list is offered no MCP tool under `minimal`, and a `send` tool still
-needs the role's own list. `full` offers every tool the role may hold.
+`write` and `verify`, the step's closing tool, the pod's record tools, and any MCP tool or declared
+service operation the role's `tools` allow-list (or the step's, when it declares one) names, as
+`mcp__<server>__<tool>` or `mcp__<server>` for every tool of that server. A role with no allow-list
+is offered no MCP tool or service operation under `minimal`, and a `send` tool still needs the role's
+own list. `full` offers every tool the role may hold.
 `budgets` set the turn's tool-output cap and `read` window from the model's context window, never
 above `DOCKET_TOOL_MAX_OUTPUT_CHARS`.
 
-Compatibility does not mean feature parity. Docket currently:
+Compatibility does not mean feature parity. Docket:
 
-- sends non-streaming Chat Completions and ordinary function tools;
+- sends non-streaming requests with ordinary function tools: Chat Completions, or Messages for the
+  `anthropic-messages` dialect;
 - records prompt/completion and cache-read tokens it understands;
 - does not send Responses API fields, gateway routing/provider options, or vendor-specific headers
   beyond a document's own `auth.header` and `headers`;
-- does not discover remote model catalogs;
+- does not check a model id against a remote catalog: the ids are the ones a document declares (a
+  bare `provider add <name> <url>` takes the first id the endpoint advertises), and `/models` supplies
+  only the limits it publishes;
 - performs its own retry policy outside any gateway-internal retry/failover: a `Retry-After` the
   endpoint names can push a retry's wait past the linear backoff, but the wait is always capped —
   `min(max(2s × attempt, Retry-After), DISPATCH_RETRY_MAX_WAIT_S)`, `DISPATCH_RETRY_MAX_WAIT_S`
@@ -124,7 +129,7 @@ production commitment from the vendor. OpenRouter and Vercel AI Gateway still sp
 
 Choose a model only after representative evals for the actual tool schemas and tasks. A model id
 being available does not prove reliable tool use. Keep live remote canaries opt-in with an explicit
-request/cost budget; the default suite uses deterministic HTTP fakes and no credentials.
+request budget; the default suite uses deterministic HTTP fakes and no credentials.
 
 Official references: [OpenRouter Chat Completions](https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion),
 [OpenRouter free router](https://openrouter.ai/docs/guides/routing/routers/free-router),
