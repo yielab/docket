@@ -21,11 +21,11 @@
 > **Phases 69 and 70 closed 2026-11-07** (D-90, D-91; not pushed), workers on Sonnet and Haiku only: docket has an agent
 > eval lane (`evals/`, five suites, 109 tasks with hidden checks, pass@k and pass^k, a base per commit) and the 4,200-line
 > canary is deleted; the guardrails are one source per check, measured on the lane's safety suite (attack success 0.00
-> before and after, twin utility 0.92 to 1.00, false positives 3 to 0). Their sections are archived and what they leave
+> before and after, twin utility 0.92 to 1.00, false positives 2 to 0 once a model miss is not counted as one). Their sections are archived and what they leave
 > open is under "Evals and guardrails" in the follow-ups below.
 > **Phase 71 closed 2026-11-08** (no new decision; not pushed): the triage of every follow-up and the maintainer's deep
 > clean. A shell substitution whose command is known is classified, not asked (attack success 0.00 on the safety
-> suite, twin pass 0.97); an exported pod applied back reads as not drifted; dead code measured with vulture deleted;
+> suite, twin pass 0.97, no false positive); an exported pod applied back reads as not drifted; dead code measured with vulture deleted;
 > six specs and every operator document checked claim by claim against the code. P71-10 (a third cache breakpoint)
 > waits for the maintainer's D-76 choice. Its section is archived and what it leaves open is under "Phase 71" in the
 > follow-ups below.
