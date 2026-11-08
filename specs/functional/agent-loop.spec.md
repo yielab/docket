@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.25.2
+**Version**: 4.25.3
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 reduces a request that does not fit, and gates every tool call through `dispatch_tool` until a typed stop fires.
