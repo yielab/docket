@@ -982,5 +982,21 @@
     "heading": "☑ PHASE 67 COMPLETE 2026-11-06 — a research team reads the web without anyone writing it a host list (D-88, accepted 2026-11-04)",
     "bytes": 17078,
     "sha256": "5a6429b68fe5935174841eec4280e7251ccf99be80fe2ca3fe823556306be06b"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "✓ PHASE 69 CLOSED 2026-11-07 — WAVE 69 · an agent eval lane: tasks with hidden checks, pass@k and pass^k, a base per commit, and the canary deleted (D-90, accepted 2026-11-06)",
+    "bytes": 44810,
+    "sha256": "729277a545eb9f7ff42eb724ef5d807620e318372a44a76a8e6579ebdd1ef38d"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "✓ PHASE 70 CLOSED 2026-11-07 — guardrails with two numbers: one source per check, framed tool results, and the gaps the audit found (D-91, accepted 2026-11-06; starts after P69-14)",
+    "bytes": 25879,
+    "sha256": "3c5a63bbc41dd4be25ff8518ee148663950144d77be5cec6a7a20b9650168433"
   }
 ]
