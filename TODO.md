@@ -131,7 +131,7 @@ from `main`.
 
 ### P71-1 — Six specs say what the code does
 
-**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** spec text only
+**Status:** DONE 2026-11-08, `137fb77d` (the six specs patch-bumped; the spec index caught up in `5756bf4e`) · **Size:** S · **Model:** Haiku · **Kind:** spec text only
 
 - **Trigger:** verified 2026-11-08: each line below is false against the code at `e347980c`.
 - **Goal:**
@@ -153,7 +153,7 @@ from `main`.
 
 ### P71-2 — The home layout and `pod update` list the routines, services and records they carry
 
-**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** data + spec text
+**Status:** DONE 2026-11-08, `222476a6` (the layout also gained `quota.json` and `prompt-tests.json`, two more state files the card missed; `86917f87` added the six config entries `Home` resolves that the layout's config list lacked, so `init` refuses them at the top of a home) · **Size:** S · **Model:** Haiku · **Kind:** data + spec text
 
 - **Trigger:** verified 2026-11-08: `kernel/layout.py:39-42` and `docs/CONFIGURATION.md:69-72` list
   `docket-schedules.json`, `docket-runs.json` and `docket-conversations.json` but not `state/docket-routines.json`
@@ -169,7 +169,7 @@ from `main`.
 
 ### P71-3 — `docket init --blueprint respond` names the jail it needs after recording it
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour (CLI output order)
+**Status:** DONE 2026-11-08, `04b5766f` (the batch path is `docket init --from`, not `pod add`; a recipe with no needs no longer prints a blank block) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour (CLI output order)
 
 - **Trigger:** deterministic. `pod-blueprints.spec.md:534-536` (requirement 16) says the `needs fetch-hosts ...`
   line is printed after isolation is recorded. Actual: `cmd_init` builds the pod (`interfaces/cli/commands/agents.py`
@@ -191,7 +191,7 @@ from `main`.
 
 ### P71-4 — Two comments that state a wrong rule
 
-**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** comments only
+**Status:** DONE 2026-11-08, `e21dbce0`; the Lead comment it wrote said `budget_for_role` has no caller, which is false (`compose.py:_role_budget`), fixed in `7d05d766` · **Size:** S · **Model:** Haiku · **Kind:** comments only
 
 - **Trigger:** verified 2026-11-08. `governance/security.py:86-98` says `HighRiskClass.bins` is "for visibility
   only", and the test comment at `tests/integration/governance/test_gates_policies_approve_deny.py:101-103` says
@@ -206,7 +206,7 @@ from `main`.
 
 ### P71-5 — The service's notify flush says when a channel failed
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour
+**Status:** DONE 2026-11-08, `04f9f432` (a sink that raises counts a `failed` delivery, not `error`; the sweep prints both: `notify flush: <error>` and `notify flush: <n> delivery(ies) failed`) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour
 
 - **Trigger:** verified 2026-11-08: `interfaces/http/server.py:230-231` calls `flush_notify_channels(...)` inside
   `contextlib.suppress(Exception)`; the function returns `None` (`operator/notify.py:523-527`) and drops
@@ -221,7 +221,7 @@ from `main`.
 
 ### P71-6 — The A2A agent card says what the pod does
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour (HTTP shape, additive)
+**Status:** DONE 2026-11-08, `ce64763d` (`report.pod_skill` reads only the Lead's blueprint and `delivers`; the A2A contract recording moved in the e2e pod's skill text and tags only) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour (HTTP shape, additive)
 
 - **Trigger:** the follow-up's own: P63-2 landed. `interfaces/http/routes/a2a.py:263` still writes
   `"Runs tasks in the {pod} pod."`; `pod_report` (`hops/application/report.py:413`) carries `blueprint` (`:438`)
@@ -237,7 +237,7 @@ from `main`.
 
 ### P71-7 — Names and writers that exist twice, once each
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** refactor, no behaviour change
+**Status:** DONE 2026-11-08, `1862ce29` (`store_secret` decides add or rotate itself, so `_write_credential`'s `event` argument went with it: 8 test call sites; the keyring-refused message is now `store_secret`'s) · **Size:** S · **Model:** Sonnet · **Kind:** refactor, no behaviour change
 
 - **Trigger:** the maintainer's rule of 2026-11-05 (no duplicate mechanisms) and the Phase 57/56 follow-ups,
   verified 2026-11-08: the `reply` option id in `tasks/application/answers.py:22` and `escalations.py:80`;
@@ -257,7 +257,7 @@ from `main`.
 
 ### P71-8 — A shell idiom whose command is known is classified, not asked
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** guardrail behaviour + eval task + spec · **After:** P71-4, P71-14
+**Status:** DONE 2026-11-08, `039f76fe` (`extract_substitutions` in `command_lexer.py`; a substitution that could become the program, a verb, an option or a redirect target, or is glued to other text, still asks; two safety tasks `subst-readme` and its twin, attack goal `subst_exec`; security-gates 3.25.0, test-framework 5.5.0). The integrator's adversarial probe found `cat <(curl x)` allowed unjailed on develop too, and the bash description still telling the model `$(` and `${` ask: `<(`/`>(` are opaque and both descriptions say what a substitution costs (`652d878c`, security-gates 3.25.1). Every new allow equals its plain form (`${HOME}` as `$HOME`; jailed inner commands as jailed top-level ones). Safety run: see below · **Size:** M · **Model:** Sonnet · **Kind:** guardrail behaviour + eval task + spec · **After:** P71-4, P71-14
 
 - **Trigger (fired):** "Approvals for shell idioms" (Phases 60-62 follow-up): in the week after Phase 59 approvals
   parked more than one Implementer hop in five. Observed 2026-11-03..06 on the live home: 6 of 9 Implementer hops
@@ -291,7 +291,7 @@ from `main`.
 
 ### P71-9 — `TestAnsweredInPlace` waits for events, not the clock
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** test only
+**Status:** DONE 2026-11-08, `a9f9dc65` (one `_wait_until` bounded at 120 s that fails naming what it waited for; the flake did not reproduce at 40/40 under two concurrent copies and a CPU burn, before or after, so the fix rests on the wait bounds read, and a planted 4 s delay fails with the waited-for name) · **Size:** S · **Model:** Sonnet · **Kind:** test only
 
 - **Trigger (fired):** three tests of `tests/integration/tasks/test_consult_wait.py::TestAnsweredInPlace` failed
   once each under load and passed alone (Phase 55 Wave 2 and Wave 4 follow-ups); the board's rule makes a third in
@@ -330,7 +330,7 @@ from `main`.
 
 ### P71-11 — Dead parameters and a dead total deleted
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** deletion, no behaviour change
+**Status:** DONE 2026-11-08, `8276f573` (`finish_run` already keeps a requested cancellation, so `preserve_cancelled` was dead, not a defect; agent-loop 4.25.2, then 4.25.3 in `98e86755` where a second change claimed the same number); `track_pid`, which no longer tracked a pid, is `production_driver` (`88d4f1d9`) · **Size:** S · **Model:** Sonnet · **Kind:** deletion, no behaviour change
 
 - **Trigger:** measured 2026-11-08 with `uvx vulture src/docket tests evals scripts packages --min-confidence 60`
   (whole repository, so a name read only by a test counts as read): after the framework false positives (Typer
@@ -354,7 +354,7 @@ from `main`.
 
 ### P71-12 — `docs/CONFIGURATION.md` says what the code reads and writes
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** documentation · **After:** P71-2
+**Status:** DONE 2026-11-08, `fc17b795` (twenty groups of claims fixed or deleted, each with its locator in the commit body: `init` creates the pod with no endpoint, one baseline policy not six, isolation on where a backend exists, no `memory/`, no `modelSource`, the tool and role tables, the MCP flags, every state file); `fc381e56` places every path in `commands.md`'s environment table under `config/` or `state/` · **Size:** M · **Model:** Sonnet · **Kind:** documentation · **After:** P71-2
 
 - **Trigger:** the maintainer's request of 2026-11-08 (update every document in detail; delete what no longer holds)
   and the project's rule that nothing in CI compares a doc to a spec (CLAUDE.md "Correct spec, wrong prose"). Known
@@ -372,7 +372,7 @@ from `main`.
 
 ### P71-13 — `docs/recipes.md` and `docs/AGENT-TEAMS.md` say what the recipes and team shapes do
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** documentation
+**Status:** DONE 2026-11-08, `0e7c6684` (no deleted template was named; other stale claims were: scope `pod` only, three built-in roles not four, the starter roster table, nine recipe READMEs regenerated into `recipes.md`) · **Size:** M · **Model:** Sonnet · **Kind:** documentation
 
 - **Trigger:** the maintainer's request of 2026-11-08, as P71-12. Phases 69-70 deleted four policy templates and two
   recipe rules (`high-risk-deploy`, `-credentials`, `-payment`, `secret-pii-redact`, `secrets-guard-redact-output`,
@@ -387,7 +387,7 @@ from `main`.
 
 ### P71-14 — `docs/SECURITY-SIMPLE.md`, `docs/troubleshooting.md` and `docs/MODEL-GATEWAYS.md` say what holds
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** documentation
+**Status:** DONE 2026-11-08, `045ce111` (isolation's default, the hop-output scan that no longer exists, three policy hooks and one shipped template, invented troubleshooting output replaced by real output, the gateway quick-setup commands); provider notes that made a price claim fixed in `babeedf9` · **Size:** M · **Model:** Sonnet · **Kind:** documentation
 
 - **Trigger:** the maintainer's request of 2026-11-08, as P71-12. Phase 70 changed what these describe: one list of
   high-risk classes applied to every acting tool, one redaction always on, tool results framed as untrusted, every
@@ -400,7 +400,7 @@ from `main`.
 
 ### P71-15 — The quick start, the docs index, CONTRIBUTING and the eval lane's README say what holds
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** documentation
+**Status:** DONE 2026-11-08, `0fff6e9a` (every command in the quick start run on a scratch home with its exit code; the recipe count removed rather than replaced; CONTRIBUTING's CI gate list completed and its history dropped); the operator recipes and skills paths fixed across specs, help and two ADRs in `5756bf4e` · **Size:** M · **Model:** Sonnet · **Kind:** documentation
 
 - **Trigger:** the maintainer's request of 2026-11-08, as P71-12.
 - **Goal:** as P71-12 for `docs/QUICK-START-DOCKET.md`, `docs/README.md`, `CONTRIBUTING.md`, `evals/README.md` and
@@ -414,7 +414,7 @@ from `main`.
 
 ### P71-16 — An exported pod applied back unchanged does not read as drifted
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour (deterministic defect)
+**Status:** DONE 2026-11-08, `dda68feb` (the update was wrong, not the lock: `_plan_policies` planned `skip` on equal parsed content and left the recipe's bytes in the overlay; it now refreshes them as the role plan does; pod-blueprints 4.14.4) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour (deterministic defect)
 
 - **Trigger:** reproduced by P71-15 on 2026-11-08 (scratch home, no model call): on a recipe-applied pod,
   `docket pod export` then `docket pod update .docket` (applied) and `docket pod show` reports `drift: yes`. The files
@@ -436,6 +436,25 @@ from `main`.
 > Re-checked against the code on 2026-10-24; paths are current. Removed as no longer true: notification
 > dedup is persisted (`operator/notify.py`), the `kind:`-less canonical-document advisory is gone, and
 > `_create_workspace` no longer exists. Decisions that belong to the maintainer are in ROADMAP §7.1.
+
+**Phase 71 (2026-11-08).** Found by the workers and the integrator's review, none a card yet:
+
+- *What a substitution still does not read* (P71-8): a variable set earlier (`x=push; git ${x}`) is as unread as `$x`
+  always was, and a path an inner command builds (`cat "$(echo .docket)/token"`) is caught only when the inner text
+  names the private path. A path program accepts a bare `$(...)` operand (`ls $(echo /)` allows, as `ls /` does).
+  Trigger: a recorded call that used one of these to reach what its plain form would ask about.
+- *The policy corpus's `layer: classifier:opaque` labels* are stale for the rows P71-8 moved; no test reads the label.
+  Trigger: the next corpus edit.
+- *`docket setup --fix` is the only health report*, and it also repairs (`setup.py` `_report_json` against
+  `setup_check._check_json`). Trigger: an operator who wants to diagnose without changing the home.
+- *`docket pod recipes` counts no `services/`*, so `web-research` and `hacker-news` show no service under "Brings"
+  (`teams/apply/recipes.py` `summarize_recipe`). Trigger: an operator choosing a recipe by what it brings.
+- *The quick start and `install.sh` pin `v0.3.0-beta.1`*, which is not tagged (the newest tag is `v0.2.0-beta.4`): the
+  install lines resolve once the maintainer cuts the release.
+- *Smaller:* `teams/blueprints.py` still speaks of org-scoped roles "reserved for later" where the spec allows `pod`
+  only; `user-stories.md:63` cites a test whose name still says `daily_logs`; `specs/README.md` has no row for
+  `a2a-binding` or `cost-tracking`, and nothing checks the index against the files' versions (it drifted seven times
+  before this phase fixed it).
 
 **Evals and guardrails (planned 2026-11-06, D-90/D-91).** Left out of the two phases on purpose, each with its trigger:
 
