@@ -101,7 +101,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Audit | 3.5.1 | Implemented |
 | Config Format | 2.12.1 | Implemented |
 | Cost Tracking | 2.2.0 | Implemented, recorded dollars unavailable |
-| Model Profiles | 7.5.0 | Complete |
+| Model Profiles | 7.6.0 | Complete |
 | Observability Export | 3.3.0 | Implemented and live |
 | Pipeline Format | 4.8.0 | Implemented |
 | Pod Blueprints | 4.14.4 | Implemented |
@@ -110,7 +110,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Security Gates | 3.25.1 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Service Client | 1.5.0 | Implemented in part (the document, the tools, the call, the writes handling and the OpenAPI 3 or 2 import; not proven against a real service) |
 | Pod Records | 1.9.0 | Implemented in part (the store, the document, the CLI, the agent tools and the two HTTP read routes; not proven against a live model) |
-| Session History | 1.23.0 | Implemented and live |
+| Session History | 1.24.0 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 5.0.0 | Implemented |
 | Trace Store | 6.1.1 | Implemented and live |

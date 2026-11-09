@@ -207,6 +207,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A third prompt-cache breakpoint at the condensed boundary (D-76 amended, Phase 72).** When a request's history
+  condensed old tool results, the last message of the condensed range carries a third `cache_control` marker, on
+  `anthropic-messages` and on `openai-chat` for a Claude model id; a request with nothing condensed is sent as before.
+  Measured on Haiku 5.5 when the condensation moved: about 2,400 more input tokens read from the cache, and as many
+  fewer written, on a 17k-token request.
 - **The live smoke and the live eval run jailed by default (Phase 64).** `scripts/smoke_workflow.py` and
   `scripts/maint/live_eval.py` default to `--sandbox on`, as `docket init` does where the machine can;
   `--sandbox off` is the opt-out.
