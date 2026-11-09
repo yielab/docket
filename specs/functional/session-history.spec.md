@@ -1,9 +1,9 @@
 # Session History Specification
 
-**Version**: 1.23.0
+**Version**: 1.24.0
 **Status**: Implemented and live. The agent loop loads, compacts and appends this durable history
 on the production `DocketDriver` path; every pod-dispatch step has its own history key.
-**Last Updated**: 2026-11-05
+**Last Updated**: 2026-11-09
 
 ## Purpose
 
@@ -61,7 +61,8 @@ This specification does NOT cover:
 ### Message round-trip
 
 6. Appending messages to a session and reading them back **MUST** reproduce every message field
-   exactly, including a tool-call-carrying message's `tool_calls` (each call's `id`/`name`/
+   exactly, except `cache_boundary` (requirement 29), which belongs to a request and is never
+   stored, including a tool-call-carrying message's `tool_calls` (each call's `id`/`name`/
    `arguments`), and a tool-result message's `tool_call_id` and `name`.
 7. Measured token usage (real per-call counts reported by the completion endpoint) **MAY** be
    recorded alongside a session's history and **MUST** accumulate additively across appends (input,
@@ -212,7 +213,12 @@ This specification does NOT cover:
     **MUST** be a pure function: the
     same messages always yield the same bytes, the input list and its messages are never changed,
     and nothing is read from or written to disk. It is applied to the request only; the stored
-    history keeps every byte, and the agent loop's request builder is its one live caller.
+    history keeps every byte, and the agent loop's request builder is its one live caller. When it
+    condensed at least one result, it **MUST** set `ChatMessage.cache_boundary` (default `False`)
+    on a copy of the last `tool` message older than the cut, the last message of the condensed
+    range, and on no other; with nothing condensed it sets it on none. The model wires place a
+    cache breakpoint on that message (`model-profiles.spec.md` requirements 8 and 10), so the
+    prefix up to the cut stays cached while the cut stands.
 30. A `tool` message is *answered* once an assistant message follows it; the results after the last
     assistant message belong to the round the model has not read yet. An unanswered result
     **MUST NEVER** be condensed, however large the round (a round of parallel fetches keeps every
@@ -273,7 +279,7 @@ This specification does NOT cover:
 ```python
 # storage models
 class StoredToolCall(BaseModel): ...          # id, name, arguments
-class StoredMessage(BaseModel): ...           # role, content, tool_calls, tool_call_id, name
+class StoredMessage(BaseModel): ...           # role, content, tool_calls, tool_call_id, name (no cache_boundary)
 class MeasuredUsage(BaseModel): ...           # inputTokens, outputTokens, cachedTokens, cacheWriteTokens, turns
 class SessionRecord(BaseModel): ...           # sessionKey, created, updated, messages, usage, usageByDay
 

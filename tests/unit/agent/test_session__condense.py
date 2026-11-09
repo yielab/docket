@@ -3,6 +3,8 @@
 Covers which tool results are condensed, in batches, and the notice a condensed result carries.
 """
 
+from dataclasses import replace
+
 from tests.support import home as _support_home
 
 from docket.agent import ports as _ports
@@ -76,10 +78,45 @@ class TestCondenseHistory:
         first = _sess.condense_history(_history(5), keep=2, budget=0)
         second = _sess.condense_history(_history(6), keep=2, budget=0)
         assert _sess.condense_history(_history(6), keep=2, budget=0) == second
+        first = [replace(m, cache_boundary=False) for m in first]
+        second = [replace(m, cache_boundary=False) for m in second]
         shared = next(i for i, (a, b) in enumerate(zip(first, second, strict=False)) if a != b)
         assert first[:shared] == second[:shared]
         assert second[shared].role == "tool"
         assert second[shared].tool_call_id == "c3"
+
+    def test_the_last_condensed_result_is_marked_as_the_cache_boundary_and_no_other(self) -> None:
+        """The wire places a cache breakpoint on it; a copy is marked, never the input."""
+        messages = _history(6)
+        out = _sess.condense_history(messages, keep=2, budget=0)
+        marked = [m for m in out if m.cache_boundary]
+        assert [(m.role, m.tool_call_id) for m in marked] == [("tool", "c3")]
+        assert not any(m.cache_boundary for m in messages)
+
+    def test_the_boundary_moves_with_the_cut(self) -> None:
+        """A longer history cut further puts the mark on the newer last condensed result."""
+        ids = [
+            next(
+                m.tool_call_id
+                for m in _sess.condense_history(_history(n), 2, 0)
+                if m.cache_boundary
+            )
+            for n in (5, 6, 9)
+        ]
+        assert ids == ["c2", "c3", "c6"]
+
+    def test_nothing_condensed_marks_nothing(self) -> None:
+        """Whole results and an empty history leave every message unmarked."""
+        for messages in (_history(2), _history(0), [user("t"), *_read_exchange(0, "ok")]):
+            out = _sess.condense_history(messages, keep=2, budget=6000)
+            assert not any(m.cache_boundary for m in out)
+            assert out == messages
+
+    def test_a_cut_that_rewrites_no_result_marks_nothing(self) -> None:
+        """A result no longer than its notice stays as it is, so there is no condensed range."""
+        messages = [user("t"), *_read_exchange(0, "ok"), *_read_exchange(1), *_read_exchange(2)]
+        out = _sess.condense_history(messages, keep=2, budget=0)
+        assert [m.tool_call_id for m in out if m.cache_boundary] == []
 
     def test_a_short_result_is_left_alone(self) -> None:
         """A result no longer than its notice is not rewritten."""

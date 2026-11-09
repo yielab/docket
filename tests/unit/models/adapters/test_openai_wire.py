@@ -7,8 +7,18 @@ per-row limits field map; no test here opens a socket.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
-from docket.agent.ports import Endpoint, ToolSpec, system, user
+from docket.agent.ports import (
+    ChatMessage,
+    Endpoint,
+    ToolCall,
+    ToolSpec,
+    assistant,
+    system,
+    tool_result,
+    user,
+)
 from docket.models.adapters import openai_wire
 
 SUBJECT = "docket.models.adapters.openai_wire"
@@ -22,6 +32,47 @@ class TestRequestBytes:
         measured = openai_wire.request_part_bytes(payload)["user"]
         assert measured == len(json.dumps(payload["messages"][0], ensure_ascii=False).encode())
         assert measured < len(json.dumps(payload["messages"][0]).encode())
+
+
+class TestTheCondensedBoundaryMarker:
+    _CLAUDE = Endpoint(base_url="http://127.0.0.1:1/v1", model_id="anthropic/claude-haiku-5-5")
+    _CALL_A = ToolCall("t1", "bash", "{}")
+    _CALL_B = ToolCall("t2", "read", "{}")
+
+    def _history(self, *, boundary: bool) -> list[ChatMessage]:
+        first = replace(tool_result(self._CALL_A, "a.txt"), cache_boundary=boundary)
+        return [
+            system("s"),
+            user("go"),
+            assistant("", [self._CALL_A, self._CALL_B]),
+            first,
+            tool_result(self._CALL_B, "hello"),
+            user("go on"),
+        ]
+
+    def test_a_claude_model_marks_the_boundary_message_as_a_third_part(self) -> None:
+        payload = openai_wire.build_payload(self._CLAUDE, self._history(boundary=True))
+
+        marked = [m["role"] for m in payload["messages"] if isinstance(m["content"], list)]
+        assert marked == ["system", "tool", "user"]
+        boundary = payload["messages"][3]
+        assert boundary["content"][0]["cache_control"] == {"type": "ephemeral"}
+        assert boundary["tool_call_id"] == "t1"
+
+    def test_without_a_boundary_the_payload_is_the_two_marker_payload(self) -> None:
+        plain = openai_wire.build_payload(self._CLAUDE, self._history(boundary=False))
+
+        marked = [m["role"] for m in plain["messages"] if isinstance(m["content"], list)]
+        assert marked == ["system", "user"]
+
+    def test_a_model_that_is_not_claude_is_never_marked(self) -> None:
+        other = Endpoint(base_url="http://127.0.0.1:1/v1", model_id="local-model")
+
+        with_boundary = openai_wire.build_payload(other, self._history(boundary=True))
+        without = openai_wire.build_payload(other, self._history(boundary=False))
+
+        assert json.dumps(with_boundary) == json.dumps(without)
+        assert all(isinstance(m["content"], str | None) for m in with_boundary["messages"])
 
 
 class TestASummaryInTheHistory:

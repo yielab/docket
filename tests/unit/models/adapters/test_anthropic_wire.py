@@ -7,6 +7,7 @@ no test here opens a socket.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from unittest.mock import ANY
@@ -122,6 +123,32 @@ class TestEncoding:
         ]
         assert marked == [payload["system"][-1], payload["messages"][-1]["content"][-1]]
         assert all(b["cache_control"] == _EPHEMERAL for b in marked)
+
+    def test_a_third_marker_sits_on_the_boundary_message_block_and_only_there(self) -> None:
+        call_a, call_b = ToolCall("t1", "bash", "{}"), ToolCall("t2", "read", "{}")
+        boundary = replace(tool_result(call_a, "a.txt"), cache_boundary=True)
+        messages = [
+            system("s"),
+            user("go"),
+            assistant("", [call_a, call_b]),
+            boundary,
+            tool_result(call_b, "hello"),
+            user("go on"),
+        ]
+
+        payload = wire.build_payload(_ENDPOINT, messages)
+
+        blocks = [b for m in payload["messages"] for b in m["content"]]
+        marked = [b for b in blocks if "cache_control" in b]
+        assert [b.get("tool_use_id", b.get("text")) for b in marked] == ["t1", "go on"]
+        assert payload["system"][-1]["cache_control"] == _EPHEMERAL
+        assert all(b["cache_control"] == _EPHEMERAL for b in marked)
+
+    def test_without_a_boundary_message_the_payload_is_the_two_marker_payload(self) -> None:
+        plain = wire.build_payload(_ENDPOINT, _conversation())
+        flagged = [replace(m, cache_boundary=False) for m in _conversation()]
+
+        assert json.dumps(wire.build_payload(_ENDPOINT, flagged)) == json.dumps(plain)
 
     def test_every_model_on_the_dialect_is_marked_not_only_claude_ids(self) -> None:
         other = Endpoint(base_url="http://x/v1", model_id="proxy-model", max_output_tokens=64)

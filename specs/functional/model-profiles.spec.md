@@ -1,9 +1,9 @@
 # Model Policy Specification
 
-**Version**: 7.5.0
+**Version**: 7.6.0
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
-**Last Updated**: 2026-11-05
+**Last Updated**: 2026-11-09
 
 ## Purpose
 
@@ -373,10 +373,13 @@ directly — see "Provider catalog" below.
    `[{"type": "text", "text": <content>, "cache_control": {"type": "ephemeral"}}]`; a message whose
    content is empty or null (an assistant turn that only calls tools) **MUST** be left unmarked,
    because the provider refuses a marker on an empty text block, and a single message that is both
-   first and last carries one marker. For every other model the request body **MUST** be
+   first and last carries one marker. A message the request projection marked as the last of a condensed
+   range (`ChatMessage.cache_boundary`, `session-history.spec.md` requirement 29) **MUST** carry
+   the same marker under the same rules, a third and the last one this dialect places; a request
+   with no such message **MUST** be byte-identical to the two-marker encoding. For every other model the request body **MUST** be
    byte-identical to the unmarked encoding. `request_part_bytes` counts the encoded parts as
    sent. No catalog field decides this: the model id does. This rule is the `openai-chat` dialect's; the
-   `anthropic-messages` dialect marks its own two places for every model (requirement 10).
+   `anthropic-messages` dialect marks its own places for every model (requirement 10).
 9. **Limits come from the provider.** A model's context window and output cap are resolved per
    limit as **declared > observed > unknown**. *Declared* is the exact `models[]` row's
    `contextWindow`/`maxTokens` (from `setup provider add --ctx/--max-tokens` or a `kind: provider`
@@ -429,7 +432,7 @@ directly — see "Provider catalog" below.
     | `stop_reason` | `tool_use` becomes `tool_calls`, `end_turn` and `stop_sequence` become `stop`, `max_tokens` becomes `length`, any other value is kept verbatim |
     | reply `content[]` | `text` blocks joined into the message `content`; `tool_use` blocks into `ToolCall`s whose `arguments` are the compact JSON of `input` |
     | `usage` | `input_tokens` = `input_tokens` + `cache_read_input_tokens` + `cache_creation_input_tokens`; `cached_tokens` = the read count; `cache_write_tokens` = the creation count (both subsets of the input, as `TokenUsage` says); `output_tokens` as sent |
-    | cache markers | `cache_control: {"type": "ephemeral"}` on the last `system` block and on the last block of the last message, for every model on this dialect |
+    | cache markers | `cache_control: {"type": "ephemeral"}` on the last `system` block and on the last block of the last message, for every model on this dialect, and a third on the last block of the message the projection marked `cache_boundary` (the last of a condensed range, `session-history.spec.md` requirement 29), when there is one; a request with no such message carries the first two only |
     | cache diagnostics | every request carries `diagnostics: {"previous_message_id": <the id of the last reply this client decoded, else null>}`; a failed call leaves the remembered id as it was |
     | reply `id` | `ChatResponse.response_id` |
     | reply `diagnostics` | `null` or absent: no `cache_miss`; `{"cache_miss_reason": null}` (the comparison was still running): `cache_miss` = `pending`; otherwise `cache_miss` = `cache_miss_reason.type` and `cache_missed_tokens` = its `cache_missed_input_tokens` when present (an estimate the endpoint derives from bytes, not a billed count) |

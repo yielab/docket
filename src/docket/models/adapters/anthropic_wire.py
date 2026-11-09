@@ -68,7 +68,8 @@ def _encode_blocks(msg: ChatMessage) -> tuple[str, list[dict[str, Any]]]:
 
 def _encode_messages(messages: Sequence[ChatMessage]) -> list[dict[str, Any]]:
     """Alternating-role wire messages: consecutive same-role messages share one, so the results of
-    one assistant turn and the nudge that follows travel in a single ``user`` message."""
+    one assistant turn and the nudge that follows travel in a single ``user`` message. The last
+    block of a ``cache_boundary`` message carries a cache marker, wherever the merge puts it."""
     encoded: list[dict[str, Any]] = []
     for msg in messages:
         if msg.role == "system":
@@ -76,6 +77,8 @@ def _encode_messages(messages: Sequence[ChatMessage]) -> list[dict[str, Any]]:
         role, blocks = _encode_blocks(msg)
         if not blocks:
             continue
+        if msg.cache_boundary:
+            blocks[-1]["cache_control"] = dict(_EPHEMERAL)
         if encoded and encoded[-1]["role"] == role:
             encoded[-1]["content"].extend(blocks)
         else:

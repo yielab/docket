@@ -17,6 +17,7 @@ import contextlib
 import json
 import os
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote as _urlquote
@@ -385,7 +386,7 @@ def condense_history(
 ) -> list[ChatMessage]:
     """The request projection: old tool results become notices, in batches, past *keep* and
     *budget*; a result after the last assistant message is never condensed. Pure; the stored
-    history is never changed."""
+    history is never changed. The last message of a condensed range carries ``cache_boundary``."""
     results = [m for m in messages if m.role == "tool"]
     cut = _batch_cut([len(m.content) for m in results], max(1, keep), budget)
     unanswered = _unanswered_count(messages)
@@ -402,4 +403,13 @@ def condense_history(
             out.append(ChatMessage(m.role, m.content, condensed, m.tool_call_id, m.name))
         else:
             out.append(m)
+    boundary = results[cut - 1].tool_call_id if cut else None
+    condensed_any = any(a is not b for a, b in zip(messages, out, strict=True) if a.role == "tool")
+    if condensed_any:
+        out = [
+            replace(m, cache_boundary=True)
+            if m.role == "tool" and m.tool_call_id == boundary
+            else m
+            for m in out
+        ]
     return out

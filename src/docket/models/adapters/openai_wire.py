@@ -105,6 +105,9 @@ def build_payload(
         if encoded[0]["role"] == "system":
             _mark_cacheable(encoded[0])
         _mark_cacheable(encoded[-1])
+        for message, wire_message in zip(messages, encoded, strict=True):
+            if message.cache_boundary:
+                _mark_cacheable(wire_message)
     payload: dict[str, Any] = {
         "model": endpoint.model_id,
         "messages": encoded,

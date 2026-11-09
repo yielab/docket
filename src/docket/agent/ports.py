@@ -558,6 +558,8 @@ class ChatMessage:
     tool_calls: list[ToolCall] = field(default_factory=list)
     tool_call_id: str = ""
     name: str = ""
+    # Set by the request projection only, on the last message of a condensed range; never stored.
+    cache_boundary: bool = False
 
 
 def system(content: str) -> ChatMessage:

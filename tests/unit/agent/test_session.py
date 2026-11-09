@@ -9,6 +9,7 @@ token accounting, and fail-closed summarisation on a failing driver.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -142,6 +143,19 @@ class TestRoundTripSerialization:
         assert assistant_msg.tool_calls == [call]
         assert tool_msg.tool_call_id == "call_42"
         assert tool_msg.name == "grep"
+
+    def test_a_cache_boundary_is_a_request_mark_and_is_not_stored(self) -> None:
+        call = ToolCall(id="call_42", name="grep", arguments="{}")
+        marked = replace(tool_result(call, "3 matches"), cache_boundary=True)
+        _sess.append_messages("agent:x:default", [assistant("", tool_calls=[call]), marked])
+
+        stored = _sess.load_messages("agent:x:default")[1]
+
+        assert stored == tool_result(call, "3 matches")
+        assert stored.cache_boundary is False
+        assert "cache" not in json.dumps(
+            [m.model_dump(by_alias=True) for m in _sess.StoredMessage.__mro__[0:0]]
+        )
 
     def test_multiple_tool_calls_on_one_assistant_message_round_trip(self) -> None:
         c1 = ToolCall(id="a", name="read", arguments="{}")
