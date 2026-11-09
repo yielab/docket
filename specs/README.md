@@ -125,7 +125,6 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Operator API | 7.31.1 | Implemented (Phase 43, ADR 0027) |
 | A2a Binding | 1.3.2 | Implemented |
 | Serve Read API | 6.9.0 | Stable |
-| Adoption Benchmark | 2.3.1 | Implemented |
 | Input Validation | 2.2.0 | Implemented |
 | Test Framework | 5.6.0 | Active |
 | Starter Journey | 2.1.0 | Implemented |
