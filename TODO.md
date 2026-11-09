@@ -16,7 +16,7 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> ## ▶ ACTIVE BOARD — no active phase · Phase 71 (triage, 15 of 16 cards) closed 2026-11-08; Phases 69 (D-90) and 70 (D-91) closed 2026-11-07; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
+> ## ▶ ACTIVE BOARD — WAVE 72 · Phase 72 (D-76 amended: a third cache breakpoint; two cards) · Phase 71 (triage, 15 of 16 cards) closed 2026-11-08; Phases 69 (D-90) and 70 (D-91) closed 2026-11-07; Phases 67 (D-88) and 68 (D-89) closed 2026-11-06, Phase 66 (D-87) closed 2026-11-05
 >
 > **Phases 69 and 70 closed 2026-11-07** (D-90, D-91; not pushed), workers on Sonnet and Haiku only: docket has an agent
 > eval lane (`evals/`, five suites, 109 tasks with hidden checks, pass@k and pass^k, a base per commit) and the 4,200-line
@@ -105,6 +105,58 @@ scope in one pass over the same files, parks at least once.
 by a fast-forward from `develop` when the maintainer cuts a release. Tags and release jobs originate
 from `main`.
 
+## ▶ PHASE 72 ACTIVE — WAVE 72 · a cache breakpoint at the condensed boundary (the maintainer's choice of 2026-11-09, D-76 amended)
+
+> The maintainer's choice of 2026-11-09 in ROADMAP §7.1: D-76 is amended to allow a third prompt-cache breakpoint, on
+> the last message of a condensed range, on both dialects (P71-10, archived `BLOCKED`, carried here). P72-2 fixes three
+> statements that are false against the code. The two cards share no file; the integrator owns `specs/README.md`.
+> The follow-up on the policy corpus's `layer: classifier:opaque` labels closes without a change: the corpus header
+> says `layer` is what the policies did on 2026-10-24, a measurement, not the classifier's current verdict.
+
+### P72-1 — A cache breakpoint at the condensed boundary
+
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** wire behaviour + spec
+
+- **Trigger (fired twice):** Anthropic's `diagnostics.cache_miss_reason` said `messages_changed` on 16 of 30 calls of
+  `task-52c89dbb` (2026-11-04) and on 79 of 311 live-home calls (2026-11-03..06). `condense_history`
+  (`agent/session.py:381`) condenses old tool results in batches; when the cut moves, the request changes inside the
+  history, and the two breakpoints (the last system block and the last message: `anthropic_wire.py` `build_payload`,
+  `openai_wire.py` `_mark_cacheable`) leave nothing cached between the system prompt and the end.
+- **Goal:** when the request projection condensed at least one result, the last message of the condensed range carries
+  a third `cache_control: {"type": "ephemeral"}`, on `anthropic-messages` and on `openai-chat` for a Claude model id.
+  The boundary travels as a typed field set by the projection, never re-derived from text. With no condensed range the
+  payload is byte-identical to today's, so a run that never condenses is unchanged.
+- **Eval contract:** the payload change reaches the agent only on a request whose history was condensed, and no eval
+  suite condenses (the `context` runs at `15df990e` on Haiku 5.5 and local: 547 calls, `condensedResults` 0). So the
+  measurement is a live probe on Haiku 5.5 (the maintainer's go, 2026-11-09), tokens only, never a price: replay a cut
+  move (request A with the cut at k, request B with the cut moved to k' > k, the same system and tools, a prefix past
+  the 4,096-token minimum) once with two breakpoints and once with three, and record `cache_read_input_tokens` and
+  `cache_creation_input_tokens` of B. Threshold: B reads more cached tokens with three than with two. Not met: the
+  change is reverted and P72-1 closes as measured. The probe's output goes to
+  `internal-docs/baselines/phase-72/cache-probe.md`.
+- **Change:** `agent/ports.py` (the message field), `agent/session.py` (`condense_history` marks it),
+  `models/adapters/anthropic_wire.py`, `models/adapters/openai_wire.py`, `model-profiles.spec.md` (requirement 8 and the
+  `anthropic-messages` table row), `session-history.spec.md`; the wire unit tests and any recorded request fixture the
+  change touches (regenerated and read).
+- **Non-goals:** a fourth breakpoint, a marker on a model that is not Claude, a cache TTL, `specs/README.md` (the
+  integrator syncs it).
+- **Acceptance:** a test per dialect shows the third marker on the boundary message and only there; a test shows the
+  payload unchanged without a condensed range; the marker survives the store round trip only if the field is
+  persisted by design (say which); the probe's numbers are in the commit body.
+- **Gate:** the unit files whose `SUBJECT` is each changed module; `tests/integration/models -n 4`; `tests/e2e -n 4`
+  (the wire changed); the probe.
+
+### P72-2 — Three statements that are false against the code
+
+**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** documentation
+
+- `teams/blueprints.py` ~71-75 speaks of org-scoped roles "reserved for later"; say what `role-archetypes.spec.md`
+  says today, in one sentence, or delete the sentence when the spec has nothing more.
+- `specs/acceptance/user-stories.md` lines 64 and 361 cite `test_leaves_memory_md_the_daily_logs_and_the_pod_memory_alone`;
+  cite the test's current name (`rg` it under `tests/`), or say what it proves when it no longer exists.
+- `specs/README.md`'s version table has no row for `a2a-binding` or `cost-tracking`: the integrator adds them.
+- **Gate:** `scripts/maint/comment_lint.py --check` on the touched source file; `uv run pytest --co -q`.
+
 ## ◇ FOLLOW-UPS WITH TRIGGERS (not cards; triage when a trigger fires)
 
 > Re-checked against the code on 2026-10-24; paths are current. Removed as no longer true: notification
@@ -113,27 +165,16 @@ from `main`.
 
 **Phase 71 (2026-11-08).** Found by the workers and the integrator's review, none a card yet:
 
-- *A third cache breakpoint at the condensed boundary* (P71-10, archived `BLOCKED`): its trigger fired twice
-  (`messages_changed` on 25 % of 311 calls, 53 % of one task); D-76 allows two breakpoints, so it waits for the
-  maintainer's choice in ROADMAP §7.1. The card, with its eval contract and the files it changes, is in the archive.
-  Trigger: that choice.
-
 - *What a substitution still does not read* (P71-8): a variable set earlier (`x=push; git ${x}`) is as unread as `$x`
   always was, and a path an inner command builds (`cat "$(echo .docket)/token"`) is caught only when the inner text
   names the private path. A path program accepts a bare `$(...)` operand (`ls $(echo /)` allows, as `ls /` does).
   Trigger: a recorded call that used one of these to reach what its plain form would ask about.
-- *The policy corpus's `layer: classifier:opaque` labels* are stale for the rows P71-8 moved; no test reads the label.
-  Trigger: the next corpus edit.
 - *`docket setup --fix` is the only health report*, and it also repairs (`setup.py` `_report_json` against
   `setup_check._check_json`). Trigger: an operator who wants to diagnose without changing the home.
 - *`docket pod recipes` counts no `services/`*, so `web-research` and `hacker-news` show no service under "Brings"
   (`teams/apply/recipes.py` `summarize_recipe`). Trigger: an operator choosing a recipe by what it brings.
 - *The quick start and `install.sh` pin `v0.3.0-beta.1`*, which is not tagged (the newest tag is `v0.2.0-beta.4`): the
   install lines resolve once the maintainer cuts the release.
-- *Smaller:* `teams/blueprints.py` still speaks of org-scoped roles "reserved for later" where the spec allows `pod`
-  only; `user-stories.md:63` cites a test whose name still says `daily_logs`; `specs/README.md` has no row for
-  `a2a-binding` or `cost-tracking`, and nothing checks the index against the files' versions (it drifted seven times
-  before this phase fixed it).
 
 **Evals and guardrails (planned 2026-11-06, D-90/D-91).** Left out of the two phases on purpose, each with its trigger:
 

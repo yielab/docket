@@ -309,3 +309,12 @@ map is one client per open protocol, no SDK). Refused, as D-76 lists them: an An
 streaming, thinking blocks, structured outputs, server tools, more cache breakpoints than the two
 the compatibility markers place, and any savings claim. Gateways still speak `openai-chat`. The
 body above is not edited.
+
+## Amendment (2026-11-09): a third cache breakpoint
+
+D-76 as amended by the maintainer (P71-10, Phase 72). The refusal above of more than two breakpoints is lifted for one:
+when the request projection condensed old tool results, the last message of the condensed range carries a third
+ephemeral marker, on `anthropic-messages` and on `openai-chat` for a Claude model id. A request with no condensed range
+is sent as before. Measured before the choice: Anthropic's own `cache_miss_reason` said `messages_changed` on 16 of 30
+calls of one task (2026-11-04) and on 79 of 311 calls of the live home (2026-11-03..06), the condensation moving inside
+the history. A fourth breakpoint, a cache TTL and any savings claim stay refused.
