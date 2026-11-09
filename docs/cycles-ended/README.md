@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (98 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (99 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (26 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [roadmap-decisions.md](roadmap-decisions.md) | archived sections (1 archived) |
@@ -22,6 +22,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 
 | Date | Section | File | Bytes |
 |---|---|---|---|
+| 2026-11-09 | ✓ PHASE 72 CLOSED 2026-11-09 — WAVE 72 · a cache breakpoint at the condensed boundary (the maintainer's choice of 2026-11-09, D-76 amended) | `todo-waves.md` | 5,366 |
 | 2026-11-08 | ✓ PHASE 71 CLOSED 2026-11-08 — WAVE 71 · what the follow-ups' fired triggers and verified drift leave, and a deep clean (triage 2026-11-08, no new decision) | `todo-waves.md` | 30,718 |
 | 2026-11-07 | ✓ PHASE 69 CLOSED 2026-11-07 — WAVE 69 · an agent eval lane: tasks with hidden checks, pass@k and pass^k, a base per commit, and the canary deleted (D-90, accepted 2026-11-06) | `todo-waves.md` | 44,810 |
 | 2026-11-07 | ✓ PHASE 70 CLOSED 2026-11-07 — guardrails with two numbers: one source per check, framed tool results, and the gaps the audit found (D-91, accepted 2026-11-06; starts after P69-14) | `todo-waves.md` | 25,879 |

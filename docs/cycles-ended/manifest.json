@@ -1006,5 +1006,13 @@
     "heading": "✓ PHASE 71 CLOSED 2026-11-08 — WAVE 71 · what the follow-ups' fired triggers and verified drift leave, and a deep clean (triage 2026-11-08, no new decision)",
     "bytes": 30718,
     "sha256": "6bbe2d1bbe721bfc62d1fd0453d757f39f4c14c0896766c6978ed2033aae4d5e"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "✓ PHASE 72 CLOSED 2026-11-09 — WAVE 72 · a cache breakpoint at the condensed boundary (the maintainer's choice of 2026-11-09, D-76 amended)",
+    "bytes": 5366,
+    "sha256": "4f754e0e28907e49a4752977dd26e993cdcfefb7f0a898b92dc207efb9577653"
   }
 ]

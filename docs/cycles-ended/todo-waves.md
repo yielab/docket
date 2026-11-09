@@ -24710,3 +24710,55 @@ Two cards: P62-1 (the PDF reader runs docket's own interpreter and `pypdf` in th
   `drift` is `no`; edit one exported role file and apply: `yes` only until the next apply.
 - **Gate:** that test; `tests/integration/teams -n 4` (about 30 s).
 
+## ✓ PHASE 72 CLOSED 2026-11-09 — WAVE 72 · a cache breakpoint at the condensed boundary (the maintainer's choice of 2026-11-09, D-76 amended)
+
+> The maintainer's choice of 2026-11-09 in ROADMAP §7.1: D-76 is amended to allow a third prompt-cache breakpoint, on
+> the last message of a condensed range, on both dialects (P71-10, archived `BLOCKED`, carried here). P72-2 fixes three
+> statements that are false against the code. The two cards share no file; the integrator owns `specs/README.md`.
+> The follow-up on the policy corpus's `layer: classifier:opaque` labels closes without a change: the corpus header
+> says `layer` is what the policies did on 2026-10-24, a measurement, not the classifier's current verdict.
+
+### P72-1 — A cache breakpoint at the condensed boundary
+
+**Status:** DONE 2026-11-09, `f2dddae4` (model-profiles 7.6.0, session-history 1.24.0; the mark is a request field, not persisted) and `7ceaccdf` (one test crosses the seam: the real `condense_history` into both real wires). Probe on Haiku 5.5, two repeats, the cut moved 5 rounds: request B read 8,827 cached tokens with three markers against 6,392 with two and wrote 4,846 against 7,279 (`internal-docs/baselines/phase-72/cache-probe.md`). The gain rests on the 20-block lookback: a batch longer than about ten rounds would not find the older entry · **Size:** M · **Model:** Sonnet · **Kind:** wire behaviour + spec
+
+- **Trigger (fired twice):** Anthropic's `diagnostics.cache_miss_reason` said `messages_changed` on 16 of 30 calls of
+  `task-52c89dbb` (2026-11-04) and on 79 of 311 live-home calls (2026-11-03..06). `condense_history`
+  (`agent/session.py:381`) condenses old tool results in batches; when the cut moves, the request changes inside the
+  history, and the two breakpoints (the last system block and the last message: `anthropic_wire.py` `build_payload`,
+  `openai_wire.py` `_mark_cacheable`) leave nothing cached between the system prompt and the end.
+- **Goal:** when the request projection condensed at least one result, the last message of the condensed range carries
+  a third `cache_control: {"type": "ephemeral"}`, on `anthropic-messages` and on `openai-chat` for a Claude model id.
+  The boundary travels as a typed field set by the projection, never re-derived from text. With no condensed range the
+  payload is byte-identical to today's, so a run that never condenses is unchanged.
+- **Eval contract:** the payload change reaches the agent only on a request whose history was condensed, and no eval
+  suite condenses (the `context` runs at `15df990e` on Haiku 5.5 and local: 547 calls, `condensedResults` 0). So the
+  measurement is a live probe on Haiku 5.5 (the maintainer's go, 2026-11-09), tokens only, never a price: replay a cut
+  move (request A with the cut at k, request B with the cut moved to k' > k, the same system and tools, a prefix past
+  the 4,096-token minimum) once with two breakpoints and once with three, and record `cache_read_input_tokens` and
+  `cache_creation_input_tokens` of B. Threshold: B reads more cached tokens with three than with two. Not met: the
+  change is reverted and P72-1 closes as measured. The probe's output goes to
+  `internal-docs/baselines/phase-72/cache-probe.md`.
+- **Change:** `agent/ports.py` (the message field), `agent/session.py` (`condense_history` marks it),
+  `models/adapters/anthropic_wire.py`, `models/adapters/openai_wire.py`, `model-profiles.spec.md` (requirement 8 and the
+  `anthropic-messages` table row), `session-history.spec.md`; the wire unit tests and any recorded request fixture the
+  change touches (regenerated and read).
+- **Non-goals:** a fourth breakpoint, a marker on a model that is not Claude, a cache TTL, `specs/README.md` (the
+  integrator syncs it).
+- **Acceptance:** a test per dialect shows the third marker on the boundary message and only there; a test shows the
+  payload unchanged without a condensed range; the marker survives the store round trip only if the field is
+  persisted by design (say which); the probe's numbers are in the commit body.
+- **Gate:** the unit files whose `SUBJECT` is each changed module; `tests/integration/models -n 4`; `tests/e2e -n 4`
+  (the wire changed); the probe.
+
+### P72-2 — Three statements that are false against the code
+
+**Status:** DONE 2026-11-09, `1f4d994c` (the blueprint docstring states the spec's rule: `pod` is the only scope); the user-stories citation was true (the test is `tests/integration/interfaces/test_pod_reset.py:73`), and the index already had both rows and is checked by `scripts/maint/check_spec_index.py`, which found a row for the deleted adoption benchmark instead (`9f0bcc45`) · **Size:** S · **Model:** Haiku · **Kind:** documentation
+
+- `teams/blueprints.py` ~71-75 speaks of org-scoped roles "reserved for later"; say what `role-archetypes.spec.md`
+  says today, in one sentence, or delete the sentence when the spec has nothing more.
+- `specs/acceptance/user-stories.md` lines 64 and 361 cite `test_leaves_memory_md_the_daily_logs_and_the_pod_memory_alone`;
+  cite the test's current name (`rg` it under `tests/`), or say what it proves when it no longer exists.
+- `specs/README.md`'s version table has no row for `a2a-binding` or `cost-tracking`: the integrator adds them.
+- **Gate:** `scripts/maint/comment_lint.py --check` on the touched source file; `uv run pytest --co -q`.
+
