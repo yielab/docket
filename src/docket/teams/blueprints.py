@@ -68,12 +68,10 @@ class PodBlueprint:
 
     ``roles`` is ordered and its first entry MUST be ``"lead"`` — a pod has
     exactly one orchestrator (``teams/pod.py``'s ``_SINGLETON_POD_ROLES``
-    invariant, unchanged by this module). Per-role org-vs-pod scope is
-    whatever each referenced archetype's own ``scope`` field says (inherited,
-    not re-declared here) — every built-in/starter archetype today is
-    ``"pod"``-scoped, so no built-in blueprint introduces an org-scoped role
-    yet (same reserved-for-later state ``role-archetypes.spec.md`` documents
-    for archetypes themselves).
+    invariant, unchanged by this module). Per-role scope is whatever each
+    referenced archetype's own ``scope`` field says (inherited, not re-declared
+    here). ``role-archetypes.spec.md`` allows only ``"pod"`` scope, so every
+    role a blueprint can reference is pod-scoped.
     """
 
     name: str
