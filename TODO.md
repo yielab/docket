@@ -148,7 +148,7 @@ from `main`.
 
 ### P72-2 — Three statements that are false against the code
 
-**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** documentation
+**Status:** DONE 2026-11-09, `1f4d994c` (the blueprint docstring states the spec's rule: `pod` is the only scope); the user-stories citation was true (the test is `tests/integration/interfaces/test_pod_reset.py:73`), and the index already had both rows and is checked by `scripts/maint/check_spec_index.py`, which found a row for the deleted adoption benchmark instead (`9f0bcc45`) · **Size:** S · **Model:** Haiku · **Kind:** documentation
 
 - `teams/blueprints.py` ~71-75 speaks of org-scoped roles "reserved for later"; say what `role-archetypes.spec.md`
   says today, in one sentence, or delete the sentence when the spec has nothing more.
