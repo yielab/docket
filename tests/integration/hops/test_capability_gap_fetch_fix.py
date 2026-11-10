@@ -42,7 +42,7 @@ def test_a_folder_pod_with_isolation_on_and_no_backend_names_the_backend(
 ) -> None:
     with _seed(tmp_path):
         _pp.provision_pod("demo", "respond")
-        bind_launcher(landlock=False, docker=False)
+        bind_launcher(landlock=False, seatbelt=False, docker=False)
         _fleet.set_sandbox_isolation()
 
         assert _fetch_fix("researcher") == _FOLDER_NO_BACKEND
