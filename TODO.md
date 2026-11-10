@@ -213,8 +213,9 @@ pre-turn pass (`32856e57`); the `_trace_compaction` locator note ended with Phas
 - *Brave's storage terms.* Read 2026-11-05 (summarised fetch): section 3(b)(i) bars storing or caching results other
   than transient storage; 3(b)(xiii) bars using results to train or evaluate AI models; storage needs a plan with
   storage rights, which the pricing page did not list. docket keeps tool results in the session and the trace.
-  Decision for the maintainer before Brave is recommended anywhere: whether that is transient; the README says it is
-  undecided.
+  The maintainer chose (2026-11-10) to ship Brave in `0.3.0-beta.1` as an option beside the SearXNG default, the README
+  saying the terms question is undecided. Trigger: a Brave user, or the maintainer's ruling on "transient"; then the
+  docs say what docket stores.
 - *A role file that sets `tokenBudget: 6000` exactly reads as unpinned.* P68-9 tells a pinned value from the schema
   default by value. Trigger: an operator who pins 6000 on purpose; then the schema carries an explicit marker.
 - *One search answer is 23,000-30,000 characters.* Measured twice: 20 queries through the service, and a real research

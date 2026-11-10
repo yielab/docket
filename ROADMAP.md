@@ -367,8 +367,9 @@ today:
   one that changes stored state is (4), the summary's role; the one that changes a state file's shape is
   (6), `estimateRatio` in `provider-models.json`. P66-7's hosted-model run is not planned; the local
   endpoint is the real run.
-- **Phase 68, D-89 (accepted; closed 2026-11-06):** the four choices are shipped. Still the maintainer's: Brave's storage
-  terms before Brave is recommended anywhere (the follow-up under "Phase 68"), and the Brave key for P68-8's 20 live queries.
+- **Phase 68, D-89 (accepted; closed 2026-11-06):** the four choices are shipped. Decided 2026-11-10 by the maintainer:
+  `0.3.0-beta.1` ships Brave as it stands, an optional provider beside the SearXNG default, with the README saying its
+  storage terms are undecided. Still the maintainer's: the Brave key for P68-8's 20 live queries.
 - **Decided 2026-11-09, recorded for the trail:** P71-10's choice. D-76 is amended to allow a third prompt-cache
   breakpoint, on the last message of a condensed range, on both dialects (the trigger fired twice: `messages_changed`
   on 53 % of one task's calls on 2026-11-04, 25 % of the live home's calls 2026-11-03..06); the card is P72-1, with a
