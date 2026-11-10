@@ -24,7 +24,8 @@ resume (Phases 57-64); a research team reads the web without a host list and sea
 SearXNG service (Phases 67-68); a turn's context is compacted for one reason and every compaction
 is recorded (Phase 66); and the guardrails have one source each, with every tool result framed as
 untrusted data, MCP tool definitions pinned and the Rule of Two in `pod check --posture`
-(Phase 70). Underneath, the source tree is organised by context under import contracts the tests
+(Phase 70), with shell substitutions classified by the command they run (Phase 71) and a third
+prompt-cache breakpoint once history is condensed (Phase 72). Underneath, the source tree is organised by context under import contracts the tests
 enforce (Phases 46-49), end-to-end tests run the product the way an operator or Tack does
 (Phase 50), and an agent eval lane (`evals/`) measures it with a real model (Phase 69).
 
@@ -713,8 +714,7 @@ jail. Module paths moved with the context layout (ADR 0030).
   a paid final reply that crosses the budget is kept; a model with no registered output bound
   reserves `DEFAULT_MAX_OUTPUT_TOKENS` (4096) so the prospective check runs; input estimates are
   scaled by the last measured ratio; a hop's `usage` carries `input`, `cached`, `cacheWrite`,
-  `output` and a task's `maxTokens` uses the same count. The pod's dollar estimate no longer
-  charges cache reads or cache writes twice.
+  `output` and a task's `maxTokens` uses the same count.
 - **Tool output has a budget (P44-3).** `glob`/`grep` print sorted, root-relative paths and skip
   vendored directories; `read` returns a numbered window of at most 400 lines and 6,000
   characters with a remaining-lines footer (window chosen on the replay bench); `glob`, `grep`,
@@ -753,14 +753,6 @@ jail. Module paths moved with the context layout (ADR 0030).
   review (ADR 0024 §6 already named verify commands). Both now appear under "Runs on this
   machine" as `verify command` and `external gate`, inside `parallel` groups too, and a
   repository already reviewed asks again once. The refusal also says "1 command that needs".
-
-- **A budget names the models it cannot price instead of counting them as $0.** A model with no
-  catalog price added nothing to the budget estimate, so `budgetUsd` stopped nothing on it (a
-  real run spent 175k tokens on gateway models and reported $0 against a $3 cap). Docket still
-  runs the hop but now warns: a `budget_warning` trace event (`unpriced_model`) before each such
-  hop, and `budgetUnpriced` in `docket pod show`, `GET /pods/<p>` and `docket status`. Local
-  models are never flagged. The estimate still prices a member's tokens at the member's model,
-  not at a step's `model:` override.
 
 - **`POST /pods` takes `name` and `location`, the body API 5 publishes.** ADR 0027 and
   `operator-api.spec.md` named those fields, while the route still read `project` and `path`, so

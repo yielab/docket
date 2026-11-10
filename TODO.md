@@ -126,8 +126,6 @@ from `main`.
   (`teams/apply/recipes.py` `summarize_recipe`). Trigger: an operator choosing a recipe by what it brings.
 - *The quick start and `install.sh` pin `v0.3.0-beta.1`*, which is not tagged (the newest tag is `v0.2.0-beta.4`): the
   install lines resolve once the maintainer cuts the release.
-- *`CHANGELOG.md` [Unreleased] has nothing from Phases 65 to 71* (the last entry names Phase 64; Phase 72's is there).
-  Trigger: the release cut, when the entries are written from the ROADMAP status.
 
 **Evals and guardrails (planned 2026-11-06, D-90/D-91).** Left out of the two phases on purpose, each with its trigger:
 
