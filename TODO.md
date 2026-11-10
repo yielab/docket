@@ -532,6 +532,12 @@ that already own the files.
   where 400 was expected; passes alone). Both read as the request not carrying the service's token, so they are
   probably one cause; a third failure in that file is the trigger, and the fix starts from how the `parked` fixture
   hands its service token to the test.
+- **The 32-writer audit tests fail on CI's macOS runner** (`test_audit_log.py::TestAtomicAuditTransition`, 2026-10-31 and
+  2026-11-10; Linux and the local suite pass): writers serialize on the audit lock, whose timeout is 5 s
+  (`governance/audit.py` `_AUDIT_LOCK_TIMEOUT`), and on that runner some waited longer, so their write returned `failed`
+  as specified (the audit is best-effort and never raises). The `macos` job is `continue-on-error`. Trigger: the job
+  made blocking, or a `failed` audit write seen outside the test; then decide whether a write under contention may
+  give up, since a missing entry is what the hash chain cannot show.
 - **Two contract files set the merge run's floor** (measured 2026-10-28, `--durations=0`):
   `tests/contracts/test_a2a_http.py` 60 s and `test_escalation_http.py` 35 s of the 84 s run. Each
   test's function-scoped `parked` fixture runs a real `docket run` and starts a service (about 3 s
