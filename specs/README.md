@@ -126,7 +126,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | A2a Binding | 1.3.2 | Implemented |
 | Serve Read API | 6.9.0 | Stable |
 | Input Validation | 2.2.0 | Implemented |
-| Test Framework | 5.6.0 | Active |
+| Test Framework | 5.6.1 | Active |
 | Starter Journey | 2.1.0 | Implemented |
 | Operator Loop | 3.7.1 | Implemented |
 | User Stories | 2.3.1 | Active |
