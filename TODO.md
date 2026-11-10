@@ -195,8 +195,6 @@ Also closed as stale: the two window-less `budget_for_role` callers and the pre-
 pre-turn pass (`32856e57`); the `_trace_compaction` locator note ended with Phase 66.
 
 **Phases 67-68 (2026-11-06).** What the closes leave, each with its trigger:
-- *The research task has not ended `done`.* P68-6 ended on the Reviewer's veto (the card's "fabualda" typo; one rework
-  allowed). Trigger: the next research run through Tack; a second veto on a well-scoped card is a gate or prompt question.
 - *A research hop without a task `maxTokens` lands on the turn default and fails.* Measured in P68-6's first send:
   the researcher landed at 100k (`budget_warning entered`, a report) and the task failed as a budget stop. Tack always
   sends `maxTokens`. Trigger: a research task from the CLI or a routine; then the research recipe declares a step budget.
