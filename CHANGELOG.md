@@ -7,70 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
+## [0.3.0-beta.1] - 2026-11-10
 
-- **A handoff is fit to the context window of the model that receives it.** A hosted model no longer gets a
-  researcher's reply cut to a local endpoint's cap, which dropped the source URLs at its tail; a local 16k-32k
-  endpoint keeps today's budget byte for byte. A shipped `tokenBudget` is a floor of the window share, an
-  operator's value stays exact, and `context_composed` reports `budget_tokens`.
-- **The notice for a condensed tool result says the model read it earlier and its text is no longer in the view.**
-  The old "already seen and omitted" was read as the tool refusing a repeat: an analyst reported pages it had
-  drafted from as never re-read and saved that to the pod's memory.
-- **A tool result the model has not answered yet is never condensed.** A round of parallel `fetch` results
-  that exceeded the keep count and the character budget had its oldest results replaced by "already seen and
-  omitted; call fetch again" before the model read them, so it fetched again until the turn budget ended. The
-  results after the last assistant message now stay whole (session-history requirement 30); older answered
-  results make room for them.
-- **A compaction converges on a unit larger than its prompt, and never ends a turn that fits.** A raw unit
-  whose summary prompt does not fit (three or four parallel `fetch` results) is summarized from a projection
-  with each tool result cut and marked, a batch never holds a compaction summary alone, and a pre-turn
-  compaction the guard refuses leaves the history untouched and lets the turn run; a summarizer that fails
-  still ends it. The failure was a research hop dying on `compaction summary did not reduce estimated
-  history size` with a request that fitted the window.
-- **The writer drafts from the handoff.** The `writer` archetype denies `fetch` (it re-read the web every
-  round: 23 calls and 247k of 445k input tokens in one real run) and asks with `consult` for a missing
-  source. A pod keeps the role copy it was made with; reapply to take it.
-- **The fix for a missing `fetch` is the one that opens it.** A folder pod whose jail is not running is told
-  `docket setup sandbox on`, not `docket pod set fetchDomains`.
-- **A file that mentions payments is not a payment.** The free-text clause of the shipped
-  `high-risk-payment` and `block-destructive` policies no longer reads what `write` and `edit` put in a
-  file, so a report that names Stripe or says "free of charge" no longer waits for approval; running the
-  file, a `curl` to a payment provider and an MCP or service tool still ask. Its word spans are bounded to
-  one phrase (`payment … charge` within four words, not anywhere in the call). Policies gain the `when`
-  key `notTool`. A home keeps the policy files it installed: copy the two templates over them to take
-  the change.
-- **The Docker container that reads a PDF is bounded.** It runs with 1 GiB of memory and swap and 256
-  processes, as the other backends bound the extractor; before, only the deadline bounded it.
-- **Three defects Tack found on a research team.**
-  - `docket pod show` and `GET /pods/<pod>` no longer contradict themselves: the `settings.network`
-    row carries the effective mode (a pod with nothing set reads `none` under a machine at `none`),
-    the same one as the top-level `network`.
-  - A pod made with a `researcher` (the `respond` blueprint, `docket init`, `POST /pods`,
-    `docket pod add researcher`) records the `fetch-hosts` need, so `docket init` and `docket pod
-    add` print that the team cannot read the web and the command that changes it, and `needs`
-    serves the not-ready line. `network` stays as it was.
-  - The working-directory line of a `workdir` pod's hop says it is the team's shared folder and
-    that the team's output goes there; the `Working folder: <path>` line has been there since
-    2026-11-03.
-- **An approved `pitfall` or `convention` memory entry reaches the next prompt.** Rendering skipped
-  every non-`tool` entry whose subject was not an existing path, which is every label subject.
+The largest change since the first beta, so the minor version moves. `0.2.0-beta.5` and
+`0.2.0-beta.6` were declared in the tree but never tagged; this release carries everything since
+`v0.2.0-beta.4`, and the sections below it hold the earlier declarations.
+
+What a user gets: a pod can do work other than code and act outside the machine (Phase 55), with
+external services declared in a document and a pod's business data kept in declared records
+(Phase 56); every pause that waits on a person is one escalation with one `resolve` verb
+(Phase 51), and a task can say what happens to a pause when nobody is there (`L3|L4|L5`); the
+harness adapts to the model from the provider catalog, prompts are versioned configuration, and
+the built-in `anthropic` provider speaks Anthropic's Messages API with its prompt cache measured
+(Phases 52-54). A plan of record such as Tack reads a pod's contract, memory, budget window and
+resume (Phases 57-64); a research team reads the web without a host list and searches through a
+SearXNG service (Phases 67-68); a turn's context is compacted for one reason and every compaction
+is recorded (Phase 66); and the guardrails have one source each, with every tool result framed as
+untrusted data, MCP tool definitions pinned and the Rule of Two in `pod check --posture`
+(Phase 70). Underneath, the source tree is organised by context under import contracts the tests
+enforce (Phases 46-49), end-to-end tests run the product the way an operator or Tack does
+(Phase 50), and an agent eval lane (`evals/`) measures it with a real model (Phase 69).
+
+**Breaking changes.** docket has no installed base yet, so nothing removed below kept an alias.
+Contract `operator-v2`, operator API 7.0.0, MCP server 2.0.0, Telegram integration 5.0.0: the
+retired escalation shapes are gone. An authored configuration file has one form, the `kind:`
+short form, so a canonical-form pipeline is refused. The `critic` and `tester` roles are deleted
+(one `strong` reviewer judges), the old home layout and the `roles.json` shim are deleted, and
+the workspace contract is v5. `docket init` turns workspace isolation on where the machine can
+jail. Module paths moved with the context layout (ADR 0030).
 
 ### Added
 
-- **Brave Search API is the optional search provider, and the plan of record sees it.** `docket setup search brave`
+- **A compaction is recorded, and the trace explains what a request condensed (D-87, Phase 66).** Each compaction
+  leaves `compactions/<seq>.json` beside the session and names it on the trace; every task `llm_call` says what its
+  request condensed. The summarizer prompt is a shipped `layer: compaction` document, resolved through the four
+  scopes and hashed on the trace, so an operator can read and override it.
+- **An agent eval lane (D-90, Phase 69).** `evals/` measures docket the way an operator uses it: a task is a
+  directory with hidden checks and a reference solution, a trial runs docket with a real model, and graders are
+  code. Results are pass@1 and pass^k with Wilson intervals, compared with a base commit, and each failure is
+  classed `product`, `model`, `harness` or `infra`. Five suites (regression, capability, reviewer, context, safety),
+  109 tasks, every reference solution passing; `promote` turns a real failure into a candidate task, and
+  `online-report --trend` reads production figures by window. The change contract now names its eval first.
+- **`docket pod check --posture` names the three powers a pod holds, and lights-out refuses a pod that holds
+  all three (D-91, Phase 70).** Untrusted input, private data and outward action are printed with what grants each
+  (the Rule of Two); the command reports and does not decide, and the lights-out profile refuses the task.
+- **An MCP server's tool definitions are pinned (D-91, Phase 70).** A tool whose name, description or schema
+  changed since it was accepted, or that a pinned server newly advertises, is not registered and the change is
+  audited; `docket setup mcp accept <server>` reviews it.
+- **A folder pod that edits its own check is parked for a person (D-91, Phase 70).** The `check_changed` approval
+  a code pod already had now covers a pod that works in a folder.
+- **Brave Search API is an optional search provider, and the plan of record sees it (D-89, Phase 68).** `docket setup search brave`
   takes the key from a hidden prompt or stdin (never an argument), stores it as the secret `brave-search` and writes
   the pod's `services/search.yaml`. `GET /pods/<pod>` and `pod show --json` carry `search {provider, ready, reason,
   fix, options}` and `/health` lists the feature `search`; a plan of record switches provider by applying a
   directory whose `services/search.yaml` is the chosen one, and the key never travels over HTTP. The recipe README
   states what Brave's terms say about storing results and what is unverified.
-- **A research team searches through a SearXNG service.** The `web-research` recipe ships a `search` service
+- **A research team searches through a SearXNG service, the default (D-89, Phase 68).** The `web-research` recipe ships a `search` service
   (`services/search.yaml`, a `GET` to a local SearXNG on loopback) and `docket setup search searxng [--pod P]`
   writes the SearXNG settings under the home, the pod's service document, and prints the one `docker run` line;
   docket does not run the container. Measured: 20 of 20 queries answered with 29-35 results. `search-host` is
   met only by a declared `search` service whose address answers, and an unmet line names SearXNG and a Brave
   Search API key. Allowing a search site in `fetchDomains` no longer satisfies it: DuckDuckGo answers a challenge
   page and Bing returns unrelated links.
-- **A research team reads the web without a host list.** A pod that works in a folder, under an
+- **A research team reads the web without a host list (D-88, Phase 67).** A pod that works in a folder, under an
   enforced jail, with no `fetchDomains` and no `FETCH_ALLOWED_DOMAINS`, reaches any public host with
   `fetch`; every other pod keeps its list, `*` stays a `--widen` grant, a private address stays refused
   and a role with a `send` tool still holds no `fetch`. `GET /pods/<pod>` and `docket pod show --json`
@@ -205,104 +204,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `approval_denied`. An expired `check_changed` approval also ends `approval_expired`; the task
   keeps `checkChanged`.
 
-### Changed
-
-- **A third prompt-cache breakpoint at the condensed boundary (D-76 amended, Phase 72).** When a request's history
-  condensed old tool results, the last message of the condensed range carries a third `cache_control` marker, on
-  `anthropic-messages` and on `openai-chat` for a Claude model id; a request with nothing condensed is sent as before.
-  Measured on Haiku 5.5 when the condensation moved: about 2,400 more input tokens read from the cache, and as many
-  fewer written, on a 17k-token request.
-- **The live smoke and the live eval run jailed by default (Phase 64).** `scripts/smoke_workflow.py` and
-  `scripts/maint/live_eval.py` default to `--sandbox on`, as `docket init` does where the machine can;
-  `--sandbox off` is the opt-out.
-- **`MEMORY.md` is the operator's notes (D-86, Phase 64).** A new member workspace has no `memory/`
-  directory, and its `MEMORY.md` is a two-line header docket never writes; `WORKFLOW_AUTO.md` is
-  contract v6, which `docket setup --fix` re-seeds without touching `MEMORY.md`.
-
-- **A removed or rotated secret no longer survives in `secrets.json.bak`.** The secret store keeps
-  no copy of an earlier version (no `.bak`, no `.corrupt`), and its next write deletes a backup an
-  older docket left. A malformed `secrets.json` now raises instead of restoring a stale key.
-
-- **The `bash` tool says where a call runs**: each call is a new shell at the workspace root, so a
-  `cd` does not carry over and the root never needs finding. A Tack run waited 58 minutes on an
-  approval for `cd "$(git rev-parse --show-toplevel)"`, which the classifier asks about because a
-  command substitution cannot be read statically.
-- **A task on a `workdir` pod says what the pod is.** A `baseRef` fails it at claim with
-  `pod '<p>' works in a folder (workspaceKind workdir); baseRef '<ref>' applies only to a pod with
-  a codebase` (still `failureKind: "base_ref"`), not a sentence about an Implementer the pod never
-  had. A code pod with no Implementer codebase says that instead. The check reads the pod's
-  workspace kind first.
-- **A `prepare` command on a `workdir` pod's task is refused, not ignored** (`failureKind:
-  "prepare"`, the same sentence shape): an install the caller asked for and nothing would run.
-  `""` and `none` are accepted.
-- **`docket pod update` on a `workdir` pod's directory asks for no install.** It no longer derives
-  `prepare` from the surrounding repository's lockfile and lists it to accept; a `prepare:`
-  command in that pod's `pod.yaml`, or `docket pod set prepare <command>`, is refused with
-  `prepare: pod '<p>' works in a folder (workspaceKind workdir); a prepare command applies only to
-  a pod with a codebase`. `docket init` with a `workdir` blueprint reviews the same way.
-
-### Removed
-
-- **The live smoke canary: `scripts/smoke_workflow.py`, `scripts/maint/live_eval.py`, `scripts/live_credentials.py`,
-  `tests/support/smoke_script.py` and `tests/integration/product/smoke/`** (4,368 lines). Its two scenarios,
-  `basic` and `memory-maintenance`, run as regression tasks of the agent eval lane (`evals/`), which
-  measures repeated trials against a base commit; the `DOCKET_RUN_LIVE_SMOKE` opt-in is gone. Development
-  tooling only; the wheel never shipped it.
-
-- **The opt-in live Hacker News test (a `tests/` lane of its own).** The `hn-digest-records` task of the
-  capability suite in the eval lane runs the same recipe against the real site, reads the stories set the trial
-  exported and reports pass rates per model.
-
-- **The optional OpenHands SDK and PydanticAI adapters of `docket-runtime`** (`docket_runtime.adapters`),
-  their example, fixtures and release tests, and the claims about them in the runtime-library spec
-  (now 3.0.0), `COMPATIBILITY.md` and `SECURITY.md`. The facade and the governed-execution envelope
-  are unchanged.
-
-- **`DISPATCH_TURN_TIMEOUT_S`, `DISPATCH_VERIFY_TIMEOUT_S` and the 300 s `DEFAULT_TIMEOUT` constant.**
-  A machine value beat the pod's own `turnTimeoutS`. With nothing declared a hop's time is now
-  `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`.
-- **`maxIterations` and `maxToolCalls` on a step and a role, and `budgetUsd` on a pod.** Rounds and
-  tool calls are machine guards, not declared limits; a pod's cap is `budgetTokens`. A document,
-  command or request that still carries a removed key is refused naming it.
-- **Every dollar figure:** the provider catalog's prices, `costUsd` on tasks, hops, `status` and
-  `/status.json`, the `cost_charged` trace event, the `docket_agent_cost_usd` and
-  `docket_cost_usd_total` gauges, the `PRICE` and `COST` columns, and the "unpriced model" warning.
-
-- **The adoption benchmark and its report.** `benchmarks/`, `docs/ADOPTION-EVIDENCE.md`, its spec
-  and its four tests are deleted: a driver wrote the records it counted, no policy hook or agent
-  turn ran, and the product's denial, approval and recovery behaviour is covered by `tests/e2e/`
-  and the release journey. The starter journey stays.
-- **Four guides that repeated other documents:** `docs/DOCKET.md`, `docs/WORKFLOW-GUIDE.md`,
-  `docs/DEVELOPMENT-HARNESS.md` and `SSD-WORKFLOW.md`. The agent-team model is in
-  `docs/AGENT-TEAMS.md`, the files and customisation recipes in `docs/CONFIGURATION.md`, and the
-  contributor rules in `AGENTS.md` and `CONTRIBUTING.md`.
-
-## [0.3.0-beta.1] - 2026-10-30
-
-The largest change since the first beta, so the minor version moves. `0.2.0-beta.5` and
-`0.2.0-beta.6` were declared in the tree but never tagged; this release carries everything since
-`v0.2.0-beta.4`, and the sections below it hold the earlier declarations.
-
-What a user gets: a pod can do work other than code and act outside the machine (Phase 55), with
-external services declared in a document and a pod's business data kept in declared records
-(Phase 56); every pause that waits on a person is one escalation with one `resolve` verb
-(Phase 51), and a task can say what happens to a pause when nobody is there (`L3|L4|L5`); the
-harness adapts to the model from the provider catalog, prompts are versioned configuration, and
-the built-in `anthropic` provider speaks Anthropic's Messages API with its prompt cache measured
-(Phases 52-54). Underneath, the source tree is organised by context under import contracts the
-tests enforce (Phases 46-49), and end-to-end tests run the product the way an operator or Tack
-does (Phase 50).
-
-**Breaking changes.** docket has no installed base yet, so nothing removed below kept an alias.
-Contract `operator-v2`, operator API 7.0.0, MCP server 2.0.0, Telegram integration 5.0.0: the
-retired escalation shapes are gone. An authored configuration file has one form, the `kind:`
-short form, so a canonical-form pipeline is refused. The `critic` and `tester` roles are deleted
-(one `strong` reviewer judges), the old home layout and the `roles.json` shim are deleted, and
-the workspace contract is v5. `docket init` turns workspace isolation on where the machine can
-jail. Module paths moved with the context layout (ADR 0030).
-
-### Added
-
 - **Outward pods (D-77, ADR 0036, Phase 55).** A pod can do work other than code in a working
   directory and act outside the machine through `send`, a fourth tool kind beside `read`, `write`
   and `exec` that no role holds unless it names it. Every `send` is audited; its approver sees the
@@ -325,116 +226,6 @@ jail. Module paths moved with the context layout (ADR 0030).
   an output cap fails before it is sent.
 - **End-to-end tests that run the product (D-71, ADR 0031, Phase 50).** `tests/e2e/` drives docket
   the way an operator or Tack does, with one fake model and shared oracles.
-
-### Changed
-
-- **One escalation record, one `resolve` verb (D-72, ADR 0032, Phase 51).** Every pause (a gated
-  tool call, a consult, an `input` step, a gate, a changed check) is one durable `Escalation`
-  record written by `platform/store.py`. `docket task answer <escalation-id> --option <id>`, `POST
-  /escalations/<id>`, the MCP `resolve` tool, Telegram `/answer` and the A2A facade all call the
-  same `resolve`, and `GET /escalations?since=` and `docket inbox` list them. The trace carries one
-  event family (`escalation_asked`, `escalation_delivered`, `escalation_resolved`,
-  `escalation_expired`, `escalation_decided`) and one renderer serves the inbox, `task show`, the
-  progress view, Telegram and notifications, with option ids always present. Breaking for a client
-  of the retired shapes: contract `operator-v2`, operator API 7.0.0, MCP server 2.0.0, Telegram
-  integration 5.0.0, operator loop 3.0.x.
-- **Per-task autonomy (`L3|L4|L5`).** `docket task add --autonomy` and `autonomy` on `POST /tasks`
-  say what happens to a pause when nobody is there; the level only narrows and the pod profile is
-  the ceiling. `consultMode: decide` answers a consult in the turn with the model's recommendation;
-  `lights-out` requires it. The table is the `kind: autonomy` document.
-- **A2A facade.** `POST /a2a` and `GET /.well-known/agent.json` expose tasks and their pending
-  escalation to an A2A client, over the same records and `resolve`.
-- **The live smoke refuses a world inside a git work tree** and can run with the jail on.
-
-- **The task is one typed record behind one store (D-70, Phase 49).** `TaskRecord` and `HopResult`
-  are pydantic models; a pod's queue is read and written only through `TaskRepository` over
-  `JsonTaskStore`, and every CLI command, HTTP route, Telegram handler, MCP tool, hop and test reads
-  attributes instead of `dict.get`. The 19 closures that wrote the queue by hand are gone, as are
-  `read_tasks`, `_normalize_task`, `hop_record` and `hop_from_record`. The stored JSON is unchanged
-  except for the keys listed under Removed; a queue written before them still loads.
-- **Answers, consult answers, expired-question sweeps and pre-grants now re-sync the
-  `HEARTBEAT.md` ledger too, and `hops` reads and writes the task as a `TaskRecord`.** The
-  claim's gate override reaches `dispatch_task` as its `gate_override_index` argument instead of a
-  key put back on a copy of the task (pod-dispatch spec 10.1.1).
-- **Every write of a pod's queue re-syncs the `HEARTBEAT.md` dispatch ledger.** `retry_task`,
-  `unblock_pod`, the stale sweep and reclaim, enqueue and the stored worktree and prepare records
-  now go through `TaskRepository`, which regenerates the ledger after the write; before, only the
-  claim, hop persist, finalize, claim refresh and a few cancellations did, so a retry left a stale
-  entry until the next sync (pod-dispatch spec 10.1.0).
-- The `pydantic` floor is `>=2.12`: a task record leaves an unset key out of its stored JSON with
-  `Field(exclude_if=...)`, which 2.12 introduced.
-- **`docket init` turns workspace isolation on where the machine can jail (D-67).** When no
-  choice is recorded and Landlock or Seatbelt is detected, init records it on and audits
-  `gates.isolate` as `on (detected <backend>)`. Without a backend it records nothing and says so;
-  a recorded choice is never changed. `docket setup sandbox on|off` is unchanged.
-- **Workspace contract v5: no seed names a daily log.** `WORKFLOW_AUTO.md`, `MEMORY.md` and
-  `HEARTBEAT.md` told an agent to keep `memory/YYYY-MM-DD.md`, which docket never reads, writes or
-  composes. The instruction is gone and `CONTRACT_VERSION` is 5, so `docket setup --fix`
-  re-seeds a v4 `WORKFLOW_AUTO.md`; `memory/` stays an empty directory.
-- **The tree is organised by context (ADR 0030, D-66).** `src/docket/` is `kernel`, the context
-  packages and `interfaces/`; no module is over 700 lines. The oversized modules were split by
-  `scripts/maint/refactor/move.py`; the turn loop's state became budget, compaction and tool-step
-  collaborators (`agent/loop_*.py`); the HTTP handler became a route table over per-resource
-  modules with one bearer check (`interfaces/http/routes/`). `bootstrap.py` builds the store,
-  sandbox, driver, channels, app and server from a `Home`. Phase 47 then layered the contexts
-  (`platform < governance < agent < models < observability < pipeline < teams < sandbox <
-  operator < tasks < hops`): each module moved to the context whose data it reads, an upward
-  import is a violation, and other contexts are reached through public names and ports in
-  `kernel/ports.py` instead of private names. Function-local `docket.*` imports fell from 209 to
-  1 (a named cycle), and the import-contract baseline from 748 lines to 1 (the Telegram adapter).
-  The tests mirror the contexts (`tests/integration/<context>/`), each helper has one name, no
-  test file imports another or patches another module's private name, and every test file passes
-  run alone. The refactor tools (`scripts/maint/refactor/`, `refactor_gate.sh`, libcst) are
-  deleted; `tests/architecture/` is the record. Every golden is byte-identical.
-- **An authored configuration file has one form, the `kind:` short form.** A role, pipeline or
-  policy file written in the canonical form (`id:`/`role:` steps, `applies_to`/`match`/`action`
-  policies) is refused with exit 2 and a message naming the short key to write; the canonical
-  form is only what docket persists. The short form gained the spellings only the canonical form
-  had (`parallel:` groups, `archetype` and `when` on a step, `verify: {command, timeout}`,
-  `gate: {external, timeout, exitMap}`). A file without `kind:` still loads where its location
-  or the command names the kind.
-- **`maxReworkCycles` is refused beside a bound pipeline** instead of being accepted and ignored:
-  `pod set maxReworkCycles` on a pod with a pipeline, `pod set pipeline` on a pod that stores one,
-  and a `pod.yaml` that declares both exit 2. `pod show` reports the pipeline's own bounds.
-- **The baseline policies read the parsed command.** A rephrased command no longer slips past
-  them: options before the verb (`kubectl -n prod apply`), quoting (`"rm" -rf`), short and long
-  flags (`git push -f`), wrappers (`env`, `xargs`, `find -delete`) and write targets by any program
-  (`ln -sf`, `install`, `dd`, `tee -a`) are seen. Measured on a 310-row corpus
-  (`tests/fixtures/policy-corpus/corpus.yaml`): 82 tool calls that passed now ask, none is
-  weaker, and the rows still allowed carry one of five named limits in the security spec (opaque
-  code in an allowlisted interpreter with isolation off is the main one).
-
-### Fixed
-
-- **A command that sends nothing no longer zeroes the exporter's health.** Every `docket` process starts the
-  enabled exporters and, on exit, wrote its own counters to `exporters-health.json`, so a read-only command
-  (`pod show`, `setup export show`) replaced the counts of the last run that sent spans with zeros. An
-  all-zero result is no longer written, by the exit hook or by `run_turn` (observability export 3.2.0).
-- **The MCP `queue` tool no longer says only a blocked task can be retried.** `retry_task_id`
-  re-queues a `blocked` or a `failed` task, as `docket task retry` does; the refusal now reads
-  "not a failed or blocked task" (mcp-server spec 1.9.6).
-- **A task run under `docket run --pipeline <file>` keeps that pipeline.** Its claim recorded
-  source `default` and nothing else, so answering a question the file's pipeline parked looked up
-  the step in the pod's pipeline and failed with "not parked at step", and the next claim ran the
-  pod's pipeline. The claim now records source `file` and keeps the spec as `pipelineSpec`; the
-  answer and a later claim with no file replay it, and a later claim under a file runs that file.
-- **An idle sweep tick writes no run record.** `docket start --dispatch` created one run per pod per
-  30 s tick whether or not it had anything to claim: 85,540 empty records and 47 MB in a week on a
-  real home, with rewrites that missed the 10 s store lock. A pod with nothing to claim is skipped.
-- **`docket stop` no longer advises `kill -9` for a service that is still exiting**: it now outwaits
-  the service's own wait for abandoned sweeps.
-- **Tests can no longer write into the developer's `~/.docket`**: a thread started without the
-  test's context fell back to the real home (eight test pods were found there).
-- **A verdict a step's `on:` map names is routed, a passing one included**, as pipeline-format
-  says; the mechanical and external gates already did, the verdict gate let a passing value
-  advance first. The `intake` recipe no longer needs a placeholder marker for it.
-- A resuming sweep (`docket start --dispatch`) re-claimed a task it had just refused, in a loop
-  with no pause, until the refusal was cleared: one `dispatch_refused` task (isolation off under a
-  `lights-out` profile) wrote 2,164 audit and trace entries in 3 seconds and held a core at 85%.
-  A task is now claimed at most once per dispatch run. Found by the Phase 46 real run; the loop
-  was already in `develop`.
-
-### Added
 
 - **An external service is declared, and a pod keeps records (D-77, ADR 0036, Phase 56).** A `kind: service`
   document (or `docket setup service add`, or `--from-openapi` for an OpenAPI 3 or 2 file) turns a service's
@@ -582,31 +373,133 @@ jail. Module paths moved with the context layout (ADR 0030).
   sweep when dispatch is on; `docket start --bind <addr>` sets the listen address; `/health`
   reports `apiVersion` and a `dispatch` block (`on`, `inflight`, `stopping`, `workers`).
 
-### Removed
-
-- **The `completed` task count.** `status --json` (`tasks`) and `GET /pods` (`queue`) counted a
-  `completed` key that summed `done` with a status that does not exist. The counts are now one key
-  per task status (`pending`, `running`, `waitingInput`, `waitingApproval`, `blocked`, `failed`,
-  `done`, `cancelled`), so `completed` becomes `done` and `blocked` and `cancelled` appear
-  (cli-json-shapes spec 4.0.0). Breaking.
-- **The `claimId` and `source` keys of a task record, and the `in_progress` task status.** Nothing
-  read `claimId` (a stale claim is read from `claimPid` and `claimedAt`) or `source` (`channel`
-  says where a task came from), and nothing ever wrote `in_progress`. `GET /tasks/<pod>?status=
-  in_progress` is a `400` like any unknown value.
-- Four spent one-off maintenance scripts that nothing called: `remove_harness_mode.py`,
-  `split_cli_registry.py`, `move_pod_report.py` and `strip_spec_changelogs.py`.
-- **The `inPlace` meta key**, which nothing wrote; `_ensure_task_worktree` no longer reads it.
-- **The per-member daily-log pipeline (P44-7).** Daily logs under `memory/`, their seeding at
-  provisioning and their distillation into MEMORY.md are gone: nothing wrote them in a pod task.
-  `docket pod reset` resets the ledger and the member's templates and no longer distills or
-  clears memory; `--no-distill-first` is gone. `lastActivity` now reads the agent's newest session.
-- **`docket exec`, `docket setup harness` and the harness contract (P43-12, ADR 0027).** The
-  command, the contracts 1.0 to 1.2 (schemas, fixtures, `--recipe` runs, the stdin answer
-  stream, the in-place ephemeral pod, the `harness` approval channel) and their docs and tests
-  are deleted; a program uses the HTTP routes of `specs/api/operator-api.spec.md`. A retired
-  name is an ordinary unknown command (exit 2). Ten commands remain. Breaking.
-
 ### Changed
+
+- **A session is compacted for one reason (D-87, Phase 66).** Only a task request that does not fit the window
+  compacts it, and the summarizer is bounded by that window and told the task. The summary is a `user` message in
+  chronology on every wire, and the budget notice is request-only, so it never lands in the saved history.
+- **The first request of a turn is scaled by the model's observed estimate ratio (D-87, Phase 66).** The ratio
+  (`estimateRatio` in `provider-models.json`) is learned from the first call, so the estimate for a model fits
+  what its endpoint counts.
+- **Every tool result reaches the model framed as untrusted data (D-91, Phase 70).** The phrase list that tried
+  to spot an injection is gone, and the safety suite is the measure: attack success 0.00 before and after,
+  benign twin utility 0.92 to 1.00, false positives 2 to 0.
+- **Each guardrail has one source (D-91, Phase 70).** One list of high-risk classes applies to every tool that
+  acts, one redaction is always on, every denial is audited (an invalid tool call included), a `run:` step is
+  classified like a turn's call, and the export privacy table is written once.
+- **A notify flush says when a channel failed (Phase 71).** `docket setup notify flush` names the channel that
+  failed to deliver.
+- **The A2A agent card says what the pod does (Phase 71).** `GET /.well-known/agent.json` describes what the
+  pod does.
+- **A third prompt-cache breakpoint at the condensed boundary (D-76 amended, Phase 72).** When a request's history
+  condensed old tool results, the last message of the condensed range carries a third `cache_control` marker, on
+  `anthropic-messages` and on `openai-chat` for a Claude model id; a request with nothing condensed is sent as before.
+  Measured on Haiku 5.5 when the condensation moved: about 2,400 more input tokens read from the cache, and as many
+  fewer written, on a 17k-token request.
+- **The live smoke and the live eval run jailed by default (Phase 64).** `scripts/smoke_workflow.py` and
+  `scripts/maint/live_eval.py` default to `--sandbox on`, as `docket init` does where the machine can;
+  `--sandbox off` is the opt-out.
+- **`MEMORY.md` is the operator's notes (D-86, Phase 64).** A new member workspace has no `memory/`
+  directory, and its `MEMORY.md` is a two-line header docket never writes; `WORKFLOW_AUTO.md` is
+  contract v6, which `docket setup --fix` re-seeds without touching `MEMORY.md`.
+
+- **A removed or rotated secret no longer survives in `secrets.json.bak`.** The secret store keeps
+  no copy of an earlier version (no `.bak`, no `.corrupt`), and its next write deletes a backup an
+  older docket left. A malformed `secrets.json` now raises instead of restoring a stale key.
+
+- **The `bash` tool says where a call runs**: each call is a new shell at the workspace root, so a
+  `cd` does not carry over and the root never needs finding. A Tack run waited 58 minutes on an
+  approval for `cd "$(git rev-parse --show-toplevel)"`, which the classifier asks about because a
+  command substitution cannot be read statically.
+- **A task on a `workdir` pod says what the pod is.** A `baseRef` fails it at claim with
+  `pod '<p>' works in a folder (workspaceKind workdir); baseRef '<ref>' applies only to a pod with
+  a codebase` (still `failureKind: "base_ref"`), not a sentence about an Implementer the pod never
+  had. A code pod with no Implementer codebase says that instead. The check reads the pod's
+  workspace kind first.
+- **A `prepare` command on a `workdir` pod's task is refused, not ignored** (`failureKind:
+  "prepare"`, the same sentence shape): an install the caller asked for and nothing would run.
+  `""` and `none` are accepted.
+- **`docket pod update` on a `workdir` pod's directory asks for no install.** It no longer derives
+  `prepare` from the surrounding repository's lockfile and lists it to accept; a `prepare:`
+  command in that pod's `pod.yaml`, or `docket pod set prepare <command>`, is refused with
+  `prepare: pod '<p>' works in a folder (workspaceKind workdir); a prepare command applies only to
+  a pod with a codebase`. `docket init` with a `workdir` blueprint reviews the same way.
+
+- **One escalation record, one `resolve` verb (D-72, ADR 0032, Phase 51).** Every pause (a gated
+  tool call, a consult, an `input` step, a gate, a changed check) is one durable `Escalation`
+  record written by `platform/store.py`. `docket task answer <escalation-id> --option <id>`, `POST
+  /escalations/<id>`, the MCP `resolve` tool, Telegram `/answer` and the A2A facade all call the
+  same `resolve`, and `GET /escalations?since=` and `docket inbox` list them. The trace carries one
+  event family (`escalation_asked`, `escalation_delivered`, `escalation_resolved`,
+  `escalation_expired`, `escalation_decided`) and one renderer serves the inbox, `task show`, the
+  progress view, Telegram and notifications, with option ids always present. Breaking for a client
+  of the retired shapes: contract `operator-v2`, operator API 7.0.0, MCP server 2.0.0, Telegram
+  integration 5.0.0, operator loop 3.0.x.
+- **Per-task autonomy (`L3|L4|L5`).** `docket task add --autonomy` and `autonomy` on `POST /tasks`
+  say what happens to a pause when nobody is there; the level only narrows and the pod profile is
+  the ceiling. `consultMode: decide` answers a consult in the turn with the model's recommendation;
+  `lights-out` requires it. The table is the `kind: autonomy` document.
+- **A2A facade.** `POST /a2a` and `GET /.well-known/agent.json` expose tasks and their pending
+  escalation to an A2A client, over the same records and `resolve`.
+- **The live smoke refuses a world inside a git work tree** and can run with the jail on.
+
+- **The task is one typed record behind one store (D-70, Phase 49).** `TaskRecord` and `HopResult`
+  are pydantic models; a pod's queue is read and written only through `TaskRepository` over
+  `JsonTaskStore`, and every CLI command, HTTP route, Telegram handler, MCP tool, hop and test reads
+  attributes instead of `dict.get`. The 19 closures that wrote the queue by hand are gone, as are
+  `read_tasks`, `_normalize_task`, `hop_record` and `hop_from_record`. The stored JSON is unchanged
+  except for the keys listed under Removed; a queue written before them still loads.
+- **Answers, consult answers, expired-question sweeps and pre-grants now re-sync the
+  `HEARTBEAT.md` ledger too, and `hops` reads and writes the task as a `TaskRecord`.** The
+  claim's gate override reaches `dispatch_task` as its `gate_override_index` argument instead of a
+  key put back on a copy of the task (pod-dispatch spec 10.1.1).
+- **Every write of a pod's queue re-syncs the `HEARTBEAT.md` dispatch ledger.** `retry_task`,
+  `unblock_pod`, the stale sweep and reclaim, enqueue and the stored worktree and prepare records
+  now go through `TaskRepository`, which regenerates the ledger after the write; before, only the
+  claim, hop persist, finalize, claim refresh and a few cancellations did, so a retry left a stale
+  entry until the next sync (pod-dispatch spec 10.1.0).
+- The `pydantic` floor is `>=2.12`: a task record leaves an unset key out of its stored JSON with
+  `Field(exclude_if=...)`, which 2.12 introduced.
+- **`docket init` turns workspace isolation on where the machine can jail (D-67).** When no
+  choice is recorded and Landlock or Seatbelt is detected, init records it on and audits
+  `gates.isolate` as `on (detected <backend>)`. Without a backend it records nothing and says so;
+  a recorded choice is never changed. `docket setup sandbox on|off` is unchanged.
+- **Workspace contract v5: no seed names a daily log.** `WORKFLOW_AUTO.md`, `MEMORY.md` and
+  `HEARTBEAT.md` told an agent to keep `memory/YYYY-MM-DD.md`, which docket never reads, writes or
+  composes. The instruction is gone and `CONTRACT_VERSION` is 5, so `docket setup --fix`
+  re-seeds a v4 `WORKFLOW_AUTO.md`; `memory/` stays an empty directory.
+- **The tree is organised by context (ADR 0030, D-66).** `src/docket/` is `kernel`, the context
+  packages and `interfaces/`; no module is over 700 lines. The oversized modules were split by
+  `scripts/maint/refactor/move.py`; the turn loop's state became budget, compaction and tool-step
+  collaborators (`agent/loop_*.py`); the HTTP handler became a route table over per-resource
+  modules with one bearer check (`interfaces/http/routes/`). `bootstrap.py` builds the store,
+  sandbox, driver, channels, app and server from a `Home`. Phase 47 then layered the contexts
+  (`platform < governance < agent < models < observability < pipeline < teams < sandbox <
+  operator < tasks < hops`): each module moved to the context whose data it reads, an upward
+  import is a violation, and other contexts are reached through public names and ports in
+  `kernel/ports.py` instead of private names. Function-local `docket.*` imports fell from 209 to
+  1 (a named cycle), and the import-contract baseline from 748 lines to 1 (the Telegram adapter).
+  The tests mirror the contexts (`tests/integration/<context>/`), each helper has one name, no
+  test file imports another or patches another module's private name, and every test file passes
+  run alone. The refactor tools (`scripts/maint/refactor/`, `refactor_gate.sh`, libcst) are
+  deleted; `tests/architecture/` is the record. Every golden is byte-identical.
+- **An authored configuration file has one form, the `kind:` short form.** A role, pipeline or
+  policy file written in the canonical form (`id:`/`role:` steps, `applies_to`/`match`/`action`
+  policies) is refused with exit 2 and a message naming the short key to write; the canonical
+  form is only what docket persists. The short form gained the spellings only the canonical form
+  had (`parallel:` groups, `archetype` and `when` on a step, `verify: {command, timeout}`,
+  `gate: {external, timeout, exitMap}`). A file without `kind:` still loads where its location
+  or the command names the kind.
+- **`maxReworkCycles` is refused beside a bound pipeline** instead of being accepted and ignored:
+  `pod set maxReworkCycles` on a pod with a pipeline, `pod set pipeline` on a pod that stores one,
+  and a `pod.yaml` that declares both exit 2. `pod show` reports the pipeline's own bounds.
+- **The baseline policies read the parsed command.** A rephrased command no longer slips past
+  them: options before the verb (`kubectl -n prod apply`), quoting (`"rm" -rf`), short and long
+  flags (`git push -f`), wrappers (`env`, `xargs`, `find -delete`) and write targets by any program
+  (`ln -sf`, `install`, `dd`, `tee -a`) are seen. Measured on a 310-row corpus
+  (`tests/fixtures/policy-corpus/corpus.yaml`): 82 tool calls that passed now ask, none is
+  weaker, and the rows still allowed carry one of five named limits in the security spec (opaque
+  code in an allowlisted interpreter with isolation off is the main one).
 
 - The `docket start` banner lists every route the server answers, printed from the route table
   (`interfaces/http/routes/table.py`), where it named 6 of them.
@@ -624,6 +517,90 @@ jail. Module paths moved with the context layout (ADR 0030).
   ship in the wheel are found by `docket.kernel.templates`. No environment variable changed.
 
 ### Fixed
+
+- **A shell substitution of a known command is classified by that command, and a process substitution asks (Phase 71).**
+  `echo "$(git rev-parse HEAD)"` no longer waits for an approval because a substitution cannot be read statically:
+  the command inside is classified like any other. `<(` and `>(` run a program the classifier cannot see, so they
+  ask. On the safety suite with the local model, attack success stayed 0.00 and the benign twin that used to ask
+  now runs with no ask.
+- **An exported pod applied back unchanged reads as not drifted (Phase 71).** A pod exported with `docket pod export` and
+  applied back no longer reports a difference where nothing changed.
+- **A reply or a summary cut at the output cap is asked again shorter, and a retried timeout doubles the request
+  limit (Phase 66 follow-ups).** A cut reply used to fail the task. A summary whose prompt ate the reply room runs
+  again smaller.
+- **A handoff is fit to the context window of the model that receives it.** A hosted model no longer gets a
+  researcher's reply cut to a local endpoint's cap, which dropped the source URLs at its tail; a local 16k-32k
+  endpoint keeps today's budget byte for byte. A shipped `tokenBudget` is a floor of the window share, an
+  operator's value stays exact, and `context_composed` reports `budget_tokens`.
+- **The notice for a condensed tool result says the model read it earlier and its text is no longer in the view.**
+  The old "already seen and omitted" was read as the tool refusing a repeat: an analyst reported pages it had
+  drafted from as never re-read and saved that to the pod's memory.
+- **A tool result the model has not answered yet is never condensed.** A round of parallel `fetch` results
+  that exceeded the keep count and the character budget had its oldest results replaced by "already seen and
+  omitted; call fetch again" before the model read them, so it fetched again until the turn budget ended. The
+  results after the last assistant message now stay whole (session-history requirement 30); older answered
+  results make room for them.
+- **A compaction converges on a unit larger than its prompt, and never ends a turn that fits (D-89, Phase 68).** A raw unit
+  whose summary prompt does not fit (three or four parallel `fetch` results) is summarized from a projection
+  with each tool result cut and marked, a batch never holds a compaction summary alone, and a pre-turn
+  compaction the guard refuses leaves the history untouched and lets the turn run; a summarizer that fails
+  still ends it. The failure was a research hop dying on `compaction summary did not reduce estimated
+  history size` with a request that fitted the window.
+- **The writer drafts from the handoff (D-89, Phase 68).** The `writer` archetype denies `fetch` (it re-read the web every
+  round: 23 calls and 247k of 445k input tokens in one real run) and asks with `consult` for a missing
+  source. A pod keeps the role copy it was made with; reapply to take it.
+- **The fix for a missing `fetch` is the one that opens it.** A folder pod whose jail is not running is told
+  `docket setup sandbox on`, not `docket pod set fetchDomains`.
+- **A file that mentions payments is not a payment (D-89, Phase 68).** The free-text clause of the shipped
+  `high-risk-payment` and `block-destructive` policies no longer reads what `write` and `edit` put in a
+  file, so a report that names Stripe or says "free of charge" no longer waits for approval; running the
+  file, a `curl` to a payment provider and an MCP or service tool still ask. Its word spans are bounded to
+  one phrase (`payment … charge` within four words, not anywhere in the call). Policies gain the `when`
+  key `notTool`. A home keeps the policy files it installed: copy the two templates over them to take
+  the change.
+- **The Docker container that reads a PDF is bounded (Phase 65).** It runs with 1 GiB of memory and swap and 256
+  processes, as the other backends bound the extractor; before, only the deadline bounded it.
+- **Three defects Tack found on a research team.**
+  - `docket pod show` and `GET /pods/<pod>` no longer contradict themselves: the `settings.network`
+    row carries the effective mode (a pod with nothing set reads `none` under a machine at `none`),
+    the same one as the top-level `network`.
+  - A pod made with a `researcher` (the `respond` blueprint, `docket init`, `POST /pods`,
+    `docket pod add researcher`) records the `fetch-hosts` need, so `docket init` and `docket pod
+    add` print that the team cannot read the web and the command that changes it, and `needs`
+    serves the not-ready line. `network` stays as it was.
+  - The working-directory line of a `workdir` pod's hop says it is the team's shared folder and
+    that the team's output goes there; the `Working folder: <path>` line has been there since
+    2026-11-03.
+- **An approved `pitfall` or `convention` memory entry reaches the next prompt.** Rendering skipped
+  every non-`tool` entry whose subject was not an existing path, which is every label subject.
+
+- **A command that sends nothing no longer zeroes the exporter's health.** Every `docket` process starts the
+  enabled exporters and, on exit, wrote its own counters to `exporters-health.json`, so a read-only command
+  (`pod show`, `setup export show`) replaced the counts of the last run that sent spans with zeros. An
+  all-zero result is no longer written, by the exit hook or by `run_turn` (observability export 3.2.0).
+- **The MCP `queue` tool no longer says only a blocked task can be retried.** `retry_task_id`
+  re-queues a `blocked` or a `failed` task, as `docket task retry` does; the refusal now reads
+  "not a failed or blocked task" (mcp-server spec 1.9.6).
+- **A task run under `docket run --pipeline <file>` keeps that pipeline.** Its claim recorded
+  source `default` and nothing else, so answering a question the file's pipeline parked looked up
+  the step in the pod's pipeline and failed with "not parked at step", and the next claim ran the
+  pod's pipeline. The claim now records source `file` and keeps the spec as `pipelineSpec`; the
+  answer and a later claim with no file replay it, and a later claim under a file runs that file.
+- **An idle sweep tick writes no run record.** `docket start --dispatch` created one run per pod per
+  30 s tick whether or not it had anything to claim: 85,540 empty records and 47 MB in a week on a
+  real home, with rewrites that missed the 10 s store lock. A pod with nothing to claim is skipped.
+- **`docket stop` no longer advises `kill -9` for a service that is still exiting**: it now outwaits
+  the service's own wait for abandoned sweeps.
+- **Tests can no longer write into the developer's `~/.docket`**: a thread started without the
+  test's context fell back to the real home (eight test pods were found there).
+- **A verdict a step's `on:` map names is routed, a passing one included**, as pipeline-format
+  says; the mechanical and external gates already did, the verdict gate let a passing value
+  advance first. The `intake` recipe no longer needs a placeholder marker for it.
+- A resuming sweep (`docket start --dispatch`) re-claimed a task it had just refused, in a loop
+  with no pause, until the refusal was cleared: one `dispatch_refused` task (isolation off under a
+  `lights-out` profile) wrote 2,164 audit and trace entries in 3 seconds and held a core at 85%.
+  A task is now claimed at most once per dispatch run. Found by the Phase 46 real run; the loop
+  was already in `develop`.
 
 - A `task retry` after a failed branch of a parallel review group re-runs the group instead of
   ending the task `done` with the failed gate unmet: resume counted a group finished when every
@@ -791,6 +768,70 @@ jail. Module paths moved with the context layout (ADR 0030).
   and `path` are removed from the request; the response still says `project`.
 
 - `dispatch_refused` trace events were rejected as an unknown type and never written.
+
+### Removed
+
+- **Five policy templates and two recipe rules (D-91, Phase 70).** The high-risk classes, the redaction and the
+  untrusted-text screen each live in one place, so the templates and recipe rules that repeated them are deleted,
+  with the injection phrase list and the HTTP task trust flag, which nothing read.
+- **Dead code (Phase 71).** What vulture measured as unused is deleted, and six specs and every operator document
+  (`CONFIGURATION.md`, `recipes.md`, `AGENT-TEAMS.md`, `SECURITY-SIMPLE.md`, `troubleshooting.md`,
+  `MODEL-GATEWAYS.md`, the quick start, CONTRIBUTING and the README) were checked claim by claim against the code.
+- **The live smoke canary: `scripts/smoke_workflow.py`, `scripts/maint/live_eval.py`, `scripts/live_credentials.py`,
+  `tests/support/smoke_script.py` and `tests/integration/product/smoke/`** (4,368 lines). Its two scenarios,
+  `basic` and `memory-maintenance`, run as regression tasks of the agent eval lane (`evals/`), which
+  measures repeated trials against a base commit; the `DOCKET_RUN_LIVE_SMOKE` opt-in is gone. Development
+  tooling only; the wheel never shipped it.
+
+- **The opt-in live Hacker News test (a `tests/` lane of its own).** The `hn-digest-records` task of the
+  capability suite in the eval lane runs the same recipe against the real site, reads the stories set the trial
+  exported and reports pass rates per model.
+
+- **The optional OpenHands SDK and PydanticAI adapters of `docket-runtime`** (`docket_runtime.adapters`),
+  their example, fixtures and release tests, and the claims about them in the runtime-library spec
+  (now 3.0.0), `COMPATIBILITY.md` and `SECURITY.md`. The facade and the governed-execution envelope
+  are unchanged.
+
+- **`DISPATCH_TURN_TIMEOUT_S`, `DISPATCH_VERIFY_TIMEOUT_S` and the 300 s `DEFAULT_TIMEOUT` constant.**
+  A machine value beat the pod's own `turnTimeoutS`. With nothing declared a hop's time is now
+  `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`.
+- **`maxIterations` and `maxToolCalls` on a step and a role, and `budgetUsd` on a pod.** Rounds and
+  tool calls are machine guards, not declared limits; a pod's cap is `budgetTokens`. A document,
+  command or request that still carries a removed key is refused naming it.
+- **Every dollar figure:** the provider catalog's prices, `costUsd` on tasks, hops, `status` and
+  `/status.json`, the `cost_charged` trace event, the `docket_agent_cost_usd` and
+  `docket_cost_usd_total` gauges, the `PRICE` and `COST` columns, and the "unpriced model" warning.
+
+- **The adoption benchmark and its report.** `benchmarks/`, `docs/ADOPTION-EVIDENCE.md`, its spec
+  and its four tests are deleted: a driver wrote the records it counted, no policy hook or agent
+  turn ran, and the product's denial, approval and recovery behaviour is covered by `tests/e2e/`
+  and the release journey. The starter journey stays.
+- **Four guides that repeated other documents:** `docs/DOCKET.md`, `docs/WORKFLOW-GUIDE.md`,
+  `docs/DEVELOPMENT-HARNESS.md` and `SSD-WORKFLOW.md`. The agent-team model is in
+  `docs/AGENT-TEAMS.md`, the files and customisation recipes in `docs/CONFIGURATION.md`, and the
+  contributor rules in `AGENTS.md` and `CONTRIBUTING.md`.
+
+- **The `completed` task count.** `status --json` (`tasks`) and `GET /pods` (`queue`) counted a
+  `completed` key that summed `done` with a status that does not exist. The counts are now one key
+  per task status (`pending`, `running`, `waitingInput`, `waitingApproval`, `blocked`, `failed`,
+  `done`, `cancelled`), so `completed` becomes `done` and `blocked` and `cancelled` appear
+  (cli-json-shapes spec 4.0.0). Breaking.
+- **The `claimId` and `source` keys of a task record, and the `in_progress` task status.** Nothing
+  read `claimId` (a stale claim is read from `claimPid` and `claimedAt`) or `source` (`channel`
+  says where a task came from), and nothing ever wrote `in_progress`. `GET /tasks/<pod>?status=
+  in_progress` is a `400` like any unknown value.
+- Four spent one-off maintenance scripts that nothing called: `remove_harness_mode.py`,
+  `split_cli_registry.py`, `move_pod_report.py` and `strip_spec_changelogs.py`.
+- **The `inPlace` meta key**, which nothing wrote; `_ensure_task_worktree` no longer reads it.
+- **The per-member daily-log pipeline (P44-7).** Daily logs under `memory/`, their seeding at
+  provisioning and their distillation into MEMORY.md are gone: nothing wrote them in a pod task.
+  `docket pod reset` resets the ledger and the member's templates and no longer distills or
+  clears memory; `--no-distill-first` is gone. `lastActivity` now reads the agent's newest session.
+- **`docket exec`, `docket setup harness` and the harness contract (P43-12, ADR 0027).** The
+  command, the contracts 1.0 to 1.2 (schemas, fixtures, `--recipe` runs, the stdin answer
+  stream, the in-place ephemeral pod, the `harness` approval channel) and their docs and tests
+  are deleted; a program uses the HTTP routes of `specs/api/operator-api.spec.md`. A retired
+  name is an ordinary unknown command (exit 2). Ten commands remain. Breaking.
 
 ## [0.2.0-beta.5] - 2026-10-14
 
