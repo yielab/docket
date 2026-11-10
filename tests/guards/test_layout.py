@@ -26,7 +26,6 @@ LARGE_MODULE_LINES = 150
 _STRUCTURAL_EXEMPT = {
     "interfaces/cli/test_cli_stubs.py": "docket.interfaces.cli.app",
     "interfaces/cli/test_registry.py": "docket.interfaces.cli.app",
-    "test_store_writer.py": "docket.platform.store",
 }
 
 

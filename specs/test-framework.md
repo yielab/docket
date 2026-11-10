@@ -656,8 +656,9 @@ Where the names used above live today.
   (`scripts/maint/rewrite_cli_names.py`), `test_dispatch_never_rereads_the_repository.py`,
   `test_no_suppressed_dispatch.py`, `test_workspace_root_agreement.py`,
   `test_no_hardcoded_telegram_ids.py`, `test_no_external_daemon_coupling.py`.
-- `tests/unit/test_store_writer.py`: the store single-writer guard;
-  `tests/unit/agent/tools/test_registry.py`: the tool-chokepoint import guard.
+- `tests/guards/test_store_writer.py`: the store single-writer guard;
+  `tests/guards/test_dispatch_chokepoint_scan.py`: the tool-chokepoint import guard;
+  `tests/guards/test_provider_name_literals.py`: the provider-name literal guard.
 - `tests/integration/bootstrap/test_console_script_entry_point.py`: retired names are unknown commands;
   `tests/integration/sandbox/test_escape_matrix.py`: the escape matrix.
 - `tests/agent/release/`: `test_public_release_truth.py`, `test_release_artifacts.py`,
